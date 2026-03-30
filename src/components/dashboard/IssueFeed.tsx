@@ -1,4 +1,3 @@
-"use client";
 import { IssueCard } from "@/components/ui/IssueCard";
 
 export function IssueFeed() {

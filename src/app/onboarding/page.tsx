@@ -32,8 +32,7 @@ export default function OnboardingPage() {
     if (selectedRole === "contributor") {
       setStep("connect");
     } else {
-      alert("Maintainer onboarding UI will be provided later. You can proceed to the command center.");
-      window.location.href = "/maintainer";
+      router.push("/maintainer");
     }
   };
 

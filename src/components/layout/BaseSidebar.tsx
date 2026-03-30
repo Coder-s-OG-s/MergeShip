@@ -3,7 +3,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LucideIcon, GitMerge, ChevronRight, ArrowLeftRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
 
 export interface NavItem {
   href: string;
@@ -116,9 +115,7 @@ export function BaseSidebar({
                   <Icon className={cn("w-5 h-5 flex-shrink-0 transition-transform group-hover:scale-110", isActive ? "text-white" : "text-current")} />
                   <span className="flex-1">{label}</span>
                   {isActive && (
-                    <motion.div layoutId="active-indicator">
-                      <ChevronRight className="w-4 h-4 opacity-70" />
-                    </motion.div>
+                    <ChevronRight className="w-4 h-4 opacity-70" />
                   )}
                 </Link>
               </li>
