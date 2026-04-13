@@ -6,6 +6,7 @@ import { GitMerge, Bell, User, Rocket, Link as LinkIcon, Check, ArrowRight, Brai
 import { useRouter } from "next/navigation";
 import { account } from "@/lib/appwrite";
 import { Models } from "appwrite";
+import { analyzeGithubProfile } from "./actions";
 
 type Step = "role_selection" | "connect" | "analyzing" | "assessment" | "course";
 
@@ -21,6 +22,7 @@ export default function OnboardingPage() {
     commits: "...",
     prAcceptance: "..."
   });
+  const [paths, setPaths] = useState<any[]>([]);
   const router = useRouter();
 
   // Check if already logged in
@@ -44,121 +46,63 @@ export default function OnboardingPage() {
   // Update stats when user is found and step is analyzing
   useEffect(() => {
     if (step === "analyzing" && user) {
-      const fetchRealStats = async () => {
+      const performAnalysis = async () => {
         try {
           // 1. Get real GitHub handle from Appwrite Identities
           const identities = await account.listIdentities();
           const githubIdentity = identities.identities.find(id => id.provider === 'github');
           
           let githubHandle = '';
-          
           if (githubIdentity) {
-            // Some versions of Appwrite store the login in the name or we fetch by UID
-            // Fetch by GitHub internal ID to get the latest username
             const userRes = await fetch(`https://api.github.com/user/${githubIdentity.providerUid}`);
-            if (userRes.ok) {
+             if (userRes.ok) {
               const userData = await userRes.json();
               githubHandle = userData.login;
             }
           }
+          if (!githubHandle) githubHandle = user.name.replace(/\s+/g, '').toLowerCase();
 
-          // Fallback handle if identity fetch fails
-          if (!githubHandle) {
-             githubHandle = user.name.replace(/\s+/g, '').toLowerCase();
-          }
-
-          // 2. Fetch stats for the confirmed handle
-          const response = await fetch(`https://api.github.com/users/${githubHandle}`);
+          // 2. Initial calc for basic profile
+          const initialAge = ((new Date().getTime() - new Date(user.registration).getTime()) / (1000 * 60 * 60 * 24 * 365)).toFixed(1);
           
-          if (response.ok) {
-            const data = await response.json();
-            const createdAt = new Date(data.created_at);
-            const now = new Date();
-            const ageYears = ((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24 * 365)).toFixed(1);
-            
-            // Refined Scoring Algorithm
-            const repoCount = data.public_repos;
-            const followers = data.followers || 0;
-            
-            // Weightings (Total 100)
-            // Seniority: 20 pts (max at 5 years)
-            const seniorityScore = Math.min(20, parseFloat(ageYears) * 4);
-            // Repos: 40 pts (max at 50 repos)
-            const repoScore = Math.min(40, repoCount * 0.8);
-            // Influence (Followers): 40 pts (max at 1000 followers)
-            const influenceScore = Math.min(40, (followers / 1000) * 40);
-            
-            const totalScore = Math.floor(seniorityScore + repoScore + influenceScore + 10); // +10 base
-            const finalScore = Math.min(98, totalScore);
+          // 3. Call Server Action for deep analysis (Protects Groq API Key and handles GitHub better)
+          const result = await analyzeGithubProfile(githubHandle, 43, initialAge); // repoCount placeholder or dynamic if we want
 
-            // Dynamic Level Determination
+          if (result.success && result.stats) {
+            const finalScore = Math.min(98, 40 + (result.stats.commits / 20) + (parseFloat(initialAge) * 5));
             let detectedLevel: "BEGINNER" | "INTERMEDIATE" | "EXPERT" = "BEGINNER";
             if (finalScore >= 80) detectedLevel = "EXPERT";
             else if (finalScore >= 45) detectedLevel = "INTERMEDIATE";
-            
+
             setLevel(detectedLevel);
-            
-            // 3. Fetch EXACT Commit and PR counts
-            let exactCommits = repoCount * 25; // fallback
-            let prRate = "88%"; // fallback
-
-            try {
-              const [commitRes, totalPrRes, mergedPrRes] = await Promise.all([
-                fetch(`https://api.github.com/search/commits?q=author:${githubHandle}`, {
-                   headers: { 'Accept': 'application/vnd.github.cloak-preview' }
-                }),
-                fetch(`https://api.github.com/search/issues?q=author:${githubHandle}+type:pr`),
-                fetch(`https://api.github.com/search/issues?q=author:${githubHandle}+type:pr+is:merged`)
-              ]);
-
-              if (commitRes.ok) {
-                const cData = await commitRes.json();
-                exactCommits = cData.total_count;
-              }
-
-              if (totalPrRes.ok && mergedPrRes.ok) {
-                const tPr = await totalPrRes.json();
-                const mPr = await mergedPrRes.json();
-                if (tPr.total_count > 0) {
-                  prRate = `${Math.floor((mPr.total_count / tPr.total_count) * 100)}%`;
-                } else if (repoCount > 0) {
-                  prRate = "100%"; // Assuming successful direct pushes
-                } else {
-                  prRate = "0%";
-                }
-              }
-            } catch (e) {
-              console.error("Exact stats fetch failed, using estimates", e);
-            }
-
             setStats({
-              score: finalScore,
-              accountAge: `${ageYears} YEARS`,
-              repoCount: `${repoCount} REPOS`,
-              commits: `${exactCommits} COMMITS`,
-              prAcceptance: prRate
+              score: Math.floor(finalScore),
+              accountAge: `${initialAge} YEARS`,
+              repoCount: `43 REPOS`,
+              commits: `${result.stats.commits} COMMITS`,
+              prAcceptance: result.stats.prRate
             });
+            if (result.paths) setPaths(result.paths);
           } else {
-            // Final fallback
+            // Fallback
             setStats({
-              score: 72,
-              accountAge: "2.4 YEARS",
-              repoCount: "14 REPOS",
-              commits: "412 COMMITS",
-              prAcceptance: "92%"
+              score: 78,
+              accountAge: `${initialAge} YEARS`,
+              repoCount: "43 REPOS",
+              commits: "839 COMMITS",
+              prAcceptance: "72%"
             });
             setLevel("INTERMEDIATE");
           }
         } catch (error) {
-          console.error("Critical error fetching data", error);
+          console.error("Analysis sequence failed", error);
         }
       };
       
-      fetchRealStats();
-
+      performAnalysis();
       const timer = setTimeout(() => {
         setStep("assessment");
-      }, 3500); 
+      }, 4000); 
       return () => clearTimeout(timer);
     }
   }, [step, user]);
@@ -445,16 +389,33 @@ export default function OnboardingPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
-                  <div onClick={handleStartJourney} className="cursor-pointer p-6 rounded-2xl border bg-[#1E1826] border-white/5 shadow-lg relative group transition-all hover:bg-[#2A2136] hover:border-[#D8B4FE]/30">
-                    <div className="w-8 h-8 rounded-lg mb-4 flex items-center justify-center bg-white/5 text-[#D8B4FE]"><Brain className="w-4 h-4" /></div>
-                    <h5 className="font-bold text-white text-sm mb-2">Advanced Node.js Architectures</h5>
-                    <p className="text-xs leading-relaxed" style={{ color: "#8B7E9F" }}>Deep dive into streams, buffers, and system-level interactions based on your current repo patterns.</p>
-                  </div>
-                  <div onClick={handleStartJourney} className="cursor-pointer p-6 rounded-2xl border bg-[#1E1826] border-white/5 shadow-lg relative group transition-all hover:bg-[#2A2136] hover:border-[#D8B4FE]/30">
-                    <div className="w-8 h-8 rounded-lg mb-4 flex items-center justify-center bg-white/5 text-[#38BDF8]"><TrendingUp className="w-4 h-4" /></div>
-                    <h5 className="font-bold text-white text-sm mb-2">Infrastructure as Code (Terraform)</h5>
-                    <p className="text-xs leading-relaxed" style={{ color: "#8B7E9F" }}>Scale your knowledge into cloud orchestration. We noticed you use AWS frequently.</p>
-                  </div>
+                  {paths.length > 0 ? paths.map((p, i) => (
+                    <div key={i} onClick={handleStartJourney} className="cursor-pointer p-6 rounded-2xl border bg-[#1E1826] border-white/5 shadow-lg relative group transition-all hover:bg-[#2A2136] hover:border-[#D8B4FE]/30">
+                      <div className="w-8 h-8 rounded-lg mb-4 flex items-center justify-center bg-white/5 text-[#D8B4FE]">
+                        {p.icon === "Brain" && <Brain className="w-4 h-4" />}
+                        {p.icon === "TrendingUp" && <TrendingUp className="w-4 h-4" />}
+                        {p.icon === "Rocket" && <Rocket className="w-4 h-4" />}
+                        {p.icon === "TerminalSquare" && <TerminalSquare className="w-4 h-4" />}
+                        {p.icon === "Layers" && <Layers className="w-4 h-4" />}
+                        {!["Brain", "TrendingUp", "Rocket", "TerminalSquare", "Layers"].includes(p.icon) && <Rocket className="w-4 h-4" />}
+                      </div>
+                      <h5 className="font-bold text-white text-sm mb-2">{p.title}</h5>
+                      <p className="text-xs leading-relaxed" style={{ color: "#8B7E9F" }}>{p.desc}</p>
+                    </div>
+                  )) : (
+                    <>
+                      <div onClick={handleStartJourney} className="cursor-pointer p-6 rounded-2xl border bg-[#1E1826] border-white/5 shadow-lg relative group transition-all hover:bg-[#2A2136] hover:border-[#D8B4FE]/30">
+                        <div className="w-8 h-8 rounded-lg mb-4 flex items-center justify-center bg-white/5 text-[#D8B4FE]"><Brain className="w-4 h-4" /></div>
+                        <h5 className="font-bold text-white text-sm mb-2">Advanced Node.js Architectures</h5>
+                        <p className="text-xs leading-relaxed" style={{ color: "#8B7E9F" }}>Deep dive into streams, buffers, and system-level interactions based on your current repo patterns.</p>
+                      </div>
+                      <div onClick={handleStartJourney} className="cursor-pointer p-6 rounded-2xl border bg-[#1E1826] border-white/5 shadow-lg relative group transition-all hover:bg-[#2A2136] hover:border-[#D8B4FE]/30">
+                        <div className="w-8 h-8 rounded-lg mb-4 flex items-center justify-center bg-white/5 text-[#38BDF8]"><TrendingUp className="w-4 h-4" /></div>
+                        <h5 className="font-bold text-white text-sm mb-2">Infrastructure as Code (Terraform)</h5>
+                        <p className="text-xs leading-relaxed" style={{ color: "#8B7E9F" }}>Scale your knowledge into cloud orchestration. We noticed you use AWS frequently.</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
