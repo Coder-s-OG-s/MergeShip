@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Outfit, Inter } from "next/font/google";
 import "./globals.css";
+import { AppwriteProvider } from "@/components/providers/AppwriteProvider";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -30,7 +31,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`dark ${outfit.variable} ${inter.variable}`}>
       <body className="bg-dark-900 text-white antialiased">
-        {children}
+        <AppwriteProvider>
+          {children}
+        </AppwriteProvider>
       </body>
     </html>
   );

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { GitMerge, Zap, Shield, Users, ArrowRight, Star, TrendingUp, CheckCircle } from "lucide-react";
 
+import AuthStatus from "@/components/auth/AuthStatus";
+
 export default function HomePage() {
   return (
     <div className="min-h-screen hero-bg grid-bg overflow-hidden">
@@ -16,9 +18,7 @@ export default function HomePage() {
           <Link href="/onboarding" className="text-sm text-gray-400 hover:text-white transition-colors">For Contributors</Link>
           <Link href="/onboarding" className="text-sm text-gray-400 hover:text-white transition-colors">For Maintainers</Link>
           <Link href="/community" className="text-sm text-gray-400 hover:text-white transition-colors">Community</Link>
-          <Link href="/onboarding" className="btn-primary px-5 py-2 rounded-lg text-sm">
-            Get Started Free
-          </Link>
+          <AuthStatus />
         </div>
       </nav>
 
