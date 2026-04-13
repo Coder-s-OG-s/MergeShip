@@ -1,8 +1,27 @@
-"use client";
-import { Rocket } from "lucide-react";
+import { Rocket, User } from "lucide-react";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
+import { account } from "@/lib/appwrite";
+import { Models } from "appwrite";
 
 export function DashboardHeader() {
+  const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const session = await account.get();
+        setUser(session);
+      } catch (error) {
+        console.error("Failed to fetch user", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUser();
+  }, []);
+
   return (
     <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-12 gap-6">
       <motion.div
@@ -10,10 +29,10 @@ export function DashboardHeader() {
         animate={{ x: 0, opacity: 1 }}
       >
         <h1 className="text-4xl font-display font-black text-white mb-2 tracking-tight">
-          Welcome back, <span className="text-[#D8B4FE]">Captain</span>
+          Welcome back, <span className="text-[#D8B4FE]">{loading ? "..." : (user?.name || "Captain")}</span>
         </h1>
         <p className="text-[#8B7E9F] font-bold text-xs uppercase tracking-[0.2em]">
-          You're 850 XP away from reaching Level 4.
+          {loading ? "Syncing your progress..." : "Your dashboard is synchronized with your latest GitHub activity."}
         </p>
       </motion.div>
       <motion.button

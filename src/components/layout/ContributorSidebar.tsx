@@ -1,6 +1,9 @@
 "use client";
+import { useEffect, useState } from "react";
 import { LayoutDashboard, Zap, Trophy, User, UsersRound } from "lucide-react";
 import { BaseSidebar, NavItem } from "./BaseSidebar";
+import { account } from "@/lib/appwrite";
+import { getDashboardData } from "@/app/(contributor)/dashboard/actions";
 
 const navItems: NavItem[] = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", exact: true },
@@ -11,6 +14,46 @@ const navItems: NavItem[] = [
 ];
 
 export function ContributorSidebar() {
+  const [userData, setUserData] = useState<any>({
+    name: "Loading...",
+    level: "..",
+    xp: "...",
+    initials: "?",
+    streak: 0
+  });
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const session = await account.get();
+        const identities = await account.listIdentities();
+        const githubIdentity = identities.identities.find(id => id.provider === 'github');
+        
+        let handle = session.name.replace(/\s+/g, '').toLowerCase();
+        if (githubIdentity) {
+           const userRes = await fetch(`https://api.github.com/user/${githubIdentity.providerUid}`);
+           if (userRes.ok) {
+              const d = await userRes.json();
+              handle = d.login;
+           }
+        }
+
+        // Get stats for level and XP
+        const statsRes = await getDashboardData(handle);
+        
+        setUserData({
+          name: handle,
+          level: statsRes.success ? statsRes.stats.level.split(' ')[0] : "L1",
+          xp: statsRes.success ? `${statsRes.stats.totalXP} XP` : "0 XP",
+          initials: session.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
+          streak: statsRes.success ? statsRes.stats.streak : 0
+        });
+      } catch (error) {
+        console.error("Sidebar user fetch failed", error);
+      }
+    };
+    fetchUser();
+  }, []);
   return (
     <BaseSidebar
       mode="CONTRIBUTOR"
@@ -19,13 +62,7 @@ export function ContributorSidebar() {
       brandGradient="linear-gradient(135deg, #B78AF7, #7C3AED)"
       switchModeHref="/maintainer"
       switchModeLabel="Maintainer Hub"
-      user={{
-        name: "soumyasagar",
-        level: "L3",
-        xp: "420 XP",
-        initials: "SS",
-        streak: 7
-      }}
+      user={userData}
     />
   );
 }
