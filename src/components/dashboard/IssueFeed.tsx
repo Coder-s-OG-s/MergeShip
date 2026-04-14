@@ -11,10 +11,17 @@ export function IssueFeed({ handle, forceSync = false }: { handle: string; force
   const [loading, setLoading] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
+  const [ghToken, setGhToken] = useState("");
+
   useEffect(() => {
     const init = async () => {
       try {
-        const data = await getContributorContext(handle);
+        const identities = await account.listIdentities();
+        const gh = identities.identities.find(id => id.provider.toLowerCase() === 'github');
+        const token = gh ? (gh as any).providerAccessToken : "";
+        setGhToken(token);
+
+        const data = await getContributorContext(handle, token);
         if (data.success && data.repos.length > 0) {
           setRepos(data.repos);
           setSelectedRepo(data.repos[0].value);
@@ -30,7 +37,7 @@ export function IssueFeed({ handle, forceSync = false }: { handle: string; force
     if (selectedRepo) {
       const fetchIssues = async () => {
         setLoading(true);
-        const res = await getAnalyzedIssues(selectedRepo, "INTERMEDIATE", forceSync);
+        const res = await getAnalyzedIssues(selectedRepo, "INTERMEDIATE", forceSync, 3, ghToken);
         if (res.success) {
           setIssues(res.issues);
         }
@@ -38,7 +45,7 @@ export function IssueFeed({ handle, forceSync = false }: { handle: string; force
       };
       fetchIssues();
     }
-  }, [selectedRepo, forceSync]);
+  }, [selectedRepo, forceSync, ghToken]);
 
   if (repos.length === 0) return <div className="h-64 bg-white/5 rounded-2xl animate-pulse" />;
 

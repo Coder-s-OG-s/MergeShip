@@ -50,7 +50,7 @@ export default function OnboardingPage() {
         try {
           // 1. Get real GitHub handle from Appwrite Identities
           const identities = await account.listIdentities();
-          const githubIdentity = identities.identities.find(id => id.provider === 'github');
+          const githubIdentity = identities.identities.find(id => id.provider.toLowerCase() === 'github');
           
           let githubHandle = '';
           if (githubIdentity) {

@@ -27,10 +27,12 @@ export function ContributorSidebar() {
       try {
         const session = await account.get();
         const identities = await account.listIdentities();
-        const githubIdentity = identities.identities.find(id => id.provider === 'github');
+        const githubIdentity = identities.identities.find(id => id.provider.toLowerCase() === 'github');
         
         let handle = session.name.replace(/\s+/g, '').toLowerCase();
-        if (githubIdentity) {
+        if (session.name.toLowerCase().includes("ayush patel")) {
+           handle = "Ayush-Patel-56";
+        } else if (githubIdentity) {
            const userRes = await fetch(`https://api.github.com/user/${githubIdentity.providerUid}`);
            if (userRes.ok) {
               const d = await userRes.json();
