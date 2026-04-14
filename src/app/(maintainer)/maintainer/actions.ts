@@ -6,8 +6,8 @@ export async function getMaintainerDashboardData(githubHandle: string, token?: s
         if (token) headers["Authorization"] = `Bearer ${token}`;
 
         // 1. Fetch repositories maintained by the user
-        // We look for repos where the user is an owner or has collaborator access
-        const reposRes = await fetch(`https://api.github.com/user/repos?affiliation=owner,collaborator&sort=updated&per_page=10`, { headers });
+        // We look for repos where the user is an owner, collaborator, or organization member
+        const reposRes = await fetch(`https://api.github.com/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&per_page=50`, { headers });
         if (!reposRes.ok) throw new Error("Failed to fetch maintained repos");
         const repos = await reposRes.json();
 
@@ -25,8 +25,8 @@ export async function getMaintainerDashboardData(githubHandle: string, token?: s
         let urgentIssues: any[] = [];
         let openPRs: any[] = [];
 
-        // For demo/simplicity, we'll focus on the first few repos but aggregate counts
-        for (const repoName of repoNames.slice(0, 3)) {
+        // For detailed view, we aggregate data across more repos
+        for (const repoName of repoNames.slice(0, 10)) {
             const issuesRes = await fetch(`https://api.github.com/repos/${repoName}/issues?state=open&per_page=30`, { headers });
             if (issuesRes.ok) {
                 const items = await issuesRes.json();
@@ -140,14 +140,13 @@ export async function getMaintainerDashboardData(githubHandle: string, token?: s
             urgentIssues,
             openPRs,
             staleIssues,
+            allRepoNames: repoNames,
             teamMembers: teamMembers.map(m => ({ ...m, workloadPercent: m.load, avatar: m.id.slice(0, 2).toUpperCase() })),
             activityFeed,
-            allRepoNames: repoNames,
-            repoHealth: [
-                { repo: mainRepo, score: 85 },
-                { repo: repoNames[1] || "secondary/repo", score: 72 },
-                { repo: repoNames[2] || "tertiary/repo", score: 64 }
-            ]
+            repoHealth: repoNames.slice(0, 5).map((name, i) => ({
+                repo: name,
+                score: 85 - (i * 7)
+            }))
         };
 
     } catch (e) {
@@ -156,16 +155,18 @@ export async function getMaintainerDashboardData(githubHandle: string, token?: s
     }
 }
 
-export async function getTriageData(githubHandle: string, token?: string) {
+export async function getTriageData(githubHandle: string, token?: string, selectedRepoName?: string) {
     try {
         const headers: HeadersInit = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
 
-        const reposRes = await fetch(`https://api.github.com/user/repos?affiliation=owner,collaborator&sort=updated&per_page=1`, { headers });
+        const reposRes = await fetch(`https://api.github.com/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&per_page=50`, { headers });
         if (!reposRes.ok) throw new Error("Failed to fetch repos");
         const repos = await reposRes.json();
         if (repos.length === 0) return { success: true, empty: true };
-        const repoName = repos[0].full_name;
+        
+        const allRepoNames = repos.map((r: any) => r.full_name);
+        const repoName = selectedRepoName || repos[0].full_name;
 
         // Fetch all open issues for triage
         const issuesRes = await fetch(`https://api.github.com/repos/${repoName}/issues?state=open&per_page=50`, { headers });
@@ -174,43 +175,97 @@ export async function getTriageData(githubHandle: string, token?: string) {
         const triageQueue: any[] = [];
         const categoryCounts: Record<string, number> = { Bug: 0, Feature: 0, Duplicate: 0, Question: 0, Docs: 0 };
 
-        items.forEach((item: any) => {
-            if (item.pull_request) return;
+        if (Array.isArray(items)) {
+            items.forEach((item: any) => {
+                if (item.pull_request) return;
 
-            const labels = item.labels.map((l: any) => l.name.toLowerCase());
-            let category = "Question";
-            if (labels.some((l: string) => l.includes('bug'))) category = "Bug";
-            else if (labels.some((l: string) => l.includes('feat') || l.includes('enhancement'))) category = "Feature";
-            else if (labels.some((l: string) => l.includes('doc'))) category = "Docs";
-            else if (labels.some((l: string) => l.includes('duplicate'))) category = "Duplicate";
+                const labels = item.labels.map((l: any) => l.name.toLowerCase());
+                let category = "Question";
+                if (labels.some((l: string) => l.includes('bug'))) category = "Bug";
+                else if (labels.some((l: string) => l.includes('feat') || l.includes('enhancement'))) category = "Feature";
+                else if (labels.some((l: string) => l.includes('doc'))) category = "Docs";
+                else if (labels.some((l: string) => l.includes('duplicate'))) category = "Duplicate";
 
-            categoryCounts[category]++;
+                categoryCounts[category]++;
 
-            triageQueue.push({
-                id: item.number,
-                category,
-                repo: repoName,
-                title: item.title,
-                aiSummary: item.body?.slice(0, 200) || "No description provided.",
-                contributor: {
-                    name: item.user.login,
-                    trustScore: 85,
-                    level: 2,
-                    xp: 450
-                },
-                duplicateOf: labels.includes('duplicate') ? "PI007" : null, // Simulated duplicate detection
-                url: item.html_url
+                triageQueue.push({
+                    id: item.number,
+                    category,
+                    repo: repoName,
+                    title: item.title,
+                    aiSummary: item.body?.slice(0, 200) || "No description provided.",
+                    contributor: {
+                        name: item.user.login,
+                        trustScore: 85,
+                        level: 2,
+                        xp: 450
+                    },
+                    duplicateOf: labels.includes('duplicate') ? "PI007" : null, // Simulated duplicate detection
+                    url: item.html_url
+                });
             });
-        });
+        }
 
         return {
             success: true,
             repoName,
+            allRepoNames,
             categoryCounts,
             triageQueue
         };
     } catch (e) {
         console.error("Triage fetch failed", e);
+        return { success: false };
+    }
+}
+
+export async function triageIssue(repoName: string, issueNumber: number, category: string, token: string) {
+    try {
+        const headers: HeadersInit = {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+        };
+
+        // Add label based on category
+        const res = await fetch(`https://api.github.com/repos/${repoName}/issues/${issueNumber}/labels`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ labels: [category.toLowerCase()] })
+        });
+
+        if (!res.ok) throw new Error("Failed to add label");
+        return { success: true };
+    } catch (e) {
+        console.error("Triage action failed", e);
+        return { success: false };
+    }
+}
+
+export async function closeDuplicate(repoName: string, issueNumber: number, duplicateOf: string, token: string) {
+    try {
+        const headers: HeadersInit = {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+        };
+
+        // 1. Add comment about duplicate
+        await fetch(`https://api.github.com/repos/${repoName}/issues/${issueNumber}/comments`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ body: `Closing as duplicate of #${duplicateOf}.` })
+        });
+
+        // 2. Add duplicate label and close issue
+        const res = await fetch(`https://api.github.com/repos/${repoName}/issues/${issueNumber}`, {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify({ state: "closed", labels: ["duplicate"] })
+        });
+
+        if (!res.ok) throw new Error("Failed to close issue");
+        return { success: true };
+    } catch (e) {
+        console.error("Close duplicate failed", e);
         return { success: false };
     }
 }

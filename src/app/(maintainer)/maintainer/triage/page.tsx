@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { Copy, AlertOctagon, RefreshCcw, Search, SlidersHorizontal, ChevronDown } from "lucide-react";
+import { Copy, AlertOctagon, RefreshCcw, Search, SlidersHorizontal, ChevronDown, Filter, Trash2, CheckCircle } from "lucide-react";
 import { account } from "@/lib/appwrite";
-import { getTriageData } from "../actions";
+import { getTriageData, triageIssue, closeDuplicate } from "../actions";
 
 const categories = ["Bug", "Feature", "Duplicate", "Question", "Docs"] as const;
 const categoryStyles: Record<string, { bg: string; color: string; border: string }> = {
@@ -19,6 +19,9 @@ export default function TriagePage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [selectedRepo, setSelectedRepo] = useState<string>("");
+  const [userToken, setUserToken] = useState<string>("");
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -44,9 +47,11 @@ export default function TriagePage() {
            handle = "Ayush-Patel-56";
         }
 
-        const res = await getTriageData(handle, token);
+        const res = await getTriageData(handle, token, selectedRepo);
         if (res.success) {
           setData(res);
+          if (!selectedRepo) setSelectedRepo(res.repoName);
+          setUserToken(token);
         }
       } catch (e) {
         console.error("Triage init failed", e);
@@ -55,7 +60,30 @@ export default function TriagePage() {
       }
     };
     init();
-  }, []);
+  }, [selectedRepo]);
+
+  const handleTriage = async (issueNumber: number, category: string) => {
+    if (!selectedRepo || !userToken) return;
+    setActionLoading(issueNumber);
+    const res = await triageIssue(selectedRepo, issueNumber, category, userToken);
+    if (res.success) {
+      // Optimitically update UI or just refresh
+      const refreshedData = await getTriageData("", userToken, selectedRepo);
+      if (refreshedData.success) setData(refreshedData);
+    }
+    setActionLoading(null);
+  };
+
+  const handleCloseDuplicate = async (issueNumber: number, duplicateOf: string) => {
+    if (!selectedRepo || !userToken) return;
+    setActionLoading(issueNumber);
+    const res = await closeDuplicate(selectedRepo, issueNumber, duplicateOf, userToken);
+    if (res.success) {
+      const refreshedData = await getTriageData("", userToken, selectedRepo);
+      if (refreshedData.success) setData(refreshedData);
+    }
+    setActionLoading(null);
+  };
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#060611]">
@@ -78,7 +106,35 @@ export default function TriagePage() {
     <div className="min-h-screen" style={{ background: "#060611" }}>
       <Topbar title="Issue Triage" subtitle={`Categorizing ${data.repoName} issues`} />
 
-      <div className="p-6 max-w-6xl space-y-6 mx-auto">
+      <div className="p-6 max-w-6xl space-y-8 mx-auto">
+
+        {/* Header & Repo Filter */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-2 p-1.5 rounded-2xl w-fit bg-white/5 border border-white/10 shadow-inner">
+             <div className="px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-[#606080] border border-transparent">
+               Active Repository: <span className="text-white ml-2">{data.repoName.split('/')[1] || data.repoName}</span>
+             </div>
+          </div>
+
+          <div className="relative group">
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="relative flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-white/5 border border-white/10 text-white min-w-[240px]">
+              <Filter className="w-3.5 h-3.5 text-amber-400" />
+              <select 
+                value={selectedRepo}
+                onChange={(e) => setSelectedRepo(e.target.value)}
+                className="bg-transparent border-none outline-none text-[10px] font-black uppercase tracking-widest w-full appearance-none cursor-pointer pr-8"
+              >
+                {data.allRepoNames?.map((r: string) => (
+                  <option key={r} value={r} className="bg-[#060611] text-white">
+                    {r.split('/')[1] || r}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-[#606080] absolute right-4 pointer-events-none" />
+            </div>
+          </div>
+        </div>
 
         {/* Category filter cards */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -140,17 +196,28 @@ export default function TriagePage() {
                     </div>
 
                     {/* Category override panel */}
-                    <div className="flex flex-col gap-2 flex-shrink-0 min-w-[100px]">
+                    <div className="flex flex-col gap-2 flex-shrink-0 min-w-[120px]">
                       <p className="text-[8px] text-center font-black uppercase tracking-[0.2em] mb-1 text-[#606080]">Override</p>
                       {categories.filter(c => c !== issue.category).slice(0, 3).map(cat => {
                         const s = categoryStyles[cat];
+                        const isLoading = actionLoading === issue.id;
                         return (
-                          <button key={cat} className="text-[10px] px-3 py-1.5 rounded-xl font-black uppercase tracking-widest transition-transform hover:scale-105"
+                          <button 
+                            key={cat} 
+                            disabled={isLoading}
+                            onClick={() => handleTriage(issue.id, cat)}
+                            className={`text-[10px] px-3 py-1.5 rounded-xl font-black uppercase tracking-widest transition-all ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
                             style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>
                             {cat}
                           </button>
                         );
                       })}
+                      <button 
+                         disabled={actionLoading === issue.id}
+                         onClick={() => handleTriage(issue.id, issue.category)}
+                         className="flex items-center justify-center gap-2 mt-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-white transition-all">
+                        <CheckCircle className="w-3.5 h-3.5" /> Confirm
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -191,8 +258,11 @@ export default function TriagePage() {
                   (opened 3 weeks ago · 31 comments)
                 </p>
                 <div className="flex gap-2 flex-wrap">
-                  <button className="px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-500 border border-amber-500/20 hover:bg-amber-500 hover:text-[#110E15] transition-all">
-                    Close as Duplicate
+                  <button 
+                    disabled={actionLoading === issue.id}
+                    onClick={() => handleCloseDuplicate(issue.id, issue.duplicateOf)}
+                    className="px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-500 border border-amber-500/20 hover:bg-amber-500 hover:text-[#110E15] transition-all disabled:opacity-50">
+                    {actionLoading === issue.id ? "Processing..." : "Close as Duplicate"}
                   </button>
                   <button className="px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/5 text-white hover:bg-white/10 transition-all">Keep Open</button>
                   <button className="px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/5 text-white hover:bg-white/10 transition-all">Compare Side-by-Side</button>
