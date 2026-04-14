@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { Copy, AlertOctagon, RefreshCcw, Search, SlidersHorizontal, ChevronDown, Filter, Trash2, CheckCircle } from "lucide-react";
+import { Copy, AlertOctagon, RefreshCcw, Search, SlidersHorizontal, ChevronDown, Filter, Trash2, CheckCircle, ExternalLink } from "lucide-react";
 import { account } from "@/lib/appwrite";
 import { getTriageData, triageIssue, closeDuplicate } from "../actions";
 
@@ -218,6 +218,13 @@ export default function TriagePage() {
                          className="flex items-center justify-center gap-2 mt-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-white transition-all">
                         <CheckCircle className="w-3.5 h-3.5" /> Confirm
                       </button>
+                      <a 
+                        href={issue.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 mt-1 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/5 text-white border border-white/5 hover:bg-white/10 transition-all">
+                        <ExternalLink className="w-3.5 h-3.5" /> View
+                      </a>
                     </div>
                   </div>
                 </div>

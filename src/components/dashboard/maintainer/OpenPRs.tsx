@@ -66,9 +66,14 @@ export function OpenPRs({ prs }: OpenPRsProps) {
                       <GitMerge className="w-3.5 h-3.5" />Merge
                     </button>
                   )}
-                  <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/5 text-white hover:bg-white/10 transition-transform hover:scale-105">
+                  <a 
+                    href={pr.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/5 text-white hover:bg-white/10 transition-transform hover:scale-105"
+                  >
                     <ExternalLink className="w-3.5 h-3.5" />View
-                  </button>
+                  </a>
                 </div>
               </div>
             </motion.div>

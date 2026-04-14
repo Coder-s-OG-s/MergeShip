@@ -66,7 +66,14 @@ export function PriorityQueue({ issues }: { issues: any[] }) {
                 <div className="flex flex-col gap-2 flex-shrink-0">
                   <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-[#06B6D4] text-[#110E15] transition-transform hover:scale-105 shadow-lg shadow-[#06B6D4]/10"><Users className="w-3.5 h-3.5" />Assign</button>
                   <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/5 text-white hover:bg-white/10 transition-transform hover:scale-105"><Tag className="w-3.5 h-3.5" />Label</button>
-                  <button className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/5 text-white hover:bg-white/10 transition-transform hover:scale-105"><ExternalLink className="w-3.5 h-3.5" />Open</button>
+                  <a 
+                    href={issue.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white/5 text-white hover:bg-white/10 transition-transform hover:scale-105"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />Open
+                  </a>
                 </div>
               </div>
             </motion.div>
