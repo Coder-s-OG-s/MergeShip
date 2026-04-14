@@ -154,3 +154,62 @@ export async function getMaintainerDashboardData(githubHandle: string, token?: s
         return { success: false };
     }
 }
+
+export async function getTriageData(githubHandle: string, token?: string) {
+    try {
+        const headers: HeadersInit = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const reposRes = await fetch(`https://api.github.com/user/repos?affiliation=owner,collaborator&sort=updated&per_page=1`, { headers });
+        if (!reposRes.ok) throw new Error("Failed to fetch repos");
+        const repos = await reposRes.json();
+        if (repos.length === 0) return { success: true, empty: true };
+        const repoName = repos[0].full_name;
+
+        // Fetch all open issues for triage
+        const issuesRes = await fetch(`https://api.github.com/repos/${repoName}/issues?state=open&per_page=50`, { headers });
+        const items = await issuesRes.json();
+        
+        const triageQueue: any[] = [];
+        const categoryCounts: Record<string, number> = { Bug: 0, Feature: 0, Duplicate: 0, Question: 0, Docs: 0 };
+
+        items.forEach((item: any) => {
+            if (item.pull_request) return;
+
+            const labels = item.labels.map((l: any) => l.name.toLowerCase());
+            let category = "Question";
+            if (labels.some((l: string) => l.includes('bug'))) category = "Bug";
+            else if (labels.some((l: string) => l.includes('feat') || l.includes('enhancement'))) category = "Feature";
+            else if (labels.some((l: string) => l.includes('doc'))) category = "Docs";
+            else if (labels.some((l: string) => l.includes('duplicate'))) category = "Duplicate";
+
+            categoryCounts[category]++;
+
+            triageQueue.push({
+                id: item.number,
+                category,
+                repo: repoName,
+                title: item.title,
+                aiSummary: item.body?.slice(0, 200) || "No description provided.",
+                contributor: {
+                    name: item.user.login,
+                    trustScore: 85,
+                    level: 2,
+                    xp: 450
+                },
+                duplicateOf: labels.includes('duplicate') ? "PI007" : null, // Simulated duplicate detection
+                url: item.html_url
+            });
+        });
+
+        return {
+            success: true,
+            repoName,
+            categoryCounts,
+            triageQueue
+        };
+    } catch (e) {
+        console.error("Triage fetch failed", e);
+        return { success: false };
+    }
+}
