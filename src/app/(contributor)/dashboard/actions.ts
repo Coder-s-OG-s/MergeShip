@@ -7,8 +7,10 @@ const CACHE_TTL = 1000 * 60 * 60; // 1 hour
 
 async function getAppwriteUserStats(githubHandle: string) {
     try {
+        // Always normalize handle for storage
+        const normalizedHandle = githubHandle.toLowerCase();
         const response = await databases.listDocuments(DATABASE_ID, COLLECTION_ID, [
-            Query.equal('githubHandle', githubHandle)
+            Query.equal('githubHandle', normalizedHandle)
         ]);
         return response.total > 0 ? response.documents[0] : null;
     } catch (e) {
@@ -19,17 +21,29 @@ async function getAppwriteUserStats(githubHandle: string) {
 
 async function updateAppwriteUserStats(githubHandle: string, data: any) {
     try {
-        const existing = await getAppwriteUserStats(githubHandle);
-        const payload = {
-            githubHandle,
-            statsJson: JSON.stringify(data),
+        const normalizedHandle = githubHandle.toLowerCase();
+        const existing = await getAppwriteUserStats(normalizedHandle);
+        let finalData = data;
+        
+        if (existing && (existing as any).statsJson) {
+            const existingStats = JSON.parse((existing as any).statsJson);
+            // Preserve claimed badges and other metadata if they exist
+            finalData = {
+                ...data,
+                claimedBadges: existingStats.claimedBadges || []
+            };
+        }
+
+        const statsPayload = {
+            githubHandle: normalizedHandle,
+            statsJson: JSON.stringify(finalData),
             lastSync: Date.now()
         };
         
         if (existing) {
-            return await databases.updateDocument(DATABASE_ID, COLLECTION_ID, existing.$id, payload);
+            return await databases.updateDocument(DATABASE_ID, COLLECTION_ID, existing.$id, statsPayload);
         } else {
-            return await databases.createDocument(DATABASE_ID, COLLECTION_ID, ID.unique(), payload);
+            return await databases.createDocument(DATABASE_ID, COLLECTION_ID, ID.unique(), statsPayload);
         }
     } catch (e) {
         console.error("Appwrite update failed", e);
@@ -104,6 +118,14 @@ export async function getDashboardData(githubHandle: string, forceSync = false) 
         progress = Math.floor((totalContributions / 100) * 100);
     }
 
+    // Before update, get existing to merge back
+    const existing = await getAppwriteUserStats(githubHandle);
+    let claimedBadges = [];
+    if (existing && (existing as any).statsJson) {
+        const existingStats = JSON.parse((existing as any).statsJson);
+        claimedBadges = existingStats.claimedBadges || [];
+    }
+
     const finalStats = {
       level: `L${level === "Beginner" ? 1 : level === "Intermediate" ? 2 : 3} ${level}`,
       progress,
@@ -113,7 +135,8 @@ export async function getDashboardData(githubHandle: string, forceSync = false) 
       activeDays,
       repos: userData.public_repos,
       followers: userData.followers,
-      contributions: totalContributions
+      contributions: totalContributions,
+      claimedBadges
     };
 
     await updateAppwriteUserStats(githubHandle, finalStats);
@@ -386,4 +409,168 @@ export async function getContributionData(githubHandle: string, forceSync = fals
             level: level
         };
     });
+}
+
+export async function getAchievements(githubHandle: string, token?: string, forceSync = false) {
+    try {
+        const profile = await getProfileData(githubHandle, token);
+        const dash = await getDashboardData(githubHandle, forceSync);
+        
+        // Claimed info now lives inside statsJson
+        const statsObj = dash.stats;
+        const claimedIds = statsObj?.claimedBadges || [];
+        
+        const stats = {
+            prsMerged: profile.mergedPRs || 0,
+            issuesSolved: profile.stats?.issuesSolved || 0,
+            streak: dash.stats?.streak || 0,
+            activeDays: dash.stats?.activeDays || 0,
+            languages: profile.skills?.length || 0,
+            totalXP: parseInt(profile.stats?.displayXP?.replace(/,/g, '') || "0")
+        };
+
+        const achievements = [
+            {
+                id: "first_contribution",
+                title: "First Steps",
+                emoji: "🎯",
+                description: "Submit your first PR to any open source project",
+                xpReward: 100,
+                unlocked: stats.prsMerged > 0,
+                progress: Math.min(stats.prsMerged, 1),
+                target: 1
+            },
+            {
+                id: "bug_hunter",
+                title: "Bug Hunter",
+                emoji: "🐛",
+                description: "Fix 5 confirmed bugs in open source projects",
+                xpReward: 200,
+                unlocked: stats.issuesSolved >= 5,
+                progress: stats.issuesSolved,
+                target: 5
+            },
+            {
+                id: "streak_master",
+                title: "Streak Master",
+                emoji: "🔥",
+                description: "Maintain a 7-day contribution streak",
+                xpReward: 150,
+                unlocked: stats.streak >= 7,
+                progress: stats.streak,
+                target: 7
+            },
+            {
+                id: "polyglot",
+                title: "Polyglot",
+                emoji: "🌐",
+                description: "Contribute in 5 different programming languages",
+                xpReward: 350,
+                unlocked: stats.languages >= 5,
+                progress: stats.languages,
+                target: 5
+            },
+            {
+                id: "xp_collector",
+                title: "XP Collector",
+                emoji: "💎",
+                description: "Collect over 5,000 XP through contributions",
+                xpReward: 500,
+                unlocked: stats.totalXP >= 5000,
+                progress: stats.totalXP,
+                target: 5000
+            },
+            {
+                id: "consistent_crusader",
+                title: "Consistent Crusader",
+                emoji: "🛡️",
+                description: "Contribute on 30 different days",
+                xpReward: 400,
+                unlocked: stats.activeDays >= 30,
+                progress: stats.activeDays,
+                target: 30
+            }
+        ];
+
+        const badges = [
+            { 
+                id: "shark", 
+                name: "Pull Shark", 
+                emoji: "🦈", 
+                earned: stats.prsMerged >= 1, 
+                claimed: claimedIds.includes("shark"),
+                count: Math.max(1, Math.floor(stats.prsMerged / 10)),
+                rarity: "Rare"
+            },
+            { 
+                id: "quickdraw", 
+                name: "Quickdraw", 
+                emoji: "⚡", 
+                earned: stats.issuesSolved >= 1, 
+                claimed: claimedIds.includes("quickdraw"),
+                count: Math.max(1, Math.floor(stats.issuesSolved / 5)),
+                rarity: "Common"
+            },
+            { 
+                id: "yolo", 
+                name: "YOLO", 
+                emoji: "🌈", 
+                earned: stats.activeDays >= 10,
+                claimed: claimedIds.includes("yolo"),
+                count: 1,
+                rarity: "Epic"
+            },
+            { 
+                id: "exterminator", 
+                name: "Exterminator", 
+                emoji: "🤖", 
+                earned: stats.issuesSolved >= 10,
+                claimed: claimedIds.includes("exterminator"),
+                count: 1,
+                rarity: "Legendary"
+            }
+        ];
+
+        return {
+            success: true,
+            achievements,
+            badges,
+            summary: {
+                unlocked: achievements.filter(a => a.unlocked).length,
+                total: achievements.length,
+                earnedXP: achievements.filter(a => a.unlocked).reduce((s, a) => s + a.xpReward, 0),
+                badgesEarned: badges.filter(b => b.earned).length,
+                badgesToClaim: badges.filter(b => b.earned && !b.claimed).length
+            }
+        };
+    } catch (e) {
+        console.error("Achievements calculation failed", e);
+        return { success: false, achievements: [] };
+    }
+}
+
+export async function claimBadge(githubHandle: string, badgeId: string) {
+    try {
+        const normalizedHandle = githubHandle.toLowerCase();
+        const doc = await getAppwriteUserStats(normalizedHandle);
+        if (!doc) return { success: false };
+        
+        const stats = JSON.parse((doc as any).statsJson || "{}");
+        const claimed = stats.claimedBadges || [];
+        
+        if (!claimed.includes(badgeId)) {
+            claimed.push(badgeId);
+        }
+        
+        stats.claimedBadges = claimed;
+        
+        await databases.updateDocument(DATABASE_ID, COLLECTION_ID, doc.$id, {
+            statsJson: JSON.stringify(stats)
+        });
+        
+        return { success: true };
+    } catch (e) {
+        console.error("Claim failed", e);
+        return { success: false };
+    }
 }

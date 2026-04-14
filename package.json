@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "appwrite": "^24.1.1",
+    "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "framer-motion": "^11.0.0",
     "lucide-react": "^0.400.0",
@@ -21,6 +22,7 @@
     "tailwind-merge": "^2.3.0"
   },
   "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
