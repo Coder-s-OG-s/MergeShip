@@ -4,31 +4,16 @@ import { useEffect, useState } from "react";
 import { getDashboardData } from "@/app/(contributor)/dashboard/actions";
 import { account } from "@/lib/appwrite";
 
-export function StatSection() {
+export function StatSection({ handle, forceSync = false }: { handle: string; forceSync?: boolean }) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const session = await account.get();
-        const identities = await account.listIdentities();
-        const githubIdentity = identities.identities.find(id => id.provider === 'github');
-        
-        // Match the logic in onboarding to get handle
-        let githubHandle = '';
-        if (githubIdentity) {
-           const userRes = await fetch(`https://api.github.com/user/${githubIdentity.providerUid}`);
-           if (userRes.ok) {
-              const userData = await userRes.json();
-              githubHandle = userData.login;
-           }
-        }
-        if (!githubHandle) githubHandle = session.name.replace(/\s+/g, '').toLowerCase();
-
-        const data = await getDashboardData(githubHandle);
+        const data = await getDashboardData(handle, forceSync);
         if (data.success) {
-           setStats(data.stats);
+          setStats(data.stats);
         }
       } catch (error) {
         console.error("Failed to load dashboard stats", error);
@@ -37,7 +22,7 @@ export function StatSection() {
       }
     };
     fetchData();
-  }, []);
+  }, [handle, forceSync]);
 
   if (loading || !stats) {
     return (

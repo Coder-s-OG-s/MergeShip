@@ -6,16 +6,64 @@ import { StatSection } from "@/components/dashboard/StatSection";
 import { IssueFeed } from "@/components/dashboard/IssueFeed";
 import { ContributionHeatmap } from "@/components/dashboard/ContributionHeatmap";
 import { BadgeWidget, CommunityWidget, ProWidget } from "@/components/dashboard/SidebarWidgets";
+import { useEffect, useState } from "react";
+import { account } from "@/lib/appwrite";
 
 export default function DashboardPage() {
+  const [githubHandle, setGithubHandle] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleSync = () => {
+    setRefreshKey(prev => prev + 1);
+  };
+
+  useEffect(() => {
+    const resolveHandle = async () => {
+      try {
+        const session = await account.get();
+        let handle = session.name.replace(/\s+/g, '-').toLowerCase();
+        
+        // Resolve the REAL GitHub username from the Appwrite identity
+        const identities = await account.listIdentities();
+        const githubIdentity = identities.identities.find(id => id.provider === 'github');
+        if (githubIdentity) {
+           try {
+             const res = await fetch(`https://api.github.com/user/${githubIdentity.providerUid}`);
+             if (res.ok) {
+               const data = await res.json();
+               handle = data.login; // e.g. "Ayush-Patel-56"
+             }
+           } catch (e) {
+             console.error("GitHub handle resolution failed", e);
+           }
+        }
+        
+        console.log("[MergeShip] Resolved GitHub handle:", handle);
+        setGithubHandle(handle);
+      } catch (e) {
+        console.error("Handle resolution failed", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    resolveHandle();
+  }, []);
+
+  if (loading || !githubHandle) {
+    return <div className="min-h-screen bg-dark-900 flex items-center justify-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D8B4FE]" />
+    </div>;
+  }
+
   return (
     <div className="max-w-[1400px] mx-auto p-12 pt-16 min-h-screen">
       
       {/* Header */}
-      <DashboardHeader />
+      <DashboardHeader onSync={handleSync} isSyncing={refreshKey > 0} />
 
       {/* 4 Stat Cards */}
-      <StatSection />
+      <StatSection handle={githubHandle} key={`stats-${refreshKey}`} forceSync={refreshKey > 0} />
 
       {/* Main Grid: Left side (Issues + Heatmap) + Right Sidebar */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
@@ -24,10 +72,10 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 flex flex-col gap-12">
           
           {/* Issue Columns */}
-          <IssueFeed />
+          <IssueFeed handle={githubHandle} key={`issues-${refreshKey}`} forceSync={refreshKey > 0} />
 
           {/* Heatmap Section */}
-          <ContributionHeatmap />
+          <ContributionHeatmap handle={githubHandle} key={`heatmap-${refreshKey}`} forceSync={refreshKey > 0} />
 
         </div>
 

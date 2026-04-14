@@ -5,33 +5,20 @@ import { getContributionData } from "@/app/(contributor)/dashboard/actions";
 
 const heatmapColors = ["#2A2136", "#50307B", "#7C3AED", "#9333EA", "#D8B4FE"];
 
-export function ContributionHeatmap() {
+export function ContributionHeatmap({ handle, forceSync = false }: { handle: string; forceSync?: boolean }) {
   const [data, setData] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
         try {
-            const session = await account.get();
-            const identities = await account.listIdentities();
-            const githubIdentity = identities.identities.find(id => id.provider === 'github');
-            let handle = session.name.replace(/\s+/g, '').toLowerCase();
-            
-            if (githubIdentity) {
-               const res = await fetch(`https://api.github.com/user/${githubIdentity.providerUid}`);
-               if (res.ok) {
-                  const d = await res.json();
-                  handle = d.login;
-               }
-            }
-
-            const contributions = await getContributionData(handle);
+            const contributions = await getContributionData(handle, forceSync);
             setData(contributions);
         } catch (e) {
             console.error(e);
         }
     };
     fetchData();
-  }, []);
+  }, [handle, forceSync]);
 
   if (data.length === 0) return <div className="h-[200px] w-full bg-white/5 rounded-2xl animate-pulse" />;
 
