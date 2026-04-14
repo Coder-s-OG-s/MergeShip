@@ -17,7 +17,11 @@ export function StaleIssues({ issues }: { issues: any[] }) {
       </h2>
       <p className="text-[10px] mb-8 font-black text-[#606080] uppercase tracking-widest opacity-80">Untouched for 28+ days · Consider closing or pinging</p>
       <div className="space-y-3">
-        {issues.map((issue) => (
+        {issues.length === 0 ? (
+          <div className="py-8 text-center bg-white/5 rounded-2xl border border-dashed border-white/10">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#606080]">No stale issues found for this repository</p>
+          </div>
+        ) : issues.map((issue) => (
           <motion.div
             key={issue.id}
             whileHover={{ y: -2 }}

@@ -142,6 +142,7 @@ export async function getMaintainerDashboardData(githubHandle: string, token?: s
             staleIssues,
             teamMembers: teamMembers.map(m => ({ ...m, workloadPercent: m.load, avatar: m.id.slice(0, 2).toUpperCase() })),
             activityFeed,
+            allRepoNames: repoNames,
             repoHealth: [
                 { repo: mainRepo, score: 85 },
                 { repo: repoNames[1] || "secondary/repo", score: 72 },

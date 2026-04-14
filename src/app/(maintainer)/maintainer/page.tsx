@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { motion, AnimatePresence } from "framer-motion";
+import { ChevronDown, Filter } from "lucide-react";
 import { KpiBanner } from "@/components/dashboard/maintainer/KpiBanner";
 import { PriorityQueue } from "@/components/dashboard/maintainer/PriorityQueue";
 import { OpenPRs } from "@/components/dashboard/maintainer/OpenPRs";
@@ -15,6 +16,7 @@ export default function MaintainerDashboardPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"queue" | "prs">("queue");
+  const [selectedRepo, setSelectedRepo] = useState<string>("all");
 
   useEffect(() => {
     const init = async () => {
@@ -86,25 +88,50 @@ export default function MaintainerDashboardPage() {
           {/* Left col: tab panel */}
           <div className="lg:col-span-2 space-y-12">
 
-            {/* Tab switcher */}
-            <div className="flex items-center gap-2 p-1.5 rounded-2xl w-fit bg-white/5 border border-white/10 shadow-inner">
-              {(["queue", "prs"] as const).map(tab => (
-                <motion.button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all relative ${
-                    activeTab === tab ? "text-white" : "text-[#606080] hover:text-white"
-                  }`}
-                >
-                  {activeTab === tab && (
-                    <motion.div
-                      layoutId="maintainer-tab"
-                      className="absolute inset-0 bg-cyan-600 rounded-xl shadow-lg shadow-cyan-600/20"
-                    />
-                  )}
-                  <span className="relative z-10">{tab === "queue" ? "Priority Queue" : "Open PRs"}</span>
-                </motion.button>
-              ))}
+            {/* Tab switcher & Repo Filter */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="flex items-center gap-2 p-1.5 rounded-2xl w-fit bg-white/5 border border-white/10 shadow-inner">
+                {(["queue", "prs"] as const).map(tab => (
+                  <motion.button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all relative ${
+                      activeTab === tab ? "text-white" : "text-[#606080] hover:text-white"
+                    }`}
+                  >
+                    {activeTab === tab && (
+                      <motion.div
+                        layoutId="maintainer-tab"
+                        className="absolute inset-0 bg-cyan-600 rounded-xl shadow-lg shadow-cyan-600/20"
+                      />
+                    )}
+                    <span className="relative z-10">{tab === "queue" ? "Priority Queue" : "Open PRs"}</span>
+                  </motion.button>
+                ))}
+              </div>
+
+              {/* Repo Filter Dropdown */}
+              <div className="flex items-center gap-4">
+                <div className="relative group">
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-white/5 border border-white/10 text-white min-w-[200px]">
+                    <Filter className="w-3.5 h-3.5 text-cyan-400" />
+                    <select 
+                      value={selectedRepo}
+                      onChange={(e) => setSelectedRepo(e.target.value)}
+                      className="bg-transparent border-none outline-none text-[10px] font-black uppercase tracking-widest w-full appearance-none cursor-pointer pr-8"
+                    >
+                      <option value="all" className="bg-[#060611] text-white">All Repositories</option>
+                      {data?.allRepoNames?.map((repo: string) => (
+                        <option key={repo} value={repo} className="bg-[#060611] text-white">
+                          {repo.split('/')[1] || repo}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-3.5 h-3.5 text-[#606080] absolute right-4 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
             </div>
 
             <AnimatePresence mode="wait">
@@ -115,7 +142,11 @@ export default function MaintainerDashboardPage() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                 >
-                  <PriorityQueue issues={data.urgentIssues} />
+                  <PriorityQueue issues={
+                    selectedRepo === "all" 
+                      ? data.urgentIssues 
+                      : data.urgentIssues.filter((i: any) => i.repo === selectedRepo)
+                  } />
                 </motion.div>
               ) : (
                 <motion.div
@@ -124,13 +155,21 @@ export default function MaintainerDashboardPage() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                 >
-                  <OpenPRs prs={data.openPRs} />
+                  <OpenPRs prs={
+                    selectedRepo === "all" 
+                      ? data.openPRs 
+                      : data.openPRs.filter((p: any) => p.repo === selectedRepo)
+                  } />
                 </motion.div>
               )}
             </AnimatePresence>
 
             {/* Stale issues */}
-            <StaleIssues issues={data.staleIssues} />
+            <StaleIssues issues={
+              selectedRepo === "all"
+                ? data.staleIssues
+                : data.staleIssues.filter((i: any) => i.repo === selectedRepo)
+            } />
           </div>
 
           {/* Right col: team + activity */}

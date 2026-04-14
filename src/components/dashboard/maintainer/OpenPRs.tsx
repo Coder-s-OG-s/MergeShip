@@ -22,7 +22,11 @@ export function OpenPRs({ prs }: OpenPRsProps) {
         </div>
       </div>
       <div className="space-y-4">
-        {prs.map((pr) => {
+        {prs.length === 0 ? (
+          <div className="py-12 text-center">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#606080]">No open pull requests found for this repository</p>
+          </div>
+        ) : prs.map((pr) => {
           const s = prStatusConfig[pr.status as keyof typeof prStatusConfig] || prStatusConfig.pending;
           return (
             <motion.div

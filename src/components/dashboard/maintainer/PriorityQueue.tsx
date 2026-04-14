@@ -27,7 +27,11 @@ export function PriorityQueue({ issues }: { issues: any[] }) {
         </a>
       </div>
       <div className="space-y-4">
-        {issues.map((issue) => {
+        {issues.length === 0 ? (
+          <div className="py-12 text-center">
+            <p className="text-[10px] font-black uppercase tracking-widest text-[#606080]">No urgent issues found for this repository</p>
+          </div>
+        ) : issues.map((issue) => {
           const pcfg = priorityConfig[issue.priority as keyof typeof priorityConfig];
           return (
             <motion.div
