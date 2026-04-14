@@ -48,11 +48,11 @@ export function StatSection({ handle, forceSync = false }: { handle: string; for
       />
 
       <StatCard
-        label="Work Streak"
-        value={`${stats.streak} Days 🔥`}
-        icon={Flame}
-        iconColor="#F97316"
-        subtext="Consistent progress"
+        label="Total Active Days"
+        value={`${stats.activeDays || 0} Days`}
+        icon={TrendingUp}
+        iconColor="#10B981"
+        subtext="Days with merged activity"
       />
 
       <StatCard

@@ -40,7 +40,11 @@ export async function getDashboardData(githubHandle: string, forceSync = false) 
     if (!forceSync) {
         const cached = await getAppwriteUserStats(githubHandle);
         if (cached && (Date.now() - (cached as any).lastSync < CACHE_TTL)) {
-            return { success: true, stats: JSON.parse((cached as any).statsJson), fromCache: true };
+            const stats = JSON.parse((cached as any).statsJson);
+            // If the cache is old and doesn't have activeDays, force a sync once
+            if (stats.activeDays !== undefined) {
+                return { success: true, stats, fromCache: true };
+            }
         }
     }
     
@@ -75,16 +79,23 @@ export async function getDashboardData(githubHandle: string, forceSync = false) 
     }
 
     // 4. Calculate Level and XP based on user request
-    // Beginner: < 100
-    // Intermediate: 100 - 300
-    // Expert: > 300
     let level = "Beginner";
     let progress = 0;
-    const totalXP = totalContributions * 10; // 1 contribution = 10 XP
+    const totalXP = totalContributions * 10;
     
+    // Calculate total active days from heatmap (days with count > 0)
+    let activeDays = 0;
+    try {
+        const heatmapRes = await fetch(`https://github-contributions-api.jogruber.de/v4/${githubHandle}?y=last`);
+        if (heatmapRes.ok) {
+            const hData = await heatmapRes.json();
+            activeDays = hData.contributions?.filter((c: any) => c.count > 0).length || 0;
+        }
+    } catch (e) {}
+
     if (totalContributions > 300) {
         level = "Expert";
-        progress = Math.min(100, Math.floor(((totalContributions - 300) / 700) * 100)); // progress towards next theoretical goal
+        progress = Math.min(100, Math.floor(((totalContributions - 300) / 700) * 100));
     } else if (totalContributions >= 100) {
         level = "Intermediate";
         progress = Math.floor(((totalContributions - 100) / 200) * 100);
@@ -96,9 +107,10 @@ export async function getDashboardData(githubHandle: string, forceSync = false) 
     const finalStats = {
       level: `L${level === "Beginner" ? 1 : level === "Intermediate" ? 2 : 3} ${level}`,
       progress,
-      totalXP: totalContributions.toLocaleString(), // Show contribution count as primary XP indicator or formatted XP
+      totalXP: totalContributions.toLocaleString(),
       displayXP: totalXP.toLocaleString(),
       streak,
+      activeDays,
       repos: userData.public_repos,
       followers: userData.followers,
       contributions: totalContributions
