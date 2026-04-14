@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -8,6 +9,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { clsx } from "clsx";
+import { account } from "@/lib/appwrite";
 
 const contributorNav = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -37,6 +39,19 @@ const navSections: NavSection[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [userData, setUserData] = useState({ name: "User", initials: "U" });
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const session = await account.get();
+        const name = session.name || "User";
+        const initials = name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+        setUserData({ name, initials });
+      } catch (e) {}
+    };
+    fetchUser();
+  }, []);
 
   return (
     <aside className="fixed left-0 top-0 h-full w-64 flex flex-col z-40"
@@ -94,18 +109,18 @@ export function Sidebar() {
       <div className="p-4 border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
         <div className="glass-card rounded-xl p-3 flex items-center gap-3">
           <div className="relative">
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white level-badge">
-              SS
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white level-badge bg-gradient-to-br from-purple-600 to-blue-600 shadow-lg">
+              {userData.initials}
             </div>
             <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 status-online"
               style={{ borderColor: "#0D0D1A" }} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">soumyasagar</p>
-            <p className="text-xs" style={{ color: "#A78BFA" }}>L3 · 420 XP</p>
+            <p className="text-sm font-semibold text-white truncate">{userData.name.toLowerCase().replace(/\s/g, '')}</p>
+            <p className="text-xs" style={{ color: "#A78BFA" }}>L1 · 0 XP</p>
           </div>
           <div className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(124,58,237,0.2)", color: "#A78BFA", border: "1px solid rgba(124,58,237,0.3)" }}>
-            🔥 7
+            🔥 1
           </div>
         </div>
       </div>

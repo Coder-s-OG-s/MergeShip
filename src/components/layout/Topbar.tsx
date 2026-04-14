@@ -1,8 +1,26 @@
 "use client";
+import { useEffect, useState } from "react";
 import { Bell, Search } from "lucide-react";
 import { motion } from "framer-motion";
+import { account } from "@/lib/appwrite";
 
 export function Topbar({ title, subtitle }: { title: string; subtitle?: string }) {
+  const [initials, setInitials] = useState("U");
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const session = await account.get();
+        if (session.name) {
+          const names = session.name.split(" ");
+          const i = names.map(n => n[0]).join("").toUpperCase().slice(0, 2);
+          setInitials(i);
+        }
+      } catch (e) {}
+    };
+    init();
+  }, []);
+
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between h-20 px-8 backdrop-blur-xl border-b border-white/5 bg-[#060611]/80 shadow-2xl shadow-black/40">
       <div>
@@ -34,7 +52,7 @@ export function Topbar({ title, subtitle }: { title: string; subtitle?: string }
             whileHover={{ scale: 1.05 }}
             className="w-10 h-10 rounded-xl flex items-center justify-center text-[10px] font-black text-white bg-gradient-to-br from-[#7C3AED] to-[#B78AF7] cursor-pointer shadow-lg shadow-[#7C3AED]/20 uppercase tracking-tighter"
           >
-            SS
+            {initials}
           </motion.div>
         </div>
       </div>
