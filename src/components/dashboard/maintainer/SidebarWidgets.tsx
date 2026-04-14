@@ -83,33 +83,47 @@ export function TeamSnapshot({ members }: { members: any[] }) {
   );
 }
 
+import { GitMerge, AlertTriangle, CheckCircle, GitPullRequest, MessageSquare, Database } from "lucide-react";
+
 export function ActivityFeed({ feed }: { feed: any[] }) {
+  const iconMap: Record<string, any> = {
+    push: GitMerge,
+    issues: AlertTriangle,
+    pullrequest: GitPullRequest,
+    issuecomment: MessageSquare,
+    merged: GitMerge,
+    closed: CheckCircle,
+  };
+
   return (
     <div className="glass-card rounded-2xl p-6 bg-[#110E15]/60 backdrop-blur-md border border-white/5">
       <h3 className="font-display font-black text-white uppercase tracking-widest text-[10px] mb-6 flex items-center gap-2">
         <Activity className="w-5 h-5 text-purple-400 shadow-lg shadow-purple-400/20" /> Live Activity
       </h3>
       <div className="space-y-5">
-        {feed.map((e, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="flex items-start gap-4 group cursor-pointer hover:translate-x-1 transition-transform"
-          >
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform group-hover:scale-110 shadow-lg" style={{ background: `${e.color}15`, border: `1px solid ${e.color}30` }}>
-              <e.icon className="w-4 h-4" style={{ color: e.color }} />
-            </div>
-            <div className="flex-1 min-w-0 uppercase tracking-widest">
-              <p className="text-[10px] text-white/90 leading-relaxed font-bold">
-                <span className="text-[#A78BFA] group-hover:underline underline-offset-4">{e.user}</span>
-                <span className="opacity-70 font-medium"> {e.action}</span>
-              </p>
-              <p className="text-[8px] mt-1 font-black text-[#606080] opacity-80">{e.repo} · <span className="text-white/60">{e.time}</span></p>
-            </div>
-          </motion.div>
-        ))}
+        {feed.map((e, i) => {
+          const Icon = iconMap[e.type] || Database;
+          return (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.1 }}
+              className="flex items-start gap-4 group cursor-pointer hover:translate-x-1 transition-transform"
+            >
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 transition-transform group-hover:scale-110 shadow-lg" style={{ background: `${e.color}15`, border: `1px solid ${e.color}30` }}>
+                <Icon className="w-4 h-4" style={{ color: e.color }} />
+              </div>
+              <div className="flex-1 min-w-0 uppercase tracking-widest">
+                <p className="text-[10px] text-white/90 leading-relaxed font-bold">
+                  <span className="text-[#A78BFA] group-hover:underline underline-offset-4">{e.user}</span>
+                  <span className="opacity-70 font-medium"> {e.action}</span>
+                </p>
+                <p className="text-[8px] mt-1 font-black text-[#606080] opacity-80">{e.repo} · <span className="text-white/60">{e.time}</span></p>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
     </div>
   );

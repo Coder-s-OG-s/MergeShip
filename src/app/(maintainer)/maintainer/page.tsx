@@ -1,42 +1,84 @@
 "use client";
-import { useState } from "react";
+
+import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { mockPriorityIssues, mockTeamMembers, mockStaleIssues, mockAnalytics } from "@/data/maintainers";
 import { motion, AnimatePresence } from "framer-motion";
 import { KpiBanner } from "@/components/dashboard/maintainer/KpiBanner";
 import { PriorityQueue } from "@/components/dashboard/maintainer/PriorityQueue";
 import { OpenPRs } from "@/components/dashboard/maintainer/OpenPRs";
 import { StaleIssues, TodayStats } from "@/components/dashboard/maintainer/StaleIssues";
 import { RepoHealthMini, TeamSnapshot, ActivityFeed } from "@/components/dashboard/maintainer/SidebarWidgets";
-import { GitMerge, AlertTriangle, CheckCircle, GitPullRequest, MessageSquare } from "lucide-react";
-
-const activityFeed = [
-  { type: "merge", user: "alice_dev", action: "merged PR #1847", repo: "vercel/next.js", time: "2m ago", color: "#10B981", icon: GitMerge },
-  { type: "open", user: "dev_raj", action: "opened issue #2031", repo: "vercel/swr", time: "8m ago", color: "#06B6D4", icon: AlertTriangle },
-  { type: "close", user: "Alex Chen", action: "closed 3 stale issues", repo: "vercel/turbo", time: "15m ago", color: "#A78BFA", icon: CheckCircle },
-  { type: "review", user: "Jenny Park", action: "requested changes on PR #1843", repo: "vercel/next.js", time: "22m ago", color: "#F59E0B", icon: GitPullRequest },
-  { type: "star", user: "css_wizard", action: "left a comment on issue #2028", repo: "tailwindlabs/tailwindcss", time: "31m ago", color: "#EC4899", icon: MessageSquare },
-];
-
-const openPRs = [
-  { id: 1847, title: "Fix RSC serialization edge case for circular refs", author: "alice_dev", reviewers: ["AC", "JP"], additions: 142, deletions: 38, status: "approved", repo: "vercel/next.js" },
-  { id: 1843, title: "Improve hydration error messaging with diff view", author: "pro_coder42", reviewers: ["MT"], additions: 87, deletions: 22, status: "changes_requested", repo: "vercel/next.js" },
-  { id: 412, title: "Add useSWRSubscription TypeScript generics", author: "css_wizard", reviewers: [], additions: 54, deletions: 11, status: "pending", repo: "vercel/swr" },
-];
+import { account } from "@/lib/appwrite";
+import { getMaintainerDashboardData } from "./actions";
 
 export default function MaintainerDashboardPage() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"queue" | "prs">("queue");
-  const online = `${mockTeamMembers.filter(m => m.status === "online").length}/${mockTeamMembers.length}`;
-  const urgent = mockPriorityIssues.filter(i => i.priority === "critical" || i.priority === "high").length;
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const session = await account.get();
+        let handle = session.name.replace(/\s+/g, '-').toLowerCase();
+        let token = "";
+        
+        const identities = await account.listIdentities();
+        const gh = identities.identities.find(id => id.provider.toLowerCase() === 'github');
+        if (gh) {
+          token = (gh as any).providerAccessToken;
+          // Use hard-linked handle if current user is Ayush Patel
+          if (session.name.toLowerCase().includes("ayush patel")) {
+            handle = "Ayush-Patel-56";
+          } else {
+            const res = await fetch(`https://api.github.com/user/${gh.providerUid}`);
+            if (res.ok) {
+              const d = await res.json();
+              handle = d.login;
+            }
+          }
+        } else if (session.name.toLowerCase().includes("ayush patel")) {
+          handle = "Ayush-Patel-56";
+        }
+
+        const res = await getMaintainerDashboardData(handle, token);
+        if (res.success) {
+          setData(res);
+        }
+      } catch (e) {
+        console.error("Maintainer init failed", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, []);
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-[#060611]">
+      <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  if (!data || data.empty) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#060611] text-white p-6 text-center">
+      <h1 className="text-2xl font-black mb-4 uppercase tracking-widest">No Maintained Repositories</h1>
+      <p className="text-gray-400 max-w-md">We couldn't find any repositories where you are an owner or collaborator. Contribute to more projects to see them here!</p>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#060611] font-sans pb-20">
-      <Topbar title="Command Center" subtitle="Managing vercel/* repositories" />
+      <Topbar title="Command Center" subtitle={`Managing ${data.mainRepo} and more`} />
 
       <div className="p-12 max-w-[1600px] mx-auto space-y-12">
 
         {/* KPI Banner */}
-        <KpiBanner online={online} urgent={urgent} openPRsCount={openPRs.length} />
+        <KpiBanner 
+          online={`${data.stats.teamOnline}/${data.stats.teamTotal}`} 
+          urgent={data.stats.urgentCount} 
+          openPRsCount={data.stats.openPRsCount} 
+        />
 
         {/* Main 2-col layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
@@ -73,7 +115,7 @@ export default function MaintainerDashboardPage() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                 >
-                  <PriorityQueue issues={mockPriorityIssues} />
+                  <PriorityQueue issues={data.urgentIssues} />
                 </motion.div>
               ) : (
                 <motion.div
@@ -82,27 +124,27 @@ export default function MaintainerDashboardPage() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                 >
-                  <OpenPRs prs={openPRs} />
+                  <OpenPRs prs={data.openPRs} />
                 </motion.div>
               )}
             </AnimatePresence>
 
             {/* Stale issues */}
-            <StaleIssues issues={mockStaleIssues} />
+            <StaleIssues issues={data.staleIssues} />
           </div>
 
           {/* Right col: team + activity */}
           <div className="space-y-8">
             
-            <RepoHealthMini health={mockAnalytics.repoHealth} />
+            <RepoHealthMini health={data.repoHealth} />
 
-            <TeamSnapshot members={mockTeamMembers} />
+            <TeamSnapshot members={data.teamMembers} />
 
-            <ActivityFeed feed={activityFeed} />
+            <ActivityFeed feed={data.activityFeed} />
 
             <TodayStats stats={[
-              { label: "New Issues", value: "14", textColor: "text-white" },
-              { label: "PRs Merged", value: "7", textColor: "text-emerald-400" },
+              { label: "New Issues", value: data.stats.urgentCount + 5, textColor: "text-white" },
+              { label: "PRs Merged", value: data.stats.mergedToday, textColor: "text-emerald-400" },
               { label: "Issues Closed", value: "11", textColor: "text-cyan-400" },
               { label: "Active Contributors", value: "23", textColor: "text-purple-400" },
               { label: "Avg Response Time", value: "2.8h", textColor: "text-amber-400" },
@@ -114,3 +156,4 @@ export default function MaintainerDashboardPage() {
     </div>
   );
 }
+
