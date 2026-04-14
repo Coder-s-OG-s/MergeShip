@@ -39,7 +39,7 @@ const navSections: NavSection[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [userData, setUserData] = useState({ name: "User", initials: "U" });
+  const [userData, setUserData] = useState({ name: "User", initials: "U", level: "L1", xp: "0" });
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -47,7 +47,23 @@ export function Sidebar() {
         const session = await account.get();
         const name = session.name || "User";
         const initials = name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
-        setUserData({ name, initials });
+        
+        // Resolve handle for stats fetch
+        let handle = name.replace(/\s+/g, '-').toLowerCase();
+        if (name.toLowerCase().includes("ayush patel")) {
+           handle = "Ayush-Patel-56";
+        }
+
+        // Try to get stats from dashboard actions (which uses Appwrite cache)
+        const { getDashboardData } = await import("@/app/(contributor)/dashboard/actions");
+        const statsRes = await getDashboardData(handle);
+        
+        setUserData({ 
+          name, 
+          initials, 
+          level: statsRes.success ? statsRes.stats.level.split(' ')[0] : "L1",
+          xp: statsRes.success ? statsRes.stats.totalXP : "0"
+        });
       } catch (e) {}
     };
     fetchUser();
@@ -117,7 +133,7 @@ export function Sidebar() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white truncate">{userData.name.toLowerCase().replace(/\s/g, '')}</p>
-            <p className="text-xs" style={{ color: "#A78BFA" }}>L1 · 0 XP</p>
+            <p className="text-xs" style={{ color: "#A78BFA" }}>{userData.level} · {userData.xp} Contributions</p>
           </div>
           <div className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(124,58,237,0.2)", color: "#A78BFA", border: "1px solid rgba(124,58,237,0.3)" }}>
             🔥 1

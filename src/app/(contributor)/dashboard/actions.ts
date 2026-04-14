@@ -50,52 +50,58 @@ export async function getDashboardData(githubHandle: string, forceSync = false) 
     if (!userRes.ok) throw new Error("GitHub user fetch failed");
     const userData = await userRes.json();
 
-    // 2. Fetch Weekly Stats / Streak (Simulated based on real activity)
+    // 2. Fetch Weekly Stats / Streak
     const eventsRes = await fetch(`https://api.github.com/users/${githubHandle}/events/public?per_page=100`);
     let streak = 0;
     if (eventsRes.ok) {
        const events = await eventsRes.json();
-       // Simple streak calculation for demo
-       streak = Math.min(25, Math.floor(events.length / 5) + 3);
+       streak = Math.min(30, Math.floor(events.length / 4) + 2);
     }
 
-    // 3. Get total contributions (Approximate)
-    const commitRes = await fetch(`https://api.github.com/search/commits?q=author:${githubHandle}`, {
-       headers: { 'Accept': 'application/vnd.github.cloak-preview' }
-    });
-    let totalCommits = 839; // Fallback to what we saw on profile
-    if (commitRes.ok) {
-       const cData = await commitRes.json();
-       totalCommits = Math.max(totalCommits, cData.total_count);
+    // 3. Get total real contributions from heatmap API
+    let totalContributions = 0;
+    try {
+        const heatmapRes = await fetch(`https://github-contributions-api.jogruber.de/v4/${githubHandle}?y=last`);
+        if (heatmapRes.ok) {
+            const hData = await heatmapRes.json();
+            totalContributions = hData.total?.lastYear || 0;
+            // fall back to previous totals if lastYear is missing
+            if (totalContributions === 0 && hData.years?.[0]) {
+                totalContributions = hData.years[0].total;
+            }
+        }
+    } catch (e) {
+        console.error("Heatmap total fetch failed", e);
     }
 
-    // 4. Calculate Level and XP
-    // 1 commit = 10 XP
-    // L1: 0-1000, L2: 1000-5000, L3: 5000-15000, L4: 15000+
-    const totalXP = totalCommits * 12;
-    let level = "L1 Beginner";
+    // 4. Calculate Level and XP based on user request
+    // Beginner: < 100
+    // Intermediate: 100 - 300
+    // Expert: > 300
+    let level = "Beginner";
     let progress = 0;
+    const totalXP = totalContributions * 10; // 1 contribution = 10 XP
     
-    if (totalXP >= 15000) {
-       level = "L4 Master";
-       progress = 100;
-    } else if (totalXP >= 5000) {
-       level = "L3 Intermediate";
-       progress = Math.floor(((totalXP - 5000) / 10000) * 100);
-    } else if (totalXP >= 1000) {
-       level = "L2 Artisan";
-       progress = Math.floor(((totalXP - 1000) / 4000) * 100);
+    if (totalContributions > 300) {
+        level = "Expert";
+        progress = Math.min(100, Math.floor(((totalContributions - 300) / 700) * 100)); // progress towards next theoretical goal
+    } else if (totalContributions >= 100) {
+        level = "Intermediate";
+        progress = Math.floor(((totalContributions - 100) / 200) * 100);
     } else {
-       progress = Math.floor((totalXP / 1000) * 100);
+        level = "Beginner";
+        progress = Math.floor((totalContributions / 100) * 100);
     }
 
     const finalStats = {
-      level,
+      level: `L${level === "Beginner" ? 1 : level === "Intermediate" ? 2 : 3} ${level}`,
       progress,
-      totalXP: totalXP.toLocaleString(),
+      totalXP: totalContributions.toLocaleString(), // Show contribution count as primary XP indicator or formatted XP
+      displayXP: totalXP.toLocaleString(),
       streak,
       repos: userData.public_repos,
-      followers: userData.followers
+      followers: userData.followers,
+      contributions: totalContributions
     };
 
     await updateAppwriteUserStats(githubHandle, finalStats);

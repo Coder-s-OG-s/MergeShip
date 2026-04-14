@@ -40,7 +40,7 @@ export function StatSection({ handle, forceSync = false }: { handle: string; for
       <LevelStatCard level={stats.level} progress={stats.progress} />
       
       <StatCard
-        label="Total XP"
+        label="Contributions"
         value={stats.totalXP}
         icon={Star}
         subtext={`Active in ${stats.repos} repos`}
