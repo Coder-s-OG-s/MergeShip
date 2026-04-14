@@ -1,53 +1,105 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { currentUser } from "@/data/contributors";
-import { allAchievements } from "@/data/achievements";
 import { GitPullRequest, Star, MapPin, Calendar, ExternalLink, CheckCircle } from "lucide-react";
+import { getProfileData } from "@/app/(contributor)/dashboard/actions";
+import { account } from "@/lib/appwrite";
+import { allAchievements } from "@/data/achievements";
 
 export default function PortfolioPage() {
-  const user = currentUser;
-  const skills = [
-    { name: "TypeScript", level: 80 },
-    { name: "React", level: 85 },
-    { name: "CSS / Tailwind", level: 75 },
-    { name: "Node.js", level: 60 },
-    { name: "Testing", level: 45 },
-  ];
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const session = await account.get();
+        let handle = session.name.replace(/\s+/g, '-').toLowerCase();
+        let token = "";
+        
+        const identities = await account.listIdentities();
+        const gh = identities.identities.find(id => id.provider.toLowerCase() === 'github');
+        if (gh) {
+          token = (gh as any).providerAccessToken;
+          if (session.name.toLowerCase().includes("ayush patel")) {
+            handle = "Ayush-Patel-56";
+          } else {
+            const res = await fetch(`https://api.github.com/user/${gh.providerUid}`);
+            if (res.ok) {
+              const data = await res.json();
+              handle = data.login;
+            }
+          }
+        } else if (session.name.toLowerCase().includes("ayush patel")) {
+          handle = "Ayush-Patel-56";
+        }
+
+        const data = await getProfileData(handle, token);
+        if (data.success) {
+          setProfile(data);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    init();
+  }, []);
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: "#060611" }}>
+      <div className="w-12 h-12 border-4 border-[#A78BFA] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  if (!profile) return (
+    <div className="min-h-screen flex items-center justify-center text-white" style={{ background: "#060611" }}>
+      Failed to load profile.
+    </div>
+  );
+
+  const { user, stats, skills, contributions } = profile;
 
   return (
-    <div className="min-h-screen" style={{ background: "#060611" }}>
+    <div className="min-h-screen pb-20" style={{ background: "#060611" }}>
       <Topbar title="My Portfolio" subtitle="Public developer profile" />
 
-      <div className="p-6 max-w-5xl space-y-6">
+      <div className="p-6 max-w-5xl space-y-6 mx-auto">
         {/* Profile card */}
-        <div className="glass-card rounded-2xl p-8">
-          <div className="flex items-start gap-6 flex-wrap">
+        <div className="glass-card rounded-2xl p-8 border border-white/5 bg-[#121225]/50 backdrop-blur-xl">
+          <div className="flex items-start gap-8 flex-wrap">
             <div className="relative">
-              <div className="w-20 h-20 rounded-2xl flex items-center justify-center font-display font-bold text-2xl text-white level-badge glow-purple">
-                SS
+              <img 
+                src={user.avatar_url} 
+                className="w-24 h-24 rounded-2xl object-cover ring-2 ring-[#A78BFA]/30 shadow-2xl" 
+                alt={user.name}
+              />
+              <div className="absolute -bottom-2 -right-2 px-3 py-1 rounded-full text-xs font-black bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-lg">
+                {stats.level.split(' ')[0]}
               </div>
-              <div className="absolute -bottom-1 -right-1 px-2 py-0.5 rounded-full text-xs font-bold level-badge">L3</div>
             </div>
 
             <div className="flex-1">
-              <div className="flex items-center gap-3 flex-wrap mb-1">
-                <h1 className="font-display text-3xl font-black text-white">{user.name}</h1>
-                <span className="px-3 py-1 rounded-full text-sm font-bold"
-                  style={{ background: "rgba(16,185,129,0.15)", color: "#34D399", border: "1px solid rgba(16,185,129,0.3)" }}>
+              <div className="flex items-center gap-3 flex-wrap mb-2">
+                <h1 className="font-display text-4xl font-black text-white tracking-tight">{user.name}</h1>
+                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm shadow-emerald-500/10">
                   ✓ Verified Contributor
                 </span>
               </div>
-              <p className="text-gray-400 mb-2">@{user.github}</p>
-              <p className="mb-4" style={{ color: "#A0A0C0" }}>{user.bio}</p>
-              <div className="flex items-center gap-6 text-sm flex-wrap" style={{ color: "#606080" }}>
-                <span className="flex items-center gap-1.5"><Calendar className="w-4 h-4" />Joined Sep 2024</span>
-                <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4" />India</span>
-                <span className="flex items-center gap-1.5"><GitPullRequest className="w-4 h-4" />{user.prsmerged} PRs merged</span>
-                <span className="flex items-center gap-1.5"><Star className="w-4 h-4" />420 XP</span>
+              <p className="text-[#A78BFA] font-bold text-sm mb-3">@{user.github}</p>
+              <p className="mb-6 text-gray-400 max-w-2xl leading-relaxed">{user.bio}</p>
+              <div className="flex items-center gap-6 text-xs font-bold uppercase tracking-widest text-gray-500 flex-wrap">
+                <span className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5"><Calendar className="w-3.5 h-3.5" />Joined {user.joined}</span>
+                <span className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5"><MapPin className="w-3.5 h-3.5" />{user.location}</span>
+                <span className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5"><GitPullRequest className="w-3.5 h-3.5 text-emerald-400" />{user.mergedPRs} Merged</span>
+                <span className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5"><Star className="w-3.5 h-3.5 text-amber-400" />{stats.totalXP} XP</span>
               </div>
             </div>
 
             <a href={`https://github.com/${user.github}`} target="_blank" rel="noreferrer"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold btn-secondary">
+              className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-black uppercase tracking-widest bg-white text-black hover:bg-gray-200 transition-all shadow-xl shadow-white/5 ml-auto">
               <ExternalLink className="w-4 h-4" />
               View on GitHub
             </a>
@@ -56,35 +108,35 @@ export default function PortfolioPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Stats */}
-          <div className="glass-card rounded-2xl p-5 space-y-4">
-            <h2 className="font-display font-bold text-white">Stats</h2>
+          <div className="glass-card rounded-2xl p-6 space-y-5 border border-white/5 bg-[#121225]/30">
+            <h2 className="font-display font-black text-xs uppercase tracking-[0.2em] text-gray-500">Global Stats</h2>
             {[
-              { label: "Total XP", value: "420", color: "#A78BFA" },
-              { label: "Current Level", value: "3 (INTERMEDIATE)", color: "#06B6D4" },
-              { label: "Issues Solved", value: "12", color: "#10B981" },
-              { label: "PRs Merged", value: "9", color: "#10B981" },
-              { label: "Current Streak", value: "7 days 🔥", color: "#F59E0B" },
-              { label: "Longest Streak", value: "14 days", color: "#F59E0B" },
+              { label: "Total XP", value: stats.totalXP, color: "#A78BFA" },
+              { label: "Current Level", value: stats.level, color: "#06B6D4" },
+              { label: "Issues Solved", value: stats.issuesSolved, color: "#10B981" },
+              { label: "PRs Merged", value: stats.prsMerged, color: "#10B981" },
+              { label: "Current Streak", value: `${stats.streak} days 🔥`, color: "#F59E0B" },
+              { label: "Longest Streak", value: `${stats.longestStreak} days`, color: "#F59E0B" },
             ].map(s => (
-              <div key={s.label} className="flex items-center justify-between">
-                <span className="text-sm" style={{ color: "#A0A0C0" }}>{s.label}</span>
-                <span className="text-sm font-semibold" style={{ color: s.color }}>{s.value}</span>
+              <div key={s.label} className="flex items-center justify-between border-b border-white/5 pb-3 last:border-0 last:pb-0">
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-400">{s.label}</span>
+                <span className="text-sm font-black" style={{ color: s.color }}>{s.value}</span>
               </div>
             ))}
           </div>
 
           {/* Skill bars */}
-          <div className="glass-card rounded-2xl p-5 lg:col-span-2">
-            <h2 className="font-display font-bold text-white mb-5">Skills</h2>
-            <div className="space-y-4">
+          <div className="glass-card rounded-2xl p-6 lg:col-span-2 border border-white/5 bg-[#121225]/30">
+            <h2 className="font-display font-black text-xs uppercase tracking-[0.2em] text-gray-500 mb-6">Language Ecosystem</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
               {skills.map(skill => (
                 <div key={skill.name}>
-                  <div className="flex justify-between text-sm mb-1.5">
+                  <div className="flex justify-between text-[11px] font-black uppercase tracking-widest mb-2.5">
                     <span className="text-gray-300">{skill.name}</span>
-                    <span style={{ color: "#A78BFA" }}>{skill.level}%</span>
+                    <span className="text-[#A78BFA]">{skill.level}%</span>
                   </div>
-                  <div className="xp-bar h-2.5">
-                    <div className="xp-bar-fill h-full" style={{ width: `${skill.level}%` }} />
+                  <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                    <div className="h-full rounded-full bg-gradient-to-r from-[#7C3AED] to-[#A78BFA]" style={{ width: `${skill.level}%` }} />
                   </div>
                 </div>
               ))}
@@ -92,43 +144,41 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        {/* Contribution timeline */}
-        <div className="glass-card rounded-2xl p-6">
-          <h2 className="font-display font-bold text-white mb-5">Contribution History</h2>
-          <div className="space-y-4">
-            {user.contributions.map((c, i) => (
-              <div key={i} className="flex items-start gap-4 relative">
-                {i < user.contributions.length - 1 && (
-                  <div className="absolute left-3.5 top-8 w-px h-full -z-0" style={{ background: "rgba(255,255,255,0.06)" }} />
-                )}
-                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 z-10"
+        {/* Contribution history */}
+        <div className="glass-card rounded-2xl p-8 border border-white/5 bg-[#121225]/30">
+          <h2 className="font-display font-black text-xs uppercase tracking-[0.2em] text-gray-500 mb-8">Merged Pull Requests</h2>
+          <div className="space-y-6">
+            {contributions.length > 0 ? contributions.map((c, i) => (
+              <a key={i} href={c.url} target="_blank" rel="noreferrer" className="flex items-start gap-6 relative group cursor-pointer">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 z-10 transition-transform group-hover:scale-110 shadow-lg"
                   style={{
-                    background: c.difficulty === "easy" ? "rgba(16,185,129,0.2)" : c.difficulty === "medium" ? "rgba(245,158,11,0.2)" : "rgba(239,68,68,0.2)",
-                    border: `1px solid ${c.difficulty === "easy" ? "rgba(16,185,129,0.4)" : c.difficulty === "medium" ? "rgba(245,158,11,0.4)" : "rgba(239,68,68,0.4)"}`
+                    background: "rgba(16,185,129,0.1)",
+                    border: "1px solid rgba(16,185,129,0.2)"
                   }}>
-                  <CheckCircle className="w-3.5 h-3.5" style={{ color: c.difficulty === "easy" ? "#10B981" : c.difficulty === "medium" ? "#F59E0B" : "#EF4444" }} />
+                  <CheckCircle className="w-5 h-5 text-emerald-400" />
                 </div>
-                <div className="flex-1 p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.03)" }}>
-                  <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
-                    <h3 className="font-medium text-white">{c.title}</h3>
-                    <span className="text-sm font-bold" style={{ color: "#A78BFA" }}>+{c.xp} XP</span>
+                <div className="flex-1 pb-6 border-b border-white/5 last:border-0">
+                  <div className="flex items-center justify-between gap-4 mb-2">
+                    <h3 className="font-bold text-white text-lg group-hover:text-[#A78BFA] transition-colors line-clamp-1">{c.title}</h3>
+                    <span className="text-xs font-black uppercase tracking-widest text-[#A78BFA] bg-[#A78BFA]/10 px-3 py-1 rounded-full whitespace-nowrap">+{c.xp} XP</span>
                   </div>
-                  <p className="text-sm" style={{ color: "#606080" }}>{c.repo} · Merged {c.merged}</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.15em] text-gray-500">{c.repo} · Merged {c.merged}</p>
                 </div>
-              </div>
-            ))}
+              </a>
+            )) : (
+              <p className="text-gray-500 text-sm font-bold uppercase tracking-widest italic py-4">No community contributions recorded yet.</p>
+            )}
           </div>
         </div>
 
         {/* Achievements */}
-        <div className="glass-card rounded-2xl p-6">
-          <h2 className="font-display font-bold text-white mb-4">Achievements</h2>
-          <div className="flex flex-wrap gap-3">
+        <div className="glass-card rounded-2xl p-8 border border-white/5 bg-[#121225]/30">
+          <h2 className="font-display font-black text-xs uppercase tracking-[0.2em] text-gray-500 mb-6">Unlocked Badges</h2>
+          <div className="flex flex-wrap gap-4">
             {allAchievements.filter(a => a.unlocked).map(a => (
-              <div key={a.id} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm"
-                style={{ background: "rgba(124,58,237,0.12)", border: "1px solid rgba(124,58,237,0.25)", color: "#C4B5FD" }}>
-                <span>{a.emoji}</span>
-                <span className="font-medium">{a.title}</span>
+              <div key={a.id} className="flex items-center gap-3 px-5 py-3 rounded-2xl border border-white/10 bg-white/5 hover:border-[#A78BFA]/30 transition-all cursor-default shadow-lg">
+                <span className="text-2xl drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]">{a.emoji}</span>
+                <span className="text-xs font-black uppercase tracking-widest text-white">{a.title}</span>
               </div>
             ))}
           </div>
@@ -137,3 +187,4 @@ export default function PortfolioPage() {
     </div>
   );
 }
+

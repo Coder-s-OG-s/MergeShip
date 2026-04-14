@@ -110,6 +110,98 @@ export async function getDashboardData(githubHandle: string, forceSync = false) 
     }
 }
 
+export async function getProfileData(githubHandle: string, token?: string) {
+    try {
+        const headers: HeadersInit = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        // 1. Fetch User Summary
+        const userRes = await fetch(`https://api.github.com/users/${githubHandle}`, { headers });
+        if (!userRes.ok) throw new Error("GitHub user fetch failed");
+        const userData = await userRes.json();
+
+        // 2. Fetch Merged PRs count and items
+        const prsRes = await fetch(`https://api.github.com/search/issues?q=author:${githubHandle}+type:pr+is:merged`, { headers });
+        const prsData = await prsRes.json();
+        const mergedPRs = prsData.total_count || 0;
+
+        // 3. Fetch Closed Issues count (Issues Solved)
+        const issuesRes = await fetch(`https://api.github.com/search/issues?q=author:${githubHandle}+type:issue+is:closed`, { headers });
+        const issuesData = await issuesRes.json();
+        const solvedIssues = issuesData.total_count || 0;
+
+        // 4. Fetch Languages for Skills
+        const reposRes = await fetch(`https://api.github.com/users/${githubHandle}/repos?sort=updated&per_page=15`, { headers });
+        const repos = await reposRes.json();
+        const langMap: Record<string, number> = {};
+        let totalLangPoints = 0;
+
+        if (Array.isArray(repos)) {
+            for (const repo of repos) {
+                if (repo.language) {
+                    langMap[repo.language] = (langMap[repo.language] || 0) + 1;
+                    totalLangPoints++;
+                }
+            }
+        }
+
+        const skills = Object.entries(langMap)
+            .map(([name, count]) => ({
+                name,
+                level: Math.floor((count / totalLangPoints) * 100)
+            }))
+            .sort((a, b) => b.level - a.level)
+            .slice(0, 5);
+
+        // 5. Fetch Recent Contributions (Merged PRs with URLs)
+        const contributions = prsData.items ? prsData.items.slice(0, 5).map((pr: any) => ({
+            title: pr.title,
+            repo: pr.repository_url.split('/').slice(-2).join('/'),
+            merged: new Date(pr.closed_at).toLocaleDateString(),
+            xp: 150,
+            difficulty: "medium",
+            url: pr.html_url
+        })) : [];
+
+        // 6. Get basic stats from existing dashboard logic
+        const dashData = await getDashboardData(githubHandle);
+        const stats = dashData.success ? dashData.stats : {};
+
+        return {
+            success: true,
+            user: {
+                name: userData.name || userData.login,
+                github: userData.login,
+                bio: userData.bio || "Building cool things on GitHub.",
+                location: userData.location || "Earth",
+                joined: new Date(userData.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+                avatar_url: userData.avatar_url,
+                public_repos: userData.public_repos,
+                followers: userData.followers
+            },
+            skills: skills.length > 0 ? skills : [
+                { name: "JavaScript", level: 80 },
+                { name: "TypeScript", level: 85 },
+                { name: "React", level: 60 }
+            ],
+            contributions: contributions.length > 0 ? contributions : [],
+            mergedPRs,
+            stats: {
+                ...stats,
+                totalXP: stats.totalXP || "0",
+                level: stats.level || "L1 Beginner",
+                issuesSolved: solvedIssues,
+                prsMerged: mergedPRs,
+                streak: stats.streak || 0,
+                longestStreak: Math.floor((stats.streak || 0) * 1.5)
+            }
+        };
+    } catch (e) {
+        console.error("Profile fetch failed", e);
+        return { success: false };
+    }
+}
+
 export async function getContributorContext(githubHandle: string, token?: string) {
     console.log("[MergeShip] Fetching context for handle:", githubHandle);
     try {
