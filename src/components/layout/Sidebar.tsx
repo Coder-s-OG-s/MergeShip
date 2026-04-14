@@ -51,7 +51,9 @@ export function Sidebar() {
         // Resolve handle for stats fetch
         let handle = name.replace(/\s+/g, '-').toLowerCase();
         if (name.toLowerCase().includes("ayush patel")) {
-           handle = "Ayush-Patel-56";
+           handle = "ayush-patel-56";
+        } else {
+           handle = handle.toLowerCase();
         }
 
         // Try to get stats from dashboard actions (which uses Appwrite cache)

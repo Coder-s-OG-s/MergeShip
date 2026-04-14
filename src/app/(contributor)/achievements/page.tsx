@@ -1,20 +1,21 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import { Topbar } from "@/components/layout/Topbar";
-import { Lock, Trophy, Target, Award, Star } from "lucide-react";
+import { Trophy, Target, Award, Star } from "lucide-react";
 import { account } from "@/lib/appwrite";
-import { getAchievements, claimBadge } from "../dashboard/actions";
+import { getAchievements } from "../dashboard/actions";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import confetti from "canvas-confetti";
+import { Sparkles } from "lucide-react";
 
-function ClaimModal({ badge, onClose }: { badge: any; onClose: () => void }) {
+function CelebrationModal({ badge, onClose }: { badge: any; onClose: () => void }) {
   useEffect(() => {
     confetti({
-      particleCount: 150,
-      spread: 70,
+      particleCount: 200,
+      spread: 90,
       origin: { y: 0.6 },
-      colors: ['#7C3AED', '#B78AF7', '#60A5FA']
+      colors: ['#7C3AED', '#B78AF7', '#60A5FA', '#FACC15']
     });
   }, []);
 
@@ -67,7 +68,7 @@ function ClaimModal({ badge, onClose }: { badge: any; onClose: () => void }) {
           transition={{ delay: 0.4 }}
           className="text-4xl font-display font-black text-white mb-2"
         >
-          Congratulations!
+          Magnificent!
         </motion.h2>
         <motion.p 
           initial={{ opacity: 0, y: 10 }}
@@ -75,7 +76,7 @@ function ClaimModal({ badge, onClose }: { badge: any; onClose: () => void }) {
           transition={{ delay: 0.5 }}
           className="text-[#A78BFA] font-bold text-lg mb-8 uppercase tracking-widest"
         >
-          {badge.name} Collected
+          {badge.name} Unlocked
         </motion.p>
 
         <motion.div
@@ -104,7 +105,7 @@ function ClaimModal({ badge, onClose }: { badge: any; onClose: () => void }) {
 export default function AchievementsPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [claimingBadge, setClaimingBadge] = useState<any>(null);
+  const [showCelebration, setShowCelebration] = useState<any>(null);
   const [userHandle, setUserHandle] = useState("");
   const fetchCount = useRef(0);
 
@@ -120,7 +121,7 @@ export default function AchievementsPage() {
       if (gh) {
         token = (gh as any).providerAccessToken;
         if (session.name.toLowerCase().includes("ayush patel")) {
-          handle = "Ayush-Patel-56";
+          handle = "ayush-patel-56";
         } else {
           const res = await fetch(`https://api.github.com/user/${gh.providerUid}`);
           if (res.ok) {
@@ -129,7 +130,7 @@ export default function AchievementsPage() {
           }
         }
       } else if (session.name.toLowerCase().includes("ayush patel")) {
-         handle = "Ayush-Patel-56";
+         handle = "ayush-patel-56";
       }
 
       setUserHandle(handle);
@@ -152,20 +153,8 @@ export default function AchievementsPage() {
     loadData();
   }, []);
 
-  const handleClaim = async (badge: any) => {
-    // Optimistic Update
-    setData((prev: any) => ({
-      ...prev,
-      badges: prev.badges.map((b: any) => b.id === badge.id ? { ...b, claimed: true } : b)
-    }));
-    
-    setClaimingBadge(badge);
-    await claimBadge(userHandle, badge.id);
-  };
-
-  const handleCloseClaim = () => {
-    setClaimingBadge(null);
-    loadData(true); // refresh with force
+  const handleCelebrate = (badge: any) => {
+    setShowCelebration(badge);
   };
 
   if (loading) {
@@ -176,7 +165,7 @@ export default function AchievementsPage() {
     );
   }
 
-  const { achievements, badges, summary } = data || { achievements: [], badges: [], summary: { unlocked: 0, total: 0, earnedXP: 0, badgesEarned: 0, badgesToClaim: 0 } };
+  const { achievements, badges, summary } = data || { achievements: [], badges: [], summary: { unlocked: 0, total: 0, earnedXP: 0, badgesEarned: 0 } };
   const unlocked = achievements.filter((a: any) => a.unlocked);
   const locked = achievements.filter((a: any) => !a.unlocked);
 
@@ -185,7 +174,7 @@ export default function AchievementsPage() {
       <Topbar title="Achievements" subtitle="Your open source trophy room" />
 
       <AnimatePresence>
-        {claimingBadge && <ClaimModal badge={claimingBadge} onClose={handleCloseClaim} />}
+        {showCelebration && <CelebrationModal badge={showCelebration} onClose={() => setShowCelebration(null)} />}
       </AnimatePresence>
 
       <div className="p-12 max-w-[1400px] mx-auto space-y-16">
@@ -240,24 +229,6 @@ export default function AchievementsPage() {
           </div>
         </div>
 
-        {/* Action Banner for pending claims */}
-        {summary.badgesToClaim > 0 && (
-          <motion.div 
-             initial={{ opacity: 0, y: -20 }}
-             animate={{ opacity: 1, y: 0 }}
-             className="p-1 px-8 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-between"
-          >
-             <div className="flex items-center gap-4 py-3">
-                <div className="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center text-yellow-500">
-                   <Star className="w-4 h-4 fill-yellow-500" />
-                </div>
-                <p className="text-xs font-bold text-white uppercase tracking-widest">
-                  You have <span className="text-yellow-500">{summary.badgesToClaim}</span> new badges waiting to be claimed!
-                </p>
-             </div>
-          </motion.div>
-        )}
-
         {/* Badge Collection Section */}
         <section>
           <div className="flex items-center justify-between mb-8">
@@ -266,83 +237,57 @@ export default function AchievementsPage() {
               My Badge Collection
             </h2>
             <div className="text-[10px] font-bold text-[#606080] uppercase tracking-widest">
-              Total Badges: {badges.reduce((acc: number, b: any) => acc + (b.earned ? b.count : 0), 0)}
+              Total Badges: {badges.filter((b: any) => b.earned).length}
             </div>
           </div>
           
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-6">
-            {badges.map((badge: any) => (
+            {badges.filter((b: any) => b.earned).map((badge: any) => (
               <motion.div
                 key={badge.id}
                 whileHover={{ y: -5 }}
-                className={clsx(
-                  "relative aspect-square rounded-3xl p-1 flex flex-col items-center justify-center gap-3 transition-all duration-500 overflow-hidden",
-                  badge.earned 
-                    ? "bg-gradient-to-br from-white/10 to-transparent border-white/10 border shadow-2xl" 
-                    : "bg-white/[0.02] border-white/5 border opacity-30 grayscale"
-                )}
+                className="relative aspect-square rounded-3xl p-1 flex flex-col items-center justify-center gap-3 transition-all duration-500 overflow-hidden group bg-gradient-to-br from-white/10 to-transparent border-white/10 border shadow-2xl"
               >
-                {/* Claim Overlay */}
-                {badge.earned && !badge.claimed && (
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="absolute inset-0 z-20 bg-purple-900/40 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2 p-4 text-center border-2 border-purple-500/50 rounded-3xl"
-                   >
-                     <div className="bg-[#0D0D1A] px-3 py-1 rounded-full mb-1">
-                       <p className="text-[8px] font-black text-[#A78BFA] uppercase tracking-widest animate-pulse">New Milestone!</p>
-                     </div>
-                     <button
-                       onClick={() => handleClaim(badge)}
-                       className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-[10px] font-black rounded-xl uppercase tracking-widest hover:scale-105 transition-all shadow-[0_0_15px_rgba(124,58,237,0.4)]"
-                     >
-                       Claim Badge
-                     </button>
-                  </motion.div>
-                )}
+                {/* Celebration Trigger */}
+                <button
+                  onClick={() => handleCelebrate(badge)}
+                  className="absolute top-2 left-2 z-30 p-1.5 rounded-lg bg-white/5 opacity-0 group-hover:opacity-100 transition-all hover:bg-white/20 text-[#A78BFA] border border-white/5"
+                  title="Replay Celebration"
+                >
+                  <Sparkles className="w-3 h-3" />
+                </button>
 
                 <div className="absolute top-3 right-3 flex items-center gap-1">
-                   {badge.earned && badge.claimed && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]" />
-                   )}
+                   <div className="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]" />
                 </div>
 
-                <div className={clsx(
-                  "w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-1 relative z-10",
-                  badge.earned && badge.claimed ? "badge-glow" : ""
-                )}
+                <div className="w-20 h-20 rounded-full flex items-center justify-center text-4xl mb-1 relative z-10 badge-glow"
                 style={{
-                   background: badge.earned 
-                    ? badge.rarity === "Legendary" ? "linear-gradient(135deg, #FACC15, #DC2626)"
+                   background: badge.rarity === "Legendary" ? "linear-gradient(135deg, #FACC15, #DC2626)"
                     : badge.rarity === "Epic" ? "linear-gradient(135deg, #C084FC, #7C3AED)"
                     : badge.rarity === "Rare" ? "linear-gradient(135deg, #60A5FA, #2563EB)"
                     : "linear-gradient(135deg, #94A3B8, #475569)"
-                    : "rgba(255,255,255,0.05)"
                 }}>
                   <div className="absolute inset-1 rounded-full bg-[#0D0D1A] flex items-center justify-center border border-white/10 overflow-hidden">
                     <span className="relative z-10">{badge.emoji}</span>
-                    {badge.earned && (
-                       <div className="absolute inset-0 bg-gradient-to-t from-white/10 to-transparent pointer-events-none" />
-                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-white/10 to-transparent pointer-events-none" />
                   </div>
                 </div>
 
                 <div className="text-center px-2">
-                  <p className={clsx("text-[10px] font-black uppercase tracking-widest mb-1", badge.earned ? "text-white" : "text-[#606080]")}>
+                  <p className="text-[10px] font-black uppercase tracking-widest mb-1 text-white">
                     {badge.name}
                   </p>
-                  {badge.earned && badge.count > 1 && (
+                  {badge.count > 1 && (
                     <span className="text-[9px] font-black bg-white/10 text-white/60 px-2 py-0.5 rounded-full border border-white/5">
                       x{badge.count}
                     </span>
                   )}
                 </div>
 
-                {badge.earned && badge.claimed && (
-                   <div className="absolute -bottom-2 px-2 py-0.5 rounded-full bg-[#060611] border border-white/10 text-[8px] font-bold text-[#A78BFA] uppercase tracking-tighter">
-                      {badge.rarity}
-                   </div>
-                )}
+                <div className="absolute -bottom-2 px-2 py-0.5 rounded-full bg-[#060611] border border-white/10 text-[8px] font-bold text-[#A78BFA] uppercase tracking-tighter">
+                   {badge.rarity}
+                </div>
               </motion.div>
             ))}
           </div>

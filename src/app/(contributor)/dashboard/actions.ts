@@ -416,10 +416,6 @@ export async function getAchievements(githubHandle: string, token?: string, forc
         const profile = await getProfileData(githubHandle, token);
         const dash = await getDashboardData(githubHandle, forceSync);
         
-        // Claimed info now lives inside statsJson
-        const statsObj = dash.stats;
-        const claimedIds = statsObj?.claimedBadges || [];
-        
         const stats = {
             prsMerged: profile.mergedPRs || 0,
             issuesSolved: profile.stats?.issuesSolved || 0,
@@ -498,7 +494,6 @@ export async function getAchievements(githubHandle: string, token?: string, forc
                 name: "Pull Shark", 
                 emoji: "🦈", 
                 earned: stats.prsMerged >= 1, 
-                claimed: claimedIds.includes("shark"),
                 count: Math.max(1, Math.floor(stats.prsMerged / 10)),
                 rarity: "Rare"
             },
@@ -507,7 +502,6 @@ export async function getAchievements(githubHandle: string, token?: string, forc
                 name: "Quickdraw", 
                 emoji: "⚡", 
                 earned: stats.issuesSolved >= 1, 
-                claimed: claimedIds.includes("quickdraw"),
                 count: Math.max(1, Math.floor(stats.issuesSolved / 5)),
                 rarity: "Common"
             },
@@ -516,7 +510,6 @@ export async function getAchievements(githubHandle: string, token?: string, forc
                 name: "YOLO", 
                 emoji: "🌈", 
                 earned: stats.activeDays >= 10,
-                claimed: claimedIds.includes("yolo"),
                 count: 1,
                 rarity: "Epic"
             },
@@ -525,7 +518,6 @@ export async function getAchievements(githubHandle: string, token?: string, forc
                 name: "Exterminator", 
                 emoji: "🤖", 
                 earned: stats.issuesSolved >= 10,
-                claimed: claimedIds.includes("exterminator"),
                 count: 1,
                 rarity: "Legendary"
             }
@@ -539,38 +531,11 @@ export async function getAchievements(githubHandle: string, token?: string, forc
                 unlocked: achievements.filter(a => a.unlocked).length,
                 total: achievements.length,
                 earnedXP: achievements.filter(a => a.unlocked).reduce((s, a) => s + a.xpReward, 0),
-                badgesEarned: badges.filter(b => b.earned).length,
-                badgesToClaim: badges.filter(b => b.earned && !b.claimed).length
+                badgesEarned: badges.filter(b => b.earned).length
             }
         };
     } catch (e) {
         console.error("Achievements calculation failed", e);
         return { success: false, achievements: [] };
-    }
-}
-
-export async function claimBadge(githubHandle: string, badgeId: string) {
-    try {
-        const normalizedHandle = githubHandle.toLowerCase();
-        const doc = await getAppwriteUserStats(normalizedHandle);
-        if (!doc) return { success: false };
-        
-        const stats = JSON.parse((doc as any).statsJson || "{}");
-        const claimed = stats.claimedBadges || [];
-        
-        if (!claimed.includes(badgeId)) {
-            claimed.push(badgeId);
-        }
-        
-        stats.claimedBadges = claimed;
-        
-        await databases.updateDocument(DATABASE_ID, COLLECTION_ID, doc.$id, {
-            statsJson: JSON.stringify(stats)
-        });
-        
-        return { success: true };
-    } catch (e) {
-        console.error("Claim failed", e);
-        return { success: false };
     }
 }
