@@ -5,7 +5,7 @@ import Link from "next/link";
 import { GitMerge, Bell, User, Rocket, Link as LinkIcon, Check, ArrowRight, Brain, TrendingUp, ShieldCheck, Mail, Globe, Users, Trophy, BarChart2, TerminalSquare, BookOpen, Layers, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { account } from "@/lib/appwrite";
-import { Models } from "appwrite";
+import { Models, OAuthProvider } from "appwrite";
 import { analyzeGithubProfile } from "./actions";
 
 type Step = "role_selection" | "connect" | "analyzing" | "assessment" | "course";
@@ -111,7 +111,7 @@ export default function OnboardingPage() {
   const handleConnect = () => {
     const redirectUrl = typeof window !== 'undefined' ? window.location.origin + '/onboarding' : '';
     account.createOAuth2Session(
-      'github', 
+      OAuthProvider.Github,
       redirectUrl, 
       redirectUrl
     );

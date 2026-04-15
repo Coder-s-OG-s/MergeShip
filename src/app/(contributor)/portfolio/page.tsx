@@ -129,7 +129,7 @@ export default function PortfolioPage() {
           <div className="glass-card rounded-2xl p-6 lg:col-span-2 border border-white/5 bg-[#121225]/30">
             <h2 className="font-display font-black text-xs uppercase tracking-[0.2em] text-gray-500 mb-6">Language Ecosystem</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-              {skills.map(skill => (
+              {skills.map((skill: { name: string; level: number }) => (
                 <div key={skill.name}>
                   <div className="flex justify-between text-[11px] font-black uppercase tracking-widest mb-2.5">
                     <span className="text-gray-300">{skill.name}</span>
@@ -148,7 +148,7 @@ export default function PortfolioPage() {
         <div className="glass-card rounded-2xl p-8 border border-white/5 bg-[#121225]/30">
           <h2 className="font-display font-black text-xs uppercase tracking-[0.2em] text-gray-500 mb-8">Merged Pull Requests</h2>
           <div className="space-y-6">
-            {contributions.length > 0 ? contributions.map((c, i) => (
+            {contributions.length > 0 ? contributions.map((c: any, i: number) => (
               <a key={i} href={c.url} target="_blank" rel="noreferrer" className="flex items-start gap-6 relative group cursor-pointer">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 z-10 transition-transform group-hover:scale-110 shadow-lg"
                   style={{

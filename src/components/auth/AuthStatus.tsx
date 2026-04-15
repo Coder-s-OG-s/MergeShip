@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { account } from "@/lib/appwrite";
-import { Models } from "appwrite";
+import { Models, OAuthProvider } from "appwrite";
 import { User, LogOut, Github } from "lucide-react";
 import Link from "next/link";
 
@@ -29,7 +29,7 @@ export default function AuthStatus() {
     // Replace 'http://localhost:3000' with your production URL when deploying
     const redirectUrl = typeof window !== 'undefined' ? window.location.origin + '/onboarding' : '';
     account.createOAuth2Session(
-      'github', 
+      OAuthProvider.Github,
       redirectUrl, 
       redirectUrl
     );

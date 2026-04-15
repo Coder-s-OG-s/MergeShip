@@ -60,7 +60,7 @@ export function BadgeWidget() {
         const res = await getAchievements(handle);
         if (res.success) {
           // Sort earned badges to the front
-          const sorted = [...res.badges].sort((a, b) => (b.earned ? 1 : 0) - (a.earned ? 1 : 0));
+          const sorted = [...(res.badges ?? [])].sort((a, b) => (b.earned ? 1 : 0) - (a.earned ? 1 : 0));
           setBadges(sorted);
         }
       } catch (e) {

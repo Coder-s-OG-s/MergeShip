@@ -205,7 +205,7 @@ export default function IssuesPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {section.items.map(issue => {
-                const cfg = difficultyConfig[issue.difficulty];
+                const cfg = difficultyConfig[issue.difficulty as keyof typeof difficultyConfig];
                 const isBookmarked = bookmarks.has(issue.id);
                 
                 // Determine icon and color based on network reason type
@@ -257,7 +257,7 @@ export default function IssuesPage() {
                           
                           <div className="flex flex-wrap gap-2">
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
-                            {issue.labels?.slice(0, 2).map(l => (
+                            {issue.labels?.slice(0, 2).map((l: string) => (
                               <span key={l} className="text-[10px] font-bold px-2 py-0.5 rounded bg-white/5 text-[#8B7E9F]">{l}</span>
                             ))}
                           </div>
