@@ -31,7 +31,7 @@ export default function OnboardingPage() {
       try {
         const session = await account.get();
         setUser(session);
-        await fetch("/api/me", { method: "GET", cache: "no-store" });
+        await fetch("/api/me", { method: "POST", cache: "no-store" });
         
         // If already connected, skip to analyzing
         if (step === "role_selection" || step === "connect") {
@@ -49,19 +49,10 @@ export default function OnboardingPage() {
     if (step === "analyzing" && user) {
       const performAnalysis = async () => {
         try {
-          // 1. Get real GitHub handle from Appwrite Identities
-          const identities = await account.listIdentities();
-          const githubIdentity = identities.identities.find(id => id.provider.toLowerCase() === 'github');
-          
-          let githubHandle = '';
-          if (githubIdentity) {
-            const userRes = await fetch(`https://api.github.com/user/${githubIdentity.providerUid}`);
-             if (userRes.ok) {
-              const userData = await userRes.json();
-              githubHandle = userData.login;
-            }
-          }
-          if (!githubHandle) githubHandle = user.name.replace(/\s+/g, '').toLowerCase();
+          // 1. Resolve canonical handle from backend profile bootstrap
+          const meResponse = await fetch("/api/me", { method: "GET", cache: "no-store" });
+          const mePayload = meResponse.ok ? await meResponse.json() : null;
+          let githubHandle = mePayload?.profile?.username || user.name.replace(/\s+/g, '').toLowerCase();
 
           // 2. Initial calc for basic profile
           const initialAge = ((new Date().getTime() - new Date(user.registration).getTime()) / (1000 * 60 * 60 * 24 * 365)).toFixed(1);
