@@ -31,12 +31,17 @@ Ensure you have the following installed on your system:
 1. Clone the repository to your local machine:
    ```bash
    git clone git@github.com:Coder-s-OG-s/MergeShip.git
-   cd MergeShipProject
+   cd MergeShip
    ```
 
 2. Install the project dependencies:
    ```bash
    npm install
+   ```
+
+3. Copy environment variables:
+   ```bash
+   cp .env.example .env.local
    ```
 
 ### Running the Development Server
@@ -48,6 +53,30 @@ npm run dev
 ```
 
 The application will be available at `http://localhost:3000`. 
+
+## Environment Variables
+
+Create `.env.local` with the following values:
+
+```bash
+NEXT_PUBLIC_APPWRITE_ENDPOINT=https://sgp.cloud.appwrite.io/v1
+NEXT_PUBLIC_APPWRITE_PROJECT_ID=<your_appwrite_project_id>
+
+APPWRITE_ENDPOINT=https://sgp.cloud.appwrite.io/v1
+APPWRITE_PROJECT_ID=<your_appwrite_project_id>
+APPWRITE_API_KEY=<your_appwrite_server_api_key>
+```
+
+## Auth/Profile API
+
+- `GET /api/me`
+  - Protected endpoint (requires active session)
+  - Returns current user and bootstraps contributor profile on first login with:
+    - `github_id`
+    - `username`
+    - `avatar_url`
+    - `joined_at`
+    - `default_level = L1`
 
 ### Project Structure
 

@@ -31,6 +31,7 @@ export default function OnboardingPage() {
       try {
         const session = await account.get();
         setUser(session);
+        await fetch("/api/me", { method: "GET", cache: "no-store" });
         
         // If already connected, skip to analyzing
         if (step === "role_selection" || step === "connect") {
