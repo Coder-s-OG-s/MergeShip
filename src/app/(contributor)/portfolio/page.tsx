@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { GitPullRequest, Star, MapPin, Calendar, ExternalLink, CheckCircle } from "lucide-react";
 import { getProfileData } from "@/app/(contributor)/dashboard/actions";
-import { account } from "@/lib/appwrite";
+import { createAppwriteAuthHeader } from "@/lib/appwrite-auth";
 import { allAchievements } from "@/data/achievements";
 
 export default function PortfolioPage() {
@@ -14,28 +14,21 @@ export default function PortfolioPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const session = await account.get();
-        let handle = session.name.replace(/\s+/g, '-').toLowerCase();
-        let token = "";
-        
-        const identities = await account.listIdentities();
-        const gh = identities.identities.find(id => id.provider.toLowerCase() === 'github');
-        if (gh) {
-          token = (gh as any).providerAccessToken;
-          if (session.name.toLowerCase().includes("ayush patel")) {
-            handle = "Ayush-Patel-56";
-          } else {
-            const res = await fetch(`https://api.github.com/user/${gh.providerUid}`);
-            if (res.ok) {
-              const data = await res.json();
-              handle = data.login;
-            }
-          }
-        } else if (session.name.toLowerCase().includes("ayush patel")) {
-          handle = "Ayush-Patel-56";
+        const authHeaders = await createAppwriteAuthHeader();
+        const meResponse = await fetch("/api/me", {
+          cache: "no-store",
+          headers: authHeaders,
+        });
+        if (!meResponse.ok) {
+          throw new Error("Unable to resolve authenticated profile.");
+        }
+        const mePayload = await meResponse.json();
+        const githubHandle = mePayload?.profile?.github_handle;
+        if (!githubHandle) {
+          throw new Error("GitHub handle not available in profile.");
         }
 
-        const data = await getProfileData(handle, token);
+        const data = await getProfileData(githubHandle);
         if (data.success) {
           setProfile(data);
         }
@@ -77,7 +70,7 @@ export default function PortfolioPage() {
                 alt={user.name}
               />
               <div className="absolute -bottom-2 -right-2 px-3 py-1 rounded-full text-xs font-black bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-lg">
-                {stats.level.split(' ')[0]}
+                {stats.levelCode || "L1"}
               </div>
             </div>
 
@@ -112,7 +105,7 @@ export default function PortfolioPage() {
             <h2 className="font-display font-black text-xs uppercase tracking-[0.2em] text-gray-500">Global Stats</h2>
             {[
               { label: "Total XP", value: stats.totalXP, color: "#A78BFA" },
-              { label: "Current Level", value: stats.level, color: "#06B6D4" },
+              { label: "Current Level", value: stats.level || `${stats.levelCode || "L1"} ${stats.levelTitle || "Beginner"}`, color: "#06B6D4" },
               { label: "Issues Solved", value: stats.issuesSolved, color: "#10B981" },
               { label: "PRs Merged", value: stats.prsMerged, color: "#10B981" },
               { label: "Current Streak", value: `${stats.streak} days 🔥`, color: "#F59E0B" },
