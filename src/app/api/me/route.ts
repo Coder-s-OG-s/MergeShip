@@ -59,11 +59,7 @@ export async function GET() {
     }
 
     const user = await sessionAccount.get();
-    const preferences = (user.prefs || {}) as Record<string, unknown>;
-    const existingProfile = preferences.contributor_profile as
-      | ContributorProfile
-      | undefined;
-    const contributorProfile = existingProfile || (await resolveProfile(sessionAccount));
+    const contributorProfile = await resolveProfile(sessionAccount);
 
     return NextResponse.json({
       user: {
