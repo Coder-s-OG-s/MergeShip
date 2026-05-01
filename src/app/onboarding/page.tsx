@@ -24,7 +24,7 @@ export default function OnboardingPage() {
     prAcceptance: "..."
   });
   const [paths, setPaths] = useState<any[]>([]);
-  const [profileUsername, setProfileUsername] = useState<string | null>(null);
+  const [profileGithubHandle, setProfileGithubHandle] = useState<string | null>(null);
   const router = useRouter();
 
   // Check if already logged in
@@ -42,7 +42,7 @@ export default function OnboardingPage() {
         const bootstrapPayload = bootstrapResponse.ok
           ? await bootstrapResponse.json()
           : null;
-        setProfileUsername(bootstrapPayload?.profile?.username || null);
+        setProfileGithubHandle(bootstrapPayload?.profile?.github_handle || null);
         
         // If already connected, skip to analyzing
         if (step === "role_selection" || step === "connect") {
@@ -61,7 +61,7 @@ export default function OnboardingPage() {
       const performAnalysis = async () => {
         try {
           // 1. Use canonical handle resolved by backend bootstrap.
-          const githubHandle = profileUsername;
+          const githubHandle = profileGithubHandle;
           if (!githubHandle) {
             throw new Error("Profile username not available for GitHub analysis.");
           }
@@ -109,7 +109,7 @@ export default function OnboardingPage() {
       }, 4000); 
       return () => clearTimeout(timer);
     }
-  }, [step, user, profileUsername]);
+  }, [step, user, profileGithubHandle]);
 
   // Handle GitHub connection via Appwrite
   const handleConnect = () => {

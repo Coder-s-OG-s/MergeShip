@@ -12,6 +12,7 @@ type MeResponse = {
   };
   profile: {
     github_id: string | null;
+    github_handle: string | null;
     username: string;
     avatar_url: string;
     joined_at: string;
@@ -74,6 +75,7 @@ export default function ProfilePage() {
           <p><span className="text-gray-400">Name:</span> {data.user.name}</p>
           <p><span className="text-gray-400">Email:</span> {data.user.email}</p>
           <p><span className="text-gray-400">Username:</span> {data.profile.username}</p>
+          <p><span className="text-gray-400">GitHub Handle:</span> {data.profile.github_handle || "Not available"}</p>
           <p><span className="text-gray-400">GitHub ID:</span> {data.profile.github_id || "Not available"}</p>
           <p><span className="text-gray-400">Default Level:</span> {data.profile.default_level}</p>
           <p><span className="text-gray-400">Joined At:</span> {new Date(data.profile.joined_at).toLocaleString()}</p>

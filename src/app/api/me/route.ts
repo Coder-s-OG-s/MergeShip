@@ -3,6 +3,7 @@ import { getSessionAccount } from "@/lib/appwrite-server";
 
 type ContributorProfile = {
   github_id: string | null;
+  github_handle: string | null;
   username: string;
   avatar_url: string;
   joined_at: string;
@@ -19,6 +20,7 @@ async function resolveProfile(
     | undefined;
 
   let githubId: string | null = existingProfile?.github_id || null;
+  let githubHandle: string | null = existingProfile?.github_handle || null;
   const fallbackUsername =
     user.name || `user-${user.$id.slice(0, 8)}`;
   let username = existingProfile?.username || fallbackUsername;
@@ -31,6 +33,19 @@ async function resolveProfile(
     );
     if (githubIdentity) {
       githubId = githubIdentity.providerUid;
+      if (!githubHandle && githubId) {
+        try {
+          const githubUserResponse = await fetch(
+            `https://api.github.com/user/${githubId}`
+          );
+          if (githubUserResponse.ok) {
+            const githubUser = (await githubUserResponse.json()) as { login?: string };
+            githubHandle = githubUser.login || githubHandle;
+          }
+        } catch (githubLookupError) {
+          console.error("[api/me] github handle lookup failed", githubLookupError);
+        }
+      }
       if (!avatarUrl && githubId) {
         avatarUrl = `https://avatars.githubusercontent.com/u/${githubId}`;
       }
@@ -41,6 +56,7 @@ async function resolveProfile(
 
   return {
     github_id: githubId,
+    github_handle: githubHandle,
     username,
     avatar_url: avatarUrl,
     joined_at: existingProfile?.joined_at || new Date(user.registration).toISOString(),

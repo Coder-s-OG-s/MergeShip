@@ -116,7 +116,11 @@ export async function getDashboardData(githubHandle: string, forceSync = false) 
     }
 }
 
-export async function getProfileData(githubHandle: string, token?: string) {
+export async function getProfileData(
+    githubHandle: string,
+    token?: string,
+    dashboardStats?: any
+) {
     try {
         const headers: HeadersInit = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -169,9 +173,7 @@ export async function getProfileData(githubHandle: string, token?: string) {
             url: pr.html_url
         })) : [];
 
-        // 6. Get basic stats from existing dashboard logic
-        const dashData = await getDashboardData(githubHandle);
-        const stats = dashData.success ? dashData.stats : {};
+        const stats = dashboardStats || {};
 
         return {
             success: true,
@@ -370,8 +372,12 @@ export async function getContributionData(githubHandle: string, forceSync = fals
 
 export async function getAchievements(githubHandle: string, token?: string, forceSync = false) {
     try {
-        const profile = await getProfileData(githubHandle, token);
         const dash = await getDashboardData(githubHandle, forceSync);
+        const profile = await getProfileData(
+            githubHandle,
+            token,
+            dash.success ? dash.stats : undefined
+        );
         
         const stats = {
             prsMerged: profile.mergedPRs || 0,
