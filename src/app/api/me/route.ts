@@ -11,7 +11,8 @@ type ContributorProfile = {
 };
 
 async function resolveProfile(
-  sessionAccount: NonNullable<ReturnType<typeof getSessionAccount>>
+  sessionAccount: NonNullable<ReturnType<typeof getSessionAccount>>,
+  options?: { allowGithubLookup?: boolean }
 ): Promise<ContributorProfile> {
   const user = await sessionAccount.get();
   const preferences = (user.prefs || {}) as Record<string, unknown>;
@@ -33,11 +34,19 @@ async function resolveProfile(
     );
     if (githubIdentity) {
       githubId = githubIdentity.providerUid;
-      if (!githubHandle && githubId) {
+      if (!githubHandle && options?.allowGithubLookup) {
         try {
-          const githubUserResponse = await fetch(
-            `https://api.github.com/user/${githubId}`
-          );
+          const githubToken = (githubIdentity as { providerAccessToken?: string })
+            .providerAccessToken;
+          if (!githubToken) {
+            throw new Error("Missing provider access token");
+          }
+          const githubUserResponse = await fetch("https://api.github.com/user", {
+            headers: {
+              Authorization: `Bearer ${githubToken}`,
+              Accept: "application/vnd.github+json",
+            },
+          });
           if (githubUserResponse.ok) {
             const githubUser = (await githubUserResponse.json()) as { login?: string };
             githubHandle = githubUser.login || githubHandle;
@@ -72,7 +81,9 @@ export async function GET() {
     }
 
     const user = await sessionAccount.get();
-    const contributorProfile = await resolveProfile(sessionAccount);
+    const contributorProfile = await resolveProfile(sessionAccount, {
+      allowGithubLookup: false,
+    });
 
     return NextResponse.json({
       user: {
@@ -84,7 +95,10 @@ export async function GET() {
     });
   } catch (error) {
     console.error("[api/me] failed to fetch profile", error);
-    return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Profile fetch failed due to a server configuration or upstream error." },
+      { status: 500 }
+    );
   }
 }
 
@@ -101,7 +115,9 @@ export async function POST() {
       | Partial<ContributorProfile>
       | undefined;
 
-    const contributorProfile = await resolveProfile(sessionAccount);
+    const contributorProfile = await resolveProfile(sessionAccount, {
+      allowGithubLookup: true,
+    });
     const needsBootstrap =
       !existingProfile ||
       existingProfile.default_level !== "L1" ||
@@ -124,6 +140,9 @@ export async function POST() {
     });
   } catch (error) {
     console.error("[api/me] failed to bootstrap profile", error);
-    return NextResponse.json({ error: "Failed to bootstrap profile" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Profile bootstrap failed due to identity resolution or persistence error." },
+      { status: 500 }
+    );
   }
 }

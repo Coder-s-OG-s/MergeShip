@@ -77,7 +77,7 @@ export default function PortfolioPage() {
                 alt={user.name}
               />
               <div className="absolute -bottom-2 -right-2 px-3 py-1 rounded-full text-xs font-black bg-gradient-to-br from-[#A78BFA] to-[#7C3AED] text-white shadow-lg">
-                {stats.level.split(' ')[0]}
+                {stats.levelCode || "L1"}
               </div>
             </div>
 
@@ -112,7 +112,7 @@ export default function PortfolioPage() {
             <h2 className="font-display font-black text-xs uppercase tracking-[0.2em] text-gray-500">Global Stats</h2>
             {[
               { label: "Total XP", value: stats.totalXP, color: "#A78BFA" },
-              { label: "Current Level", value: stats.level, color: "#06B6D4" },
+              { label: "Current Level", value: stats.level || `${stats.levelCode || "L1"} ${stats.levelTitle || "Beginner"}`, color: "#06B6D4" },
               { label: "Issues Solved", value: stats.issuesSolved, color: "#10B981" },
               { label: "PRs Merged", value: stats.prsMerged, color: "#10B981" },
               { label: "Current Streak", value: `${stats.streak} days 🔥`, color: "#F59E0B" },
