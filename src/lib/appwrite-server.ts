@@ -1,43 +1,60 @@
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { Account, Client, Databases, ID, Query } from "node-appwrite";
 
-const ENDPOINT = process.env.APPWRITE_ENDPOINT || "https://sgp.cloud.appwrite.io/v1";
-const PROJECT_ID = process.env.APPWRITE_PROJECT_ID || "69dd0a67002485149a3a";
-const API_KEY = process.env.APPWRITE_API_KEY || "";
+const ENDPOINT = process.env.APPWRITE_ENDPOINT;
+const PROJECT_ID = process.env.APPWRITE_PROJECT_ID;
+const API_KEY = process.env.APPWRITE_API_KEY;
 
-function getSessionFromCookies() {
-  const cookieStore = cookies();
-  const cookieCandidates = [
-    `a_session_${PROJECT_ID}`,
-    `a_session_${PROJECT_ID}_legacy`,
-  ];
-
-  for (const name of cookieCandidates) {
-    const sessionCookie = cookieStore.get(name)?.value;
-    if (sessionCookie) return sessionCookie;
+function requireEnvVar(value: string | undefined, name: string): string {
+  if (!value) {
+    throw new Error(`Missing ${name} env variable`);
   }
-  return null;
+  return value;
+}
+
+function getRequiredEndpoint() {
+  return requireEnvVar(ENDPOINT, "APPWRITE_ENDPOINT");
+}
+
+function getRequiredProjectId() {
+  return requireEnvVar(PROJECT_ID, "APPWRITE_PROJECT_ID");
+}
+
+function getJwtFromAuthorizationHeader() {
+  const authorization = headers().get("authorization");
+  if (!authorization) return null;
+  const [scheme, token] = authorization.split(" ");
+  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
+  return token;
+}
+
+function requireApiKey() {
+  return requireEnvVar(API_KEY, "APPWRITE_API_KEY");
 }
 
 export function createAdminClient() {
   return new Client()
-    .setEndpoint(ENDPOINT)
-    .setProject(PROJECT_ID)
-    .setKey(API_KEY);
+    .setEndpoint(getRequiredEndpoint())
+    .setProject(getRequiredProjectId())
+    .setKey(requireApiKey());
 }
 
 export function createSessionClient() {
-  const session = getSessionFromCookies();
-  if (!session) return null;
+  const jwt = getJwtFromAuthorizationHeader();
+  if (!jwt) return null;
   return new Client()
-    .setEndpoint(ENDPOINT)
-    .setProject(PROJECT_ID)
-    .setSession(session);
+    .setEndpoint(getRequiredEndpoint())
+    .setProject(getRequiredProjectId())
+    .setJWT(jwt);
 }
 
-const adminClient = createAdminClient();
-export const serverDatabases = new Databases(adminClient);
-export const serverAccount = new Account(adminClient);
+export function getServerDatabases() {
+  return new Databases(createAdminClient());
+}
+
+export function getServerAccount() {
+  return new Account(createAdminClient());
+}
 
 export function getSessionAccount() {
   const sessionClient = createSessionClient();

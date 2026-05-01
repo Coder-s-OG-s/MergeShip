@@ -1,5 +1,7 @@
 "use server";
-import { serverDatabases as databases, ID, Query } from "@/lib/appwrite-server";
+import { getServerDatabases, ID, Query } from "@/lib/appwrite-server";
+
+const databases = getServerDatabases();
 
 const DATABASE_ID = '69dd3854002de2030bc5';
 const COLLECTION_ID = 'user_stats';

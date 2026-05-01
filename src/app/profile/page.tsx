@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { createAppwriteAuthHeader } from "@/lib/appwrite-auth";
 
 type MeResponse = {
   user: {
@@ -26,7 +27,11 @@ export default function ProfilePage() {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const response = await fetch("/api/me", { cache: "no-store" });
+        const authHeaders = await createAppwriteAuthHeader();
+        const response = await fetch("/api/me", {
+          cache: "no-store",
+          headers: authHeaders,
+        });
         if (!response.ok) {
           throw new Error("Please sign in to view your profile.");
         }

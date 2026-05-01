@@ -76,10 +76,10 @@ APPWRITE_API_KEY=<your_appwrite_server_api_key>
 ## Auth/Profile API
 
 - `GET /api/me`
-  - Protected endpoint (requires active session)
+  - Protected endpoint (requires active session JWT in `Authorization: Bearer <token>`)
   - Returns current user profile
 - `POST /api/me`
-  - Protected bootstrap endpoint for first-login profile initialization
+  - Protected bootstrap endpoint for first-login profile initialization (JWT required)
   - Creates/normalizes contributor profile with:
     - `github_id`
     - `username`

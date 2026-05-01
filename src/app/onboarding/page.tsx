@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { account } from "@/lib/appwrite";
 import { Models, OAuthProvider } from "appwrite";
 import { analyzeGithubProfile } from "./actions";
+import { createAppwriteAuthHeader } from "@/lib/appwrite-auth";
 
 type Step = "role_selection" | "connect" | "analyzing" | "assessment" | "course";
 
@@ -23,6 +24,7 @@ export default function OnboardingPage() {
     prAcceptance: "..."
   });
   const [paths, setPaths] = useState<any[]>([]);
+  const [profileUsername, setProfileUsername] = useState<string | null>(null);
   const router = useRouter();
 
   // Check if already logged in
@@ -31,7 +33,16 @@ export default function OnboardingPage() {
       try {
         const session = await account.get();
         setUser(session);
-        await fetch("/api/me", { method: "POST", cache: "no-store" });
+        const authHeaders = await createAppwriteAuthHeader();
+        const bootstrapResponse = await fetch("/api/me", {
+          method: "POST",
+          cache: "no-store",
+          headers: authHeaders,
+        });
+        const bootstrapPayload = bootstrapResponse.ok
+          ? await bootstrapResponse.json()
+          : null;
+        setProfileUsername(bootstrapPayload?.profile?.username || null);
         
         // If already connected, skip to analyzing
         if (step === "role_selection" || step === "connect") {
@@ -49,10 +60,11 @@ export default function OnboardingPage() {
     if (step === "analyzing" && user) {
       const performAnalysis = async () => {
         try {
-          // 1. Resolve canonical handle from backend profile bootstrap
-          const meResponse = await fetch("/api/me", { method: "GET", cache: "no-store" });
-          const mePayload = meResponse.ok ? await meResponse.json() : null;
-          let githubHandle = mePayload?.profile?.username || user.name.replace(/\s+/g, '').toLowerCase();
+          // 1. Use canonical handle resolved by backend bootstrap.
+          const githubHandle = profileUsername;
+          if (!githubHandle) {
+            throw new Error("Profile username not available for GitHub analysis.");
+          }
 
           // 2. Initial calc for basic profile
           const initialAge = ((new Date().getTime() - new Date(user.registration).getTime()) / (1000 * 60 * 60 * 24 * 365)).toFixed(1);
@@ -97,7 +109,7 @@ export default function OnboardingPage() {
       }, 4000); 
       return () => clearTimeout(timer);
     }
-  }, [step, user]);
+  }, [step, user, profileUsername]);
 
   // Handle GitHub connection via Appwrite
   const handleConnect = () => {

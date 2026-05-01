@@ -99,9 +99,13 @@ export async function POST() {
       !existingProfile.joined_at;
 
     if (needsBootstrap) {
+      const mergedProfile = {
+        ...(existingProfile || {}),
+        ...contributorProfile,
+      };
       await sessionAccount.updatePrefs({
         ...preferences,
-        contributor_profile: contributorProfile,
+        contributor_profile: mergedProfile,
       });
     }
 
