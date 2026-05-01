@@ -20,7 +20,7 @@ async function resolveProfile(
 
   let githubId: string | null = existingProfile?.github_id || null;
   const fallbackUsername =
-    user.name || user.email?.split("@")[0] || `user-${user.$id.slice(0, 8)}`;
+    user.name || `user-${user.$id.slice(0, 8)}`;
   let username = existingProfile?.username || fallbackUsername;
   let avatarUrl = existingProfile?.avatar_url || "";
 
@@ -31,9 +31,6 @@ async function resolveProfile(
     );
     if (githubIdentity) {
       githubId = githubIdentity.providerUid;
-      if (!existingProfile?.username) {
-        username = fallbackUsername;
-      }
       if (!avatarUrl && githubId) {
         avatarUrl = `https://avatars.githubusercontent.com/u/${githubId}`;
       }

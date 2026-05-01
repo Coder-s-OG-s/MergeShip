@@ -1,55 +1,18 @@
 "use server";
-import { getServerDatabases, ID, Query } from "@/lib/appwrite-server";
-
-const databases = getServerDatabases();
 
 const DATABASE_ID = '69dd3854002de2030bc5';
 const COLLECTION_ID = 'user_stats';
 const CACHE_TTL = 1000 * 60 * 60; // 1 hour
 
 async function getAppwriteUserStats(githubHandle: string) {
-    try {
-        // Always normalize handle for storage
-        const normalizedHandle = githubHandle.toLowerCase();
-        const response = await databases.listDocuments(DATABASE_ID, COLLECTION_ID, [
-            Query.equal('githubHandle', normalizedHandle)
-        ]);
-        return response.total > 0 ? response.documents[0] : null;
-    } catch (e) {
-        console.error("Appwrite fetch failed", e);
-        return null;
-    }
+    return null;
 }
 
 async function updateAppwriteUserStats(githubHandle: string, data: any) {
-    try {
-        const normalizedHandle = githubHandle.toLowerCase();
-        const existing = await getAppwriteUserStats(normalizedHandle);
-        let finalData = data;
-        
-        if (existing && (existing as any).statsJson) {
-            const existingStats = JSON.parse((existing as any).statsJson);
-            // Preserve claimed badges and other metadata if they exist
-            finalData = {
-                ...data,
-                claimedBadges: existingStats.claimedBadges || []
-            };
-        }
-
-        const statsPayload = {
-            githubHandle: normalizedHandle,
-            statsJson: JSON.stringify(finalData),
-            lastSync: Date.now()
-        };
-        
-        if (existing) {
-            return await databases.updateDocument(DATABASE_ID, COLLECTION_ID, existing.$id, statsPayload);
-        } else {
-            return await databases.createDocument(DATABASE_ID, COLLECTION_ID, ID.unique(), statsPayload);
-        }
-    } catch (e) {
-        console.error("Appwrite update failed", e);
-    }
+    // Intentionally no-op for now.
+    // Server actions should not write using an admin Appwrite client without
+    // explicit session-scoped authorization checks.
+    return null;
 }
 
 export async function getDashboardData(githubHandle: string, forceSync = false) {
@@ -382,14 +345,6 @@ export async function getContributionData(githubHandle: string, forceSync = fals
                     count: d.count,
                     level: d.level
                 }));
-                
-                // Add heatmapJson update to the Appwrite doc
-                const existing = await getAppwriteUserStats(githubHandle);
-                if (existing) {
-                    await databases.updateDocument(DATABASE_ID, COLLECTION_ID, existing.$id, {
-                        heatmapJson: JSON.stringify(finalData)
-                    });
-                }
                 
                 return finalData;
             }
