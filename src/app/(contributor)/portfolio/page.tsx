@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Topbar } from "@/components/layout/Topbar";
 import { GitPullRequest, Star, MapPin, Calendar, ExternalLink, CheckCircle } from "lucide-react";
 import { getProfileData } from "@/app/(contributor)/dashboard/actions";
-import { account } from "@/lib/appwrite";
+import { createAppwriteAuthHeader } from "@/lib/appwrite-auth";
 import { allAchievements } from "@/data/achievements";
 
 export default function PortfolioPage() {
@@ -14,28 +14,21 @@ export default function PortfolioPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const session = await account.get();
-        let handle = session.name.replace(/\s+/g, '-').toLowerCase();
-        let token = "";
-        
-        const identities = await account.listIdentities();
-        const gh = identities.identities.find(id => id.provider.toLowerCase() === 'github');
-        if (gh) {
-          token = (gh as any).providerAccessToken;
-          if (session.name.toLowerCase().includes("ayush patel")) {
-            handle = "Ayush-Patel-56";
-          } else {
-            const res = await fetch(`https://api.github.com/user/${gh.providerUid}`);
-            if (res.ok) {
-              const data = await res.json();
-              handle = data.login;
-            }
-          }
-        } else if (session.name.toLowerCase().includes("ayush patel")) {
-          handle = "Ayush-Patel-56";
+        const authHeaders = await createAppwriteAuthHeader();
+        const meResponse = await fetch("/api/me", {
+          cache: "no-store",
+          headers: authHeaders,
+        });
+        if (!meResponse.ok) {
+          throw new Error("Unable to resolve authenticated profile.");
+        }
+        const mePayload = await meResponse.json();
+        const githubHandle = mePayload?.profile?.github_handle;
+        if (!githubHandle) {
+          throw new Error("GitHub handle not available in profile.");
         }
 
-        const data = await getProfileData(handle, token);
+        const data = await getProfileData(githubHandle);
         if (data.success) {
           setProfile(data);
         }

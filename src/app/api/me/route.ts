@@ -115,13 +115,15 @@ export async function POST() {
       | Partial<ContributorProfile>
       | undefined;
 
-    const contributorProfile = await resolveProfile(sessionAccount, {
-      allowGithubLookup: true,
-    });
     const needsBootstrap =
       !existingProfile ||
       existingProfile.default_level !== "L1" ||
-      !existingProfile.joined_at;
+      !existingProfile.joined_at ||
+      !existingProfile.github_handle;
+
+    const contributorProfile = await resolveProfile(sessionAccount, {
+      allowGithubLookup: needsBootstrap && !existingProfile?.github_handle,
+    });
 
     if (needsBootstrap) {
       const mergedProfile = {
