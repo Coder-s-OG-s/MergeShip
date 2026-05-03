@@ -73,6 +73,73 @@ APPWRITE_PROJECT_ID=<your_appwrite_project_id>
 APPWRITE_API_KEY=<your_appwrite_server_api_key>
 ```
 
+## 🔐 GitHub OAuth Setup (Appwrite)
+
+MergeShip uses GitHub OAuth via Appwrite for authentication. By default, OAuth is not enabled in a new Appwrite project, which can lead to runtime errors (e.g., `project_provider_disabled`). Follow the steps below to configure authentication correctly.
+
+---
+
+### 1. Enable GitHub OAuth Provider in Appwrite
+
+1. Go to your Appwrite Console  
+2. Navigate to **Auth → Settings → OAuth Providers**  
+3. Locate **GitHub** and enable it  
+4. You will be prompted to enter a **Client ID** and **Client Secret** (generated in the next step)
+
+---
+
+### 2. Create a GitHub OAuth App
+
+Go to GitHub Developer Settings:
+
+👉 https://github.com/settings/developers
+
+1. Click **"New OAuth App"**
+2. Fill in the following details:
+
+- **Application Name**: `MergeShip Local`
+- **Homepage URL**: http://localhost:3000
+- **Authorization Callback URL**:  https://sgp.cloud.appwrite.io/v1/account/sessions/oauth2/callback/github/<YOUR_APPWRITE_PROJECT_ID>
+
+> Replace `<YOUR_APPWRITE_PROJECT_ID>` with your actual Appwrite Project ID.
+
+3. After creating the app, copy:
+ - Client ID  
+ - Client Secret  
+
+4. Paste these into Appwrite under **GitHub OAuth Provider settings**
+
+---
+
+### 3. Add Web Platform in Appwrite
+
+1. Go to **Appwrite Console → Settings → Platforms**
+2. Click **Add Platform → Web App**
+3. Configure:
+
+- **Name**: `Localhost`
+- **Hostname**: localhost
+
+---
+
+### 4. Restart Development Server
+
+After completing the setup, restart your app:
+
+```bash
+npm run dev
+
+### Common Errors
+
+**Error 412: project_provider_disabled**
+→ Enable GitHub provider in Appwrite Auth settings
+
+**OAuth redirect not working**
+→ Check callback URL includes correct project ID
+
+**Unauthorized errors**
+→ Verify API key permissions
+
 ## Auth/Profile API
 
 - `GET /api/me`
