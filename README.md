@@ -99,9 +99,16 @@ Go to GitHub Developer Settings:
 
 - **Application Name**: `MergeShip Local`
 - **Homepage URL**: http://localhost:3000
-- **Authorization Callback URL**:  https://sgp.cloud.appwrite.io/v1/account/sessions/oauth2/callback/github/<YOUR_APPWRITE_PROJECT_ID>
+- **Authorization Callback URL**: The callback URL must match your configured Appwrite endpoint.
 
-> Replace `<YOUR_APPWRITE_PROJECT_ID>` with your actual Appwrite Project ID.
+Use the following format:
+<APPWRITE_ENDPOINT>/account/sessions/oauth2/callback/github/<YOUR_APPWRITE_PROJECT_ID>
+
+
+> ⚠️ Important:
+> - Do NOT hardcode the endpoint
+> - Ensure it matches your `APPWRITE_ENDPOINT` in `.env.local`
+> - This applies to both Appwrite Cloud (any region) and self-hosted instances
 
 3. After creating the app, copy:
  - Client ID  
