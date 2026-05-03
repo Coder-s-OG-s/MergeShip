@@ -42,7 +42,9 @@ async function safeGithubFetch(url: string, token?: string) {
         return null;
     }
 }
-
+// NOTE:
+// This in-memory cache is instance-local and not shared across serverless executions.
+// In production, replace with a distributed cache (e.g., Redis) to ensure consistency.
 async function getCachedUserStats(key: string) {
     return statsCache.get(key) || null;
 }
@@ -53,7 +55,27 @@ async function setCachedUserStats(key: string, data: any) {
         lastSync: Date.now(),
     });
 }
+// Fetch up to N pages to improve skill accuracy without over-fetching
+async function fetchUserReposAll(githubHandle: string, token?: string, maxPages = 5) {
+    const perPage = 100;
+    let page = 1;
+    const all: any[] = [];
 
+    while (page <= maxPages) {
+        const batch = await safeGithubFetch(
+            `https://api.github.com/users/${githubHandle}/repos?per_page=${perPage}&page=${page}`,
+            token
+        );
+
+        if (!Array.isArray(batch) || batch.length === 0) break;
+
+        all.push(...batch);
+        if (batch.length < perPage) break; // last page
+        page++;
+    }
+
+    return all;
+}
 export async function getDashboardData(githubHandle: string, forceSync = false) {
     const key = githubHandle.toLowerCase();
 
@@ -136,6 +158,16 @@ export async function getDashboardData(githubHandle: string, forceSync = false) 
     }
 }
 
+function extractRepoFullName(url: string): string {
+    try {
+        const u = new URL(url);
+        const parts = u.pathname.split("/").filter(Boolean);
+        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : url;
+    } catch {
+        return url;
+    }
+}
+
 export async function getProfileData(githubHandle: string, token?: string) {
     try {
         const key = githubHandle.toLowerCase();
@@ -152,10 +184,7 @@ export async function getProfileData(githubHandle: string, token?: string) {
             token
         );
 
-        const repos = await safeGithubFetch(
-            `https://api.github.com/users/${key}/repos?per_page=15`,
-            token
-        ) || [];
+        const repos = await fetchUserReposAll(key, token, 5); // up to 500 repos
 
         const langMap: Record<string, number> = {};
         let total = 0;
@@ -191,7 +220,7 @@ export async function getProfileData(githubHandle: string, token?: string) {
             mergedPRs: prsData?.total_count || 0,
             contributions: prsData?.items?.slice(0, 5).map((pr: any) => ({
                 title: pr.title,
-                repo: pr.repository_url.split('/').slice(-2).join('/'),
+                repo: extractRepoFullName(pr.repository_url),
                 merged: new Date(pr.closed_at).toLocaleDateString(),
                 url: pr.html_url
             })) || []
