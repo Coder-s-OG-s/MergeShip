@@ -85,23 +85,21 @@ export async function getDashboardData(githubHandle: string, forceSync = false) 
         let streak = events ? Math.min(30, Math.floor(events.length / 4) + 2) : 0;
 
         let totalContributions = 0;
-        let activeDays = 0;
+let activeDays = 0;
 
-        try {
-            const heatmap = await safeGithubFetch(
-                `https://github-contributions-api.jogruber.de/v4/${githubHandle}?y=last`
-            );
+const heatmap = await safeGithubFetch(
+    `https://github-contributions-api.jogruber.de/v4/${githubHandle}?y=last`
+);
 
-            if (heatmap) {
-                totalContributions =
-                    heatmap.total?.lastYear ||
-                    heatmap.years?.[0]?.total ||
-                    0;
+if (heatmap) {
+    totalContributions =
+        heatmap.total?.lastYear ||
+        heatmap.years?.[0]?.total ||
+        0;
 
-                activeDays =
-                    heatmap.contributions?.filter((c: any) => c.count > 0).length || 0;
-            }
-        } catch {}
+    activeDays =
+        heatmap.contributions?.filter((c: any) => c.count > 0).length || 0;
+}
 
         let levelTitle = "Beginner";
         let levelCode = "L1";
