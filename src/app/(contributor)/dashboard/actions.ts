@@ -1,235 +1,179 @@
 "use server";
 
-const DATABASE_ID = '69dd3854002de2030bc5';
-const COLLECTION_ID = 'user_stats';
-const CACHE_TTL = 1000 * 60 * 60; // 1 hour
+const CACHE_TTL = 1000 * 60 * 60;
 const statsCache = new Map<string, { statsJson: string; lastSync: number }>();
 
-function sanitizeIssueText(value: unknown): string {
-    if (typeof value !== "string") return "";
-    return value.replace(/[\r\n\t]+/g, " ").trim().slice(0, 280);
-}
-
-async function getAppwriteUserStats(githubHandle: string) {
-    const cached = statsCache.get(githubHandle.toLowerCase());
-    return cached || null;
-}
-
-async function updateAppwriteUserStats(githubHandle: string, data: any) {
-    statsCache.set(githubHandle.toLowerCase(), {
-        statsJson: JSON.stringify(data),
-        lastSync: Date.now(),
-    });
-    return true;
-}
-
-async function safeGithubFetch(url: string, headers: HeadersInit = {}) {
+/**
+ * External API fetch (NO AUTH EVER)
+ */
+async function safeExternalFetch(url: string) {
     try {
-        const res = await fetch(url, { headers });
+        const res = await fetch(url);
+        return res.ok ? await res.json() : null;
+    } catch (err) {
+        console.error("[MergeShip] External fetch error:", err);
+        return null;
+    }
+}
+
+/**
+ * GitHub fetch (SAFE, optionally authenticated)
+ */
+async function safeGithubFetch(url: string, token?: string) {
+    if (!url.startsWith("https://api.github.com/")) {
+        console.error("[MergeShip] Blocked non-GitHub request");
+        return null;
+    }
+
+    try {
+        const res = await fetch(url, {
+            headers: token
+                ? { Authorization: `Bearer ${token}` }
+                : {}
+        });
 
         if (res.status === 403) {
             console.warn("[MergeShip] GitHub rate limit likely exceeded");
         }
 
-        if (!res.ok) {
-            console.warn(`[MergeShip] GitHub API failed: ${res.status}`);
-            return null;
-        }
-
-        return await res.json();
+        return res.ok ? await res.json() : null;
     } catch (err) {
         console.error("[MergeShip] GitHub fetch error:", err);
         return null;
     }
 }
 
+async function getCachedUserStats(key: string) {
+    return statsCache.get(key) || null;
+}
+
+async function setCachedUserStats(key: string, data: any) {
+    statsCache.set(key, {
+        statsJson: JSON.stringify(data),
+        lastSync: Date.now(),
+    });
+}
+
 export async function getDashboardData(githubHandle: string, forceSync = false) {
+    const key = githubHandle.toLowerCase();
+
+    // Cache check
     if (!forceSync) {
-        const cached = await getAppwriteUserStats(githubHandle);
+        const cached = await getCachedUserStats(key);
         if (cached && Date.now() - cached.lastSync < CACHE_TTL) {
-            const stats = JSON.parse(cached.statsJson);
-            if (stats.activeDays !== undefined) {
-                return { success: true, stats, fromCache: true };
-            }
+            return { success: true, stats: JSON.parse(cached.statsJson), fromCache: true };
         }
     }
 
     try {
-        const userData = await safeGithubFetch(`https://api.github.com/users/${githubHandle}`);
-
-        if (!userData) {
-            return {
-                success: true,
-                fallback: true,
-                stats: {
-                    level: "L1 Beginner",
-                    levelCode: "L1",
-                    levelTitle: "Beginner",
-                    progress: 0,
-                    totalXP: "0",
-                    displayXP: "0",
-                    streak: 0,
-                    activeDays: 0,
-                    repos: 0,
-                    followers: 0,
-                    contributions: 0,
-                    claimedBadges: []
-                }
-            };
-        }
-
-        const events = await safeGithubFetch(
-            `https://api.github.com/users/${githubHandle}/events/public?per_page=100`
+        const userData = await safeGithubFetch(
+            `https://api.github.com/users/${key}`
         );
 
-        let streak = events ? Math.min(30, Math.floor(events.length / 4) + 2) : 0;
+        if (!userData) {
+            return { success: false, error: "GitHub user fetch failed" };
+        }
 
-        let totalContributions = 0;
-let activeDays = 0;
+        const [events, heatmap] = await Promise.all([
+            safeGithubFetch(`https://api.github.com/users/${key}/events/public?per_page=100`),
+            safeExternalFetch(`https://github-contributions-api.jogruber.de/v4/${key}?y=last`)
+        ]);
 
-const heatmap = await safeGithubFetch(
-    `https://github-contributions-api.jogruber.de/v4/${githubHandle}?y=last`
-);
+        const streak = events
+            ? Math.min(30, Math.floor(events.length / 4) + 2)
+            : 0;
 
-if (heatmap) {
-    totalContributions =
-        heatmap.total?.lastYear ||
-        heatmap.years?.[0]?.total ||
-        0;
+        const totalContributions =
+            heatmap?.total?.lastYear ||
+            heatmap?.years?.[0]?.total ||
+            0;
 
-    activeDays =
-        heatmap.contributions?.filter((c: any) => c.count > 0).length || 0;
-}
+        const activeDays =
+            heatmap?.contributions?.filter((c: any) => c.count > 0).length || 0;
 
         let levelTitle = "Beginner";
         let levelCode = "L1";
-        let progress = 0;
-        const totalXP = totalContributions * 10;
+        let progress = (totalContributions / 100) * 100;
 
         if (totalContributions > 300) {
             levelTitle = "Expert";
             levelCode = "L3";
-            progress = Math.min(100, ((totalContributions - 300) / 700) * 100);
+            progress = ((totalContributions - 300) / 700) * 100;
         } else if (totalContributions >= 100) {
             levelTitle = "Intermediate";
             levelCode = "L2";
             progress = ((totalContributions - 100) / 200) * 100;
-        } else {
-            progress = (totalContributions / 100) * 100;
         }
 
-        const existing = await getAppwriteUserStats(githubHandle);
-        const claimedBadges = existing
-            ? JSON.parse(existing.statsJson).claimedBadges || []
-            : [];
+        const existing = await getCachedUserStats(key);
+        const existingStats = existing ? JSON.parse(existing.statsJson) : {};
 
         const finalStats = {
+            ...existingStats,
             level: `${levelCode} ${levelTitle}`,
             levelCode,
             levelTitle,
             progress: Math.floor(progress),
             totalXP: totalContributions.toLocaleString(),
-            displayXP: totalXP.toLocaleString(),
+            displayXP: (totalContributions * 10).toLocaleString(),
             streak,
             activeDays,
             repos: userData.public_repos || 0,
             followers: userData.followers || 0,
             contributions: totalContributions,
-            claimedBadges
+            claimedBadges: existingStats.claimedBadges || []
         };
 
-        await updateAppwriteUserStats(githubHandle, finalStats);
-
+        await setCachedUserStats(key, finalStats);
+         // NOTE: This uses a non-atomic in-memory merge.
+ // In concurrent scenarios, updates may still be overwritten.
+ // A production-safe solution would require transactional storage or locking.
         return { success: true, stats: finalStats };
+
     } catch (error) {
         console.error("Dashboard data fetch failed", error);
         return { success: false };
     }
 }
 
-export async function getProfileData(
-    githubHandle: string,
-    token?: string,
-    dashboardStats?: any
-) {
+export async function getProfileData(githubHandle: string, token?: string) {
     try {
-        const headers: HeadersInit = token
-            ? { Authorization: `Bearer ${token}` }
-            : {};
+        const key = githubHandle.toLowerCase();
 
         const userData = await safeGithubFetch(
-            `https://api.github.com/users/${githubHandle}`,
-            headers
+            `https://api.github.com/users/${key}`,
+            token
         );
 
-        if (!userData) {
-            return {
-                success: true,
-                fallback: true,
-                user: {
-                    name: githubHandle,
-                    github: githubHandle,
-                    bio: "GitHub data unavailable",
-                    location: "Unknown",
-                    joined: "N/A",
-                    avatar_url: "",
-                    public_repos: 0,
-                    followers: 0
-                },
-                skills: [],
-                contributions: [],
-                mergedPRs: 0,
-                stats: dashboardStats || {}
-            };
-        }
+        if (!userData) return { success: false };
 
-        const prsData =
-            (await safeGithubFetch(
-                `https://api.github.com/search/issues?q=author:${githubHandle}+type:pr+is:merged`,
-                headers
-            )) || {};
+        const prsData = await safeGithubFetch(
+            `https://api.github.com/search/issues?q=author:${key}+type:pr+is:merged`,
+            token
+        );
 
-        const issuesData =
-            (await safeGithubFetch(
-                `https://api.github.com/search/issues?q=author:${githubHandle}+type:issue+is:closed`,
-                headers
-            )) || {};
-
-        const repos =
-            (await safeGithubFetch(
-                `https://api.github.com/users/${githubHandle}/repos?per_page=15`,
-                headers
-            )) || [];
+        const repos = await safeGithubFetch(
+            `https://api.github.com/users/${key}/repos?per_page=15`,
+            token
+        ) || [];
 
         const langMap: Record<string, number> = {};
-        let totalLangPoints = 0;
+        let total = 0;
 
-        if (Array.isArray(repos)) {
-            for (const repo of repos) {
-                if (repo.language) {
-                    langMap[repo.language] = (langMap[repo.language] || 0) + 1;
-                    totalLangPoints++;
-                }
+        repos.forEach((repo: any) => {
+            if (repo.language) {
+                langMap[repo.language] = (langMap[repo.language] || 0) + 1;
+                total++;
             }
-        }
+        });
 
         const skills = Object.entries(langMap)
             .map(([name, count]) => ({
                 name,
-                level: Math.floor((count / totalLangPoints) * 100)
+                level: total ? Math.floor((count / total) * 100) : 0
             }))
             .sort((a, b) => b.level - a.level)
             .slice(0, 5);
-
-        const contributions =
-            prsData.items?.slice(0, 5).map((pr: any) => ({
-                title: pr.title,
-                repo: pr.repository_url.split('/').slice(-2).join('/'),
-                merged: new Date(pr.closed_at).toLocaleDateString(),
-                xp: 150,
-                difficulty: "medium",
-                url: pr.html_url
-            })) || [];
 
         return {
             success: true,
@@ -244,10 +188,15 @@ export async function getProfileData(
                 followers: userData.followers
             },
             skills,
-            contributions,
-            mergedPRs: prsData.total_count || 0,
-            stats: dashboardStats || {}
+            mergedPRs: prsData?.total_count || 0,
+            contributions: prsData?.items?.slice(0, 5).map((pr: any) => ({
+                title: pr.title,
+                repo: pr.repository_url.split('/').slice(-2).join('/'),
+                merged: new Date(pr.closed_at).toLocaleDateString(),
+                url: pr.html_url
+            })) || []
         };
+
     } catch (e) {
         console.error("Profile fetch failed", e);
         return { success: false };
