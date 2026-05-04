@@ -130,20 +130,25 @@ export async function getDashboardData(
         const existing = await getCached(key);
         const existingStats = existing ? JSON.parse(existing.statsJson) : {};
 
+// explicitly preserve only persistent fields
+        const claimedBadges = Array.isArray(existingStats.claimedBadges)
+        ? existingStats.claimedBadges: [];
         const finalStats = {
-            ...existingStats,
+            // computed / fresh data only
             level: `${levelCode} ${levelTitle}`,
             levelCode,
             levelTitle,
             progress: Math.floor(progress),
-            totalXP: totalContributions.toLocaleString(),
-            displayXP: (totalContributions * 10).toLocaleString(),
+            totalXP: totalContributions,
+            displayXP: totalContributions * 10,
             streak,
             activeDays,
             repos: userData.public_repos || 0,
             followers: userData.followers || 0,
             contributions: totalContributions,
-            claimedBadges: existingStats.claimedBadges || []
+
+    // explicitly preserved state
+            claimedBadges
         };
 
         await setCached(key, finalStats);
@@ -164,6 +169,32 @@ function extractRepo(url: string) {
     } catch {
         return url;
     }
+}
+
+async function fetchReposLimited(
+    githubHandle: string,
+    token?: string,
+    maxPages = 3
+) {
+    const perPage = 100;
+    let page = 1;
+    const all: any[] = [];
+
+    while (page <= maxPages) {
+        const batch = await safeGithubFetch(
+            `https://api.github.com/users/${githubHandle}/repos?per_page=${perPage}&page=${page}`,
+            token
+        );
+
+        if (!Array.isArray(batch) || batch.length === 0) break;
+
+        all.push(...batch);
+
+        if (batch.length < perPage) break;
+        page++;
+    }
+
+    return all;
 }
 
 export async function getProfileData(
@@ -198,10 +229,7 @@ export async function getProfileData(
             };
         }
 
-        const repos = await safeGithubFetch(
-            `https://api.github.com/users/${key}/repos?per_page=100`,
-            token
-        ) || [];
+        const repos = await fetchReposLimited(key, token, 3); // max 300 repos
 
         const langMap: Record<string, number> = {};
         let total = 0;
@@ -228,7 +256,7 @@ export async function getProfileData(
                 github: userData.login,
                 bio: userData.bio || "",
                 location: userData.location || "",
-                joined: new Date(userData.created_at).toLocaleDateString(),
+                joined: userData.created_at,
                 avatar_url: userData.avatar_url,
                 public_repos: userData.public_repos,
                 followers: userData.followers
@@ -245,6 +273,22 @@ export async function getProfileData(
 
     } catch (e) {
         console.error("Profile failed:", e);
-        return { success: false };
+        return {
+    success: true,
+    fallback: true,
+    user: {
+        name: githubHandle,
+        github: githubHandle,
+        bio: "GitHub data unavailable",
+        location: "",
+        joined: "",
+        avatar_url: "",
+        public_repos: 0,
+        followers: 0
+    },
+    skills: [],
+    mergedPRs: 0,
+    contributions: []
+};
     }
 }
