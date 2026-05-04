@@ -127,12 +127,7 @@ export async function getDashboardData(
             progress = ((totalContributions - 100) / 200) * 100;
         }
 
-        const existing = await getCached(key);
-        const existingStats = existing ? JSON.parse(existing.statsJson) : {};
-
-// explicitly preserve only persistent fields
-        const claimedBadges = Array.isArray(existingStats.claimedBadges)
-        ? existingStats.claimedBadges: [];
+        const claimedBadges: string[] = [];
         const finalStats = {
             // computed / fresh data only
             level: `${levelCode} ${levelTitle}`,
