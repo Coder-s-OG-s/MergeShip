@@ -7,9 +7,6 @@ const CACHE_TTL = 1000 * 60 * 60;
 // Replace with Redis or persistent store in production.
 const statsCache = new Map<string, { statsJson: string; lastSync: number }>();
 
-/**
- * SAFE GitHub fetch (token optional)
- */
 async function safeGithubFetch(url: string, token?: string) {
     if (!url.startsWith("https://api.github.com/")) return null;
 
@@ -29,9 +26,6 @@ async function safeGithubFetch(url: string, token?: string) {
     }
 }
 
-/**
- * External API (no auth)
- */
 async function safeExternalFetch(url: string) {
     try {
         const res = await fetch(url);
@@ -40,6 +34,13 @@ async function safeExternalFetch(url: string) {
         console.error("[MergeShip] External fetch error:", e);
         return null;
     }
+}
+
+async function resolveGithubIdentity(token?: string, fallbackHandle?: string) {
+    if (!token) return fallbackHandle?.toLowerCase();
+
+    const me = await safeGithubFetch("https://api.github.com/user", token);
+    return me?.login?.toLowerCase() || fallbackHandle?.toLowerCase();
 }
 
 async function getCached(key: string) {
@@ -59,8 +60,8 @@ function fallbackStats() {
         levelCode: "L1",
         levelTitle: "Beginner",
         progress: 0,
-        totalXP: "0",
-        displayXP: "0",
+        totalXP: 0,
+        displayXP: 0,
         streak: 0,
         activeDays: 0,
         repos: 0,
@@ -75,9 +76,13 @@ export async function getDashboardData(
     token?: string,
     forceSync = false
 ) {
-    const key = githubHandle.toLowerCase();
+    const resolvedHandle = await resolveGithubIdentity(token, githubHandle);
+    if (!resolvedHandle) {
+        return { success: true, stats: fallbackStats(), fallback: true };
+    }
 
-    // Cache
+    const key = resolvedHandle;
+
     if (!forceSync) {
         const cached = await getCached(key);
         if (cached && Date.now() - cached.lastSync < CACHE_TTL) {
@@ -92,13 +97,8 @@ export async function getDashboardData(
             safeExternalFetch(`https://github-contributions-api.jogruber.de/v4/${key}?y=last`)
         ]);
 
-        // HARD FALLBACK → never crash UI
         if (!userData) {
-            return {
-                success: true,
-                stats: fallbackStats(),
-                fallback: true
-            };
+            return { success: true, stats: fallbackStats(), fallback: true };
         }
 
         const streak = events
@@ -115,21 +115,21 @@ export async function getDashboardData(
 
         let levelTitle = "Beginner";
         let levelCode = "L1";
-        let progress = (totalContributions / 100) * 100;
+        let progress = 0;
 
         if (totalContributions > 300) {
             levelTitle = "Expert";
             levelCode = "L3";
-            progress = ((totalContributions - 300) / 700) * 100;
+            progress = Math.min(100, ((totalContributions - 300) / 700) * 100);
         } else if (totalContributions >= 100) {
             levelTitle = "Intermediate";
             levelCode = "L2";
             progress = ((totalContributions - 100) / 200) * 100;
+        } else {
+            progress = (totalContributions / 100) * 100;
         }
 
-        const claimedBadges: string[] = [];
         const finalStats = {
-            // computed / fresh data only
             level: `${levelCode} ${levelTitle}`,
             levelCode,
             levelTitle,
@@ -141,9 +141,7 @@ export async function getDashboardData(
             repos: userData.public_repos || 0,
             followers: userData.followers || 0,
             contributions: totalContributions,
-
-    // explicitly preserved state
-            claimedBadges
+            claimedBadges: []
         };
 
         await setCached(key, finalStats);
@@ -156,13 +154,13 @@ export async function getDashboardData(
     }
 }
 
-function extractRepo(url: string) {
+function extractRepo(url: string): string | null {
     try {
         const u = new URL(url);
         const parts = u.pathname.split("/").filter(Boolean);
-        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : url;
+        return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : null;
     } catch {
-        return url;
+        return null;
     }
 }
 
@@ -189,14 +187,22 @@ async function fetchReposLimited(
         page++;
     }
 
-    return all;
+    return {
+        repos: all,
+        truncated: page > maxPages
+    };
 }
 
 export async function getProfileData(
     githubHandle: string,
     token?: string
 ) {
-    const key = githubHandle.toLowerCase();
+    const resolvedHandle = await resolveGithubIdentity(token, githubHandle);
+    if (!resolvedHandle) {
+        return { success: false };
+    }
+
+    const key = resolvedHandle;
 
     try {
         const [userData, prsData] = await Promise.all([
@@ -220,11 +226,12 @@ export async function getProfileData(
                 },
                 skills: [],
                 contributions: [],
-                mergedPRs: 0
+                mergedPRs: 0,
+                skillsMeta: { truncated: false }
             };
         }
 
-        const repos = await fetchReposLimited(key, token, 3); // max 300 repos
+        const { repos, truncated } = await fetchReposLimited(key, token, 3);
 
         const langMap: Record<string, number> = {};
         let total = 0;
@@ -258,9 +265,12 @@ export async function getProfileData(
             },
             skills,
             mergedPRs: prsData?.total_count || 0,
+            skillsMeta: {
+                truncated
+            },
             contributions: prsData?.items?.slice(0, 5).map((pr: any) => ({
                 title: pr.title,
-                repo: extractRepo(pr.repository_url),
+                repo: extractRepo(pr.repository_url) || "unknown",
                 merged: new Date(pr.closed_at).toLocaleDateString(),
                 url: pr.html_url
             })) || []
@@ -269,21 +279,22 @@ export async function getProfileData(
     } catch (e) {
         console.error("Profile failed:", e);
         return {
-    success: true,
-    fallback: true,
-    user: {
-        name: githubHandle,
-        github: githubHandle,
-        bio: "GitHub data unavailable",
-        location: "",
-        joined: "",
-        avatar_url: "",
-        public_repos: 0,
-        followers: 0
-    },
-    skills: [],
-    mergedPRs: 0,
-    contributions: []
-};
+            success: true,
+            fallback: true,
+            user: {
+                name: githubHandle,
+                github: githubHandle,
+                bio: "GitHub data unavailable",
+                location: "",
+                joined: "",
+                avatar_url: "",
+                public_repos: 0,
+                followers: 0
+            },
+            skills: [],
+            mergedPRs: 0,
+            contributions: [],
+            skillsMeta: { truncated: false }
+        };
     }
 }
