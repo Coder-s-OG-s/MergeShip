@@ -36,12 +36,6 @@ async function safeExternalFetch(url: string) {
     }
 }
 
-async function resolveGithubIdentity(token?: string, fallbackHandle?: string) {
-    if (!token) return fallbackHandle?.toLowerCase();
-
-    const me = await safeGithubFetch("https://api.github.com/user", token);
-    return me?.login?.toLowerCase() || fallbackHandle?.toLowerCase();
-}
 
 async function getCached(key: string) {
     return statsCache.get(key) || null;
@@ -76,7 +70,7 @@ export async function getDashboardData(
     token?: string,
     forceSync = false
 ) {
-    const resolvedHandle = await resolveGithubIdentity(token, githubHandle);
+    const resolvedHandle = githubHandle?.toLowerCase();
     if (!resolvedHandle) {
         return { success: true, stats: fallbackStats(), fallback: true };
     }
@@ -197,7 +191,7 @@ export async function getProfileData(
     githubHandle: string,
     token?: string
 ) {
-    const resolvedHandle = await resolveGithubIdentity(token, githubHandle);
+    const resolvedHandle = githubHandle?.toLowerCase();
     if (!resolvedHandle) {
         return { success: false };
     }
