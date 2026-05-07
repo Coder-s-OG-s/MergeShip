@@ -1,14 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionAccount } from "@/lib/appwrite-server";
-
-type ContributorProfile = {
-  github_id: string | null;
-  github_handle: string | null;
-  username: string;
-  avatar_url: string;
-  joined_at: string;
-  default_level: "L1";
-};
+import { assembleProfile, findGithubIdentity, shouldBootstrap } from "@/lib/profile";
+import type { ContributorProfile } from "@/types";
 
 async function resolveProfile(
   sessionAccount: NonNullable<ReturnType<typeof getSessionAccount>>,
@@ -16,61 +9,44 @@ async function resolveProfile(
 ): Promise<ContributorProfile> {
   const user = await sessionAccount.get();
   const preferences = (user.prefs || {}) as Record<string, unknown>;
-  const existingProfile = preferences.contributor_profile as
-    | Partial<ContributorProfile>
-    | undefined;
+  const saved = preferences.contributor_profile as Partial<ContributorProfile> | undefined;
 
-  let githubId: string | null = existingProfile?.github_id || null;
-  let githubHandle: string | null = existingProfile?.github_handle || null;
-  const fallbackUsername =
-    user.name || `user-${user.$id.slice(0, 8)}`;
-  let username = existingProfile?.username || fallbackUsername;
-  let avatarUrl = existingProfile?.avatar_url || "";
+  let resolvedHandle: string | null = null;
 
-  try {
-    const identities = await sessionAccount.listIdentities();
-    const githubIdentity = identities.identities.find(
-      (identity) => identity.provider.toLowerCase() === "github"
-    );
-    if (githubIdentity) {
-      githubId = githubIdentity.providerUid;
-      if (!githubHandle && options?.allowGithubLookup) {
-        try {
-          const githubToken = (githubIdentity as { providerAccessToken?: string })
-            .providerAccessToken;
-          if (!githubToken) {
-            throw new Error("Missing provider access token");
-          }
-          const githubUserResponse = await fetch("https://api.github.com/user", {
-            headers: {
-              Authorization: `Bearer ${githubToken}`,
-              Accept: "application/vnd.github+json",
-            },
-          });
-          if (githubUserResponse.ok) {
-            const githubUser = (await githubUserResponse.json()) as { login?: string };
-            githubHandle = githubUser.login || githubHandle;
-          }
-        } catch (githubLookupError) {
-          console.error("[api/me] github handle lookup failed", githubLookupError);
-        }
+  const identities = await sessionAccount.listIdentities().catch(() => ({ identities: [] }));
+  const githubIdentity = findGithubIdentity(identities.identities as Parameters<typeof findGithubIdentity>[0]);
+
+  if (githubIdentity && !saved?.github_handle && options?.allowGithubLookup) {
+    try {
+      const token = (githubIdentity as { providerAccessToken?: string }).providerAccessToken;
+      if (!token) throw new Error("missing provider access token");
+      const res = await fetch("https://api.github.com/user", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+        },
+      });
+      if (res.ok) {
+        const ghUser = (await res.json()) as { login?: string };
+        resolvedHandle = ghUser.login ?? null;
       }
-      if (!avatarUrl && githubId) {
-        avatarUrl = `https://avatars.githubusercontent.com/u/${githubId}`;
-      }
+    } catch (err) {
+      console.error("[api/me] github handle lookup failed", err);
     }
-  } catch (error) {
-    console.error("[api/me] identity lookup failed", error);
   }
 
-  return {
-    github_id: githubId,
-    github_handle: githubHandle,
-    username,
-    avatar_url: avatarUrl,
-    joined_at: existingProfile?.joined_at || new Date(user.registration).toISOString(),
-    default_level: "L1",
-  };
+  return assembleProfile(
+    {
+      $id: user.$id,
+      name: user.name,
+      email: user.email,
+      registration: user.registration,
+      prefs: preferences,
+    },
+    githubIdentity,
+    saved,
+    resolvedHandle
+  );
 }
 
 export async function GET() {
@@ -81,20 +57,14 @@ export async function GET() {
     }
 
     const user = await sessionAccount.get();
-    const contributorProfile = await resolveProfile(sessionAccount, {
-      allowGithubLookup: false,
-    });
+    const profile = await resolveProfile(sessionAccount, { allowGithubLookup: false });
 
     return NextResponse.json({
-      user: {
-        id: user.$id,
-        name: user.name,
-        email: user.email,
-      },
-      profile: contributorProfile,
+      user: { id: user.$id, name: user.name, email: user.email },
+      profile,
     });
   } catch (error) {
-    console.error("[api/me] failed to fetch profile", error);
+    console.error("[api/me] GET failed", error);
     return NextResponse.json(
       { error: "Profile fetch failed due to a server configuration or upstream error." },
       { status: 500 }
@@ -111,37 +81,23 @@ export async function POST() {
 
     const user = await sessionAccount.get();
     const preferences = (user.prefs || {}) as Record<string, unknown>;
-    const existingProfile = preferences.contributor_profile as
-      | Partial<ContributorProfile>
-      | undefined;
+    const saved = preferences.contributor_profile as Partial<ContributorProfile> | undefined;
 
-    const needsBootstrap =
-      !existingProfile ||
-      existingProfile.default_level !== "L1" ||
-      !existingProfile.joined_at ||
-      !existingProfile.github_handle;
-
-    const contributorProfile = await resolveProfile(sessionAccount, {
-      allowGithubLookup: needsBootstrap && !existingProfile?.github_handle,
+    const needsUpdate = shouldBootstrap(saved);
+    const profile = await resolveProfile(sessionAccount, {
+      allowGithubLookup: needsUpdate && !saved?.github_handle,
     });
 
-    if (needsBootstrap) {
-      const mergedProfile = {
-        ...(existingProfile || {}),
-        ...contributorProfile,
-      };
+    if (needsUpdate) {
       await sessionAccount.updatePrefs({
         ...preferences,
-        contributor_profile: mergedProfile,
+        contributor_profile: { ...(saved || {}), ...profile },
       });
     }
 
-    return NextResponse.json({
-      profile: contributorProfile,
-      bootstrapped: needsBootstrap,
-    });
+    return NextResponse.json({ profile, bootstrapped: needsUpdate });
   } catch (error) {
-    console.error("[api/me] failed to bootstrap profile", error);
+    console.error("[api/me] POST bootstrap failed", error);
     return NextResponse.json(
       { error: "Profile bootstrap failed due to identity resolution or persistence error." },
       { status: 500 }

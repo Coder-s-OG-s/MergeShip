@@ -1,3 +1,12 @@
+export interface ContributorProfile {
+  github_id: string | null;
+  github_handle: string | null;
+  username: string;
+  avatar_url: string;
+  joined_at: string;
+  default_level: "L1";
+}
+
 export interface BaseIssue {
   id: string;
   repo: string;

@@ -62,30 +62,66 @@ The application will be available at `http://localhost:3000`.
 
 ## Environment Variables
 
-Create `.env.local` with the following values:
+Copy `.env.example` to `.env.local` and fill in your values:
 
 ```bash
-NEXT_PUBLIC_APPWRITE_ENDPOINT=https://sgp.cloud.appwrite.io/v1
-NEXT_PUBLIC_APPWRITE_PROJECT_ID=<your_appwrite_project_id>
-
-APPWRITE_ENDPOINT=https://sgp.cloud.appwrite.io/v1
-APPWRITE_PROJECT_ID=<your_appwrite_project_id>
-APPWRITE_API_KEY=<your_appwrite_server_api_key>
+cp .env.example .env.local
 ```
+
+| Variable | Description |
+|---|---|
+| `NEXT_PUBLIC_APPWRITE_ENDPOINT` | Appwrite API endpoint (e.g. `https://sgp.cloud.appwrite.io/v1`) |
+| `NEXT_PUBLIC_APPWRITE_PROJECT_ID` | Project ID from Appwrite Console → Settings |
+| `APPWRITE_ENDPOINT` | Same as above (server-side) |
+| `APPWRITE_PROJECT_ID` | Same as above (server-side) |
+| `APPWRITE_API_KEY` | Server API key from Appwrite Console → API Keys (required scopes: `account`, `sessions`) |
+| `GROQ_API_KEY` | Groq API key for AI-generated learning paths (https://console.groq.com) |
+
+## GitHub OAuth Setup
+
+MergeShip delegates OAuth entirely to Appwrite — GitHub credentials are configured in the Appwrite Console and never stored in this application. OAuth state (CSRF protection) is handled automatically by Appwrite.
+
+1. **Create a GitHub OAuth App**
+   - Go to GitHub → Settings → Developer Settings → OAuth Apps → **New OAuth App**
+   - Set **Authorization callback URL** to:
+     ```
+     https://<your-appwrite-endpoint>/v1/account/sessions/oauth2/callback/github/<your_project_id>
+     ```
+     For Appwrite Cloud: `https://sgp.cloud.appwrite.io/v1/account/sessions/oauth2/callback/github/<your_project_id>`
+   - Copy the **Client ID** and **Client Secret**
+
+2. **Enable GitHub OAuth in Appwrite**
+   - Go to Appwrite Console → your project → **Auth** → **OAuth2 Providers**
+   - Find **GitHub**, toggle it on, and paste the Client ID and Client Secret
+
+3. **Configure allowed domains** (for production)
+   - In Appwrite Console → your project → **Settings** → **Platforms**
+   - Add your production domain as a Web platform
+
+> **Minimum scope**: MergeShip requests only `read:user`. No OAuth secrets or access tokens are logged or persisted in the application.
 
 ## Auth/Profile API
 
 - `GET /api/me`
   - Protected endpoint (requires active session JWT in `Authorization: Bearer <token>`)
-  - Returns current user profile
+  - Returns current user and contributor profile
+  - Response: `{ user: { id, name, email }, profile: { github_id, github_handle, username, avatar_url, joined_at, default_level } }`
 - `POST /api/me`
-  - Protected bootstrap endpoint for first-login profile initialization (JWT required)
-  - Creates/normalizes contributor profile with:
-    - `github_id`
-    - `username`
-    - `avatar_url`
-    - `joined_at`
-    - `default_level = L1`
+  - Bootstrap endpoint — call once after first login to initialize the contributor profile
+  - Resolves GitHub identity, fetches handle, and persists profile with:
+    - `github_id` — GitHub numeric user ID
+    - `github_handle` — GitHub username (login)
+    - `username` — display name
+    - `avatar_url` — GitHub avatar CDN URL
+    - `joined_at` — ISO 8601 timestamp of account creation
+    - `default_level` — always `"L1"` for new contributors
+  - Returns `{ profile, bootstrapped: boolean }` — `bootstrapped: true` means the profile was written for the first time
+
+## Running Tests
+
+```bash
+npm test
+```
 
 ### Project Structure
 
