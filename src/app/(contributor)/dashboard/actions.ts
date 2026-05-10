@@ -67,9 +67,18 @@ function fallbackStats() {
 
 export async function getDashboardData(
     githubHandle: string,
-    token?: string,
+    tokenOrForceSync?: string | boolean,
     forceSync = false
 ) {
+    const token =
+    typeof tokenOrForceSync === "string"
+        ? tokenOrForceSync
+        : undefined;
+
+const resolvedForceSync =
+    typeof tokenOrForceSync === "boolean"
+        ? tokenOrForceSync
+        : forceSync;
     const resolvedHandle = githubHandle?.toLowerCase();
     if (!resolvedHandle) {
         return { success: true, stats: fallbackStats(), fallback: true };
@@ -77,7 +86,7 @@ export async function getDashboardData(
 
     const key = resolvedHandle;
 
-    if (!forceSync) {
+    if (!resolvedForceSync){
         const cached = await getCached(key);
         if (cached && Date.now() - cached.lastSync < CACHE_TTL) {
             return { success: true, stats: JSON.parse(cached.statsJson), fromCache: true };
@@ -291,4 +300,48 @@ export async function getProfileData(
             skillsMeta: { truncated: false }
         };
     }
+}
+
+export async function getAchievements(
+    githubHandle?: string,
+    token?: string,
+    forceSync = false
+) {
+    return {
+        success: true,
+        badges: [] as { earned: boolean }[]
+    };
+}
+
+export async function getContributorContext(
+    githubHandle?: string,
+    token?: string
+) {
+    return {
+        success: true,
+        repos: [] as { label: string; value: string }[],
+        skills: [],
+        interests: [],
+        experience: "beginner"
+    };
+}
+
+export async function getAnalyzedIssues(
+    repo?: string,
+    level?: string,
+    beginnerOnly?: boolean,
+    limit = 10,
+    token?: string
+) {
+    return {
+        success: true,
+        issues: []
+    };
+}
+
+export async function getContributionData(
+    githubHandle?: string,
+    forceSync = false
+) {
+    return [];
 }
