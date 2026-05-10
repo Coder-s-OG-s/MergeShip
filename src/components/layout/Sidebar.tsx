@@ -63,7 +63,7 @@ export function Sidebar() {
         setUserData({ 
           name, 
           initials, 
-          level: statsRes.success ? statsRes.stats.level.split(' ')[0] : "L1",
+          level: statsRes.success ? (statsRes.stats.levelCode || "L1") : "L1",
           xp: statsRes.success ? statsRes.stats.totalXP : "0"
         });
       } catch (e) {}
