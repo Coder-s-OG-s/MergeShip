@@ -37,7 +37,10 @@ export function StatSection({ handle, forceSync = false }: { handle: string; for
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8 text-white">
-      <LevelStatCard level={stats.level} progress={stats.progress} />
+      <LevelStatCard
+        level={stats.level || `${stats.levelCode || "L1"} ${stats.levelTitle || "Beginner"}`}
+        progress={stats.progress}
+      />
       
       <StatCard
         label="Contributions"

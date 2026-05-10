@@ -45,7 +45,7 @@ export function ContributorSidebar() {
         
         setUserData({
           name: handle,
-          level: statsRes.success ? statsRes.stats.level.split(' ')[0] : "L1",
+          level: statsRes.success ? (statsRes.stats.levelCode || "L1") : "L1",
           xp: statsRes.success ? `${statsRes.stats.totalXP} XP` : "0 XP",
           initials: session.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
           streak: statsRes.success ? statsRes.stats.streak : 0
