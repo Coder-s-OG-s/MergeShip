@@ -22,6 +22,11 @@ export default function DevLoginButtons({ personas }: { personas: Persona[] }) {
     setPending(persona.email);
     setError(null);
     const sb = getBrowserSupabase();
+    if (!sb) {
+      setError('Supabase env not configured');
+      setPending(null);
+      return;
+    }
     const { error: signInErr } = await sb.auth.signInWithPassword({
       email: persona.email,
       password: DEV_PASSWORD,

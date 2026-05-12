@@ -196,14 +196,20 @@ function SectionCurtain({ children, dark, className = '' }: {
 
 function NavAuth() {
   const [user, setUser] = useState<NavUser | null>(null);
+  const [configured, setConfigured] = useState<boolean>(true);
 
   useEffect(() => {
     const sb = getBrowserSupabase();
+    if (!sb) {
+      setConfigured(false);
+      return;
+    }
     sb.auth.getUser().then(({ data }) => {
       if (!data.user) return setUser(null);
       const u = data.user;
       const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
-      const name = (meta['name'] as string | undefined) ?? (meta['user_name'] as string | undefined) ?? null;
+      const name =
+        (meta['name'] as string | undefined) ?? (meta['user_name'] as string | undefined) ?? null;
       setUser({ name, email: u.email ?? null });
     });
   }, []);
@@ -211,6 +217,7 @@ function NavAuth() {
   const handleLogin = () => {
     const origin = window.location.origin;
     const sb = getBrowserSupabase();
+    if (!sb) return;
     void sb.auth.signInWithOAuth({
       provider: 'github',
       options: { redirectTo: `${origin}/api/auth/callback?next=/onboarding` },
@@ -219,9 +226,18 @@ function NavAuth() {
 
   const handleLogout = async () => {
     const sb = getBrowserSupabase();
+    if (!sb) return;
     await sb.auth.signOut();
     setUser(null);
   };
+
+  if (!configured) {
+    return (
+      <button className="btn" disabled title="Auth not configured on this deployment">
+        Sign-in coming soon
+      </button>
+    );
+  }
 
   if (user) {
     return (

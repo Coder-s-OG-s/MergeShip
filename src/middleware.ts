@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { readSupabaseEnv } from '@/lib/supabase/env';
 
 /**
  * Middleware:
@@ -7,13 +8,11 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
  *   2. Enforce the install gate — signed-in users without a GitHub App install
  *      get redirected to /install, except on a small allowlist.
  *
+ * If Supabase env is not configured (e.g. preview deploy without secrets), fall
+ * through with no auth — the app stays renderable, only protected routes 404.
+ *
  * Routes that bypass the gate:
- *   - / (landing page)
- *   - /install (the gate page itself)
- *   - /api/auth/* (OAuth flow)
- *   - /api/webhooks/* (no user session)
- *   - /dev/* (dev-only seeded personas)
- *   - /_next/* and static assets
+ *   /, /install, /api/auth/*, /api/webhooks/*, /api/inngest, /dev/*, /_next/*
  */
 
 const GATE_BYPASS_PREFIXES = [
@@ -34,21 +33,24 @@ function shouldBypassGate(pathname: string): boolean {
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next({ request: req });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return req.cookies.getAll();
-        },
-        setAll(toSet: { name: string; value: string; options?: CookieOptions }[]) {
-          for (const { name, value } of toSet) req.cookies.set(name, value);
-          for (const { name, value, options } of toSet) res.cookies.set(name, value, options);
-        },
+  const env = readSupabaseEnv();
+  if (!env) {
+    // No Supabase configured — let the request through. The landing page renders;
+    // anything that needs auth will show its own "not configured" state.
+    return res;
+  }
+
+  const supabase = createServerClient(env.url, env.anonKey, {
+    cookies: {
+      getAll() {
+        return req.cookies.getAll();
+      },
+      setAll(toSet: { name: string; value: string; options?: CookieOptions }[]) {
+        for (const { name, value } of toSet) req.cookies.set(name, value);
+        for (const { name, value, options } of toSet) res.cookies.set(name, value, options);
       },
     },
-  );
+  });
 
   const {
     data: { user },
@@ -56,7 +58,6 @@ export async function middleware(req: NextRequest) {
 
   const pathname = req.nextUrl.pathname;
 
-  // Not signed in: let public routes through; everything else bounces to landing.
   if (!user) {
     if (shouldBypassGate(pathname)) return res;
     const url = req.nextUrl.clone();
@@ -64,7 +65,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Signed in: check the install gate unless bypassed.
   if (shouldBypassGate(pathname)) return res;
 
   const { data: install } = await supabase

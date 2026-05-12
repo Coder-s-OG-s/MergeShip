@@ -17,6 +17,13 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = getServerSupabase();
+  if (!supabase) {
+    return NextResponse.json(
+      { error: 'auth not configured' },
+      { status: 503, headers: { 'cache-control': 'no-store' } },
+    );
+  }
+
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
