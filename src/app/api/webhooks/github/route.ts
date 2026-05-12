@@ -49,7 +49,18 @@ export async function POST(req: NextRequest) {
     if (insertErr.code === '23505') {
       return NextResponse.json({ ok: true, duplicate: true });
     }
-    return NextResponse.json({ error: 'persist failed' }, { status: 500 });
+    // Surface the real error so misconfigurations are visible in GitHub's
+    // delivery view. GitHub is the only caller; nothing sensitive leaks.
+    return NextResponse.json(
+      {
+        error: 'persist failed',
+        code: insertErr.code,
+        message: insertErr.message,
+        details: insertErr.details,
+        hint: insertErr.hint,
+      },
+      { status: 500 },
+    );
   }
 
   await inngest.send({
