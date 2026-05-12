@@ -69,14 +69,42 @@ export async function middleware(req: NextRequest) {
 
   if (shouldBypassGate(pathname)) return res;
 
-  const { data: install } = await supabase
-    .from('github_installations')
-    .select('id')
-    .eq('user_id', user.id)
-    .is('uninstalled_at', null)
-    .maybeSingle();
+  // Use the PostgREST endpoint directly with the service-role key so RLS
+  // can't hide the row during session cookie refresh. supabase-js doesn't
+  // play nicely with the Edge runtime, but a plain fetch does.
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let installed = false;
+  if (serviceKey) {
+    try {
+      const url = `${env.url}/rest/v1/github_installations?user_id=eq.${user.id}&uninstalled_at=is.null&select=id&limit=1`;
+      const r = await fetch(url, {
+        headers: {
+          apikey: serviceKey,
+          authorization: `Bearer ${serviceKey}`,
+        },
+        cache: 'no-store',
+      });
+      if (r.ok) {
+        const rows = (await r.json()) as Array<{ id: number }>;
+        installed = rows.length > 0;
+      }
+    } catch {
+      // Fall through — leaves installed = false, gate keeps protecting.
+    }
+  } else {
+    // No service key configured — fall back to the user-scoped client. This
+    // path was the original behaviour; keeping it for local-dev flows where
+    // service role isn't wired up.
+    const { data } = await supabase
+      .from('github_installations')
+      .select('id')
+      .eq('user_id', user.id)
+      .is('uninstalled_at', null)
+      .maybeSingle();
+    installed = Boolean(data);
+  }
 
-  if (!install) {
+  if (!installed) {
     const url = req.nextUrl.clone();
     url.pathname = '/install';
     return NextResponse.redirect(url);
