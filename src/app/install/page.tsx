@@ -34,24 +34,32 @@ export default async function InstallPage() {
   // straight to the source of truth.
   const service = getServiceSupabase();
   if (service && bootstrap?.ok) {
+    // Use limit(1) instead of maybeSingle() — duplicate active rows are
+    // possible when GitHub issues a new installation_id without deleting
+    // the previous one (reinstalls after the old row was force-reactivated).
+    // maybeSingle() would error and fall through, leaving the user stuck.
+
     // 1. Already linked to this user → straight to onboarding.
-    const { data: linked } = await service
+    const { data: linkedRows } = await service
       .from('github_installations')
       .select('id')
       .eq('user_id', user.id)
       .is('uninstalled_at', null)
-      .maybeSingle();
-    if (linked) redirect('/onboarding');
+      .order('installed_at', { ascending: false })
+      .limit(1);
+    if (linkedRows && linkedRows.length > 0) redirect('/onboarding');
 
     // 2. Row exists by account_login but user_id is null or stale → link it
     //    to the current user. Covers orphans from pre-bootstrap webhooks and
     //    accounts that re-authed under a new auth.users.id.
-    const { data: byHandle } = await service
+    const { data: byHandleRows } = await service
       .from('github_installations')
       .select('id, user_id')
       .eq('account_login', bootstrap.data.githubHandle)
       .is('uninstalled_at', null)
-      .maybeSingle();
+      .order('installed_at', { ascending: false })
+      .limit(1);
+    const byHandle = byHandleRows?.[0];
     if (byHandle) {
       if (byHandle.user_id !== user.id) {
         await service

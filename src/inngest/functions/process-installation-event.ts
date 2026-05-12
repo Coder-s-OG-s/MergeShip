@@ -45,12 +45,27 @@ export const processInstallationEvent = inngest.createFunction(
           .eq('github_handle', install.account.login)
           .maybeSingle();
 
+        // Mark any prior active installs on the same account as superseded.
+        // GitHub issues a fresh installation_id on reinstall and will only
+        // send the delete webhook for the previous install once — if that
+        // event is lost (rare, but happens) or arrives after the create,
+        // we'd end up with two rows that both look active. Lookup paths use
+        // maybeSingle and break in that state.
+        await sb
+          .from('github_installations')
+          .update({ uninstalled_at: new Date().toISOString() })
+          .eq('account_login', install.account.login)
+          .is('uninstalled_at', null)
+          .neq('id', install.id);
+
         await sb.from('github_installations').upsert({
           id: install.id,
           user_id: profile?.id ?? null,
           account_login: install.account.login,
           account_type: install.account.type,
           repository_selection: install.repository_selection,
+          uninstalled_at: null,
+          suspended_at: null,
         });
 
         // GitHub only includes `repositories` in the payload when the user
