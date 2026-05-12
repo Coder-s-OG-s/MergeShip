@@ -16,7 +16,7 @@ import { inngest } from '@/inngest/client';
 export async function POST(req: NextRequest) {
   const secret = process.env.GITHUB_WEBHOOK_SECRET;
   if (!secret) {
-    return NextResponse.json({ error: 'webhook secret not configured' }, { status: 500 });
+    return NextResponse.json({ error: 'webhook secret not configured' }, { status: 503 });
   }
 
   const signature = req.headers.get('x-hub-signature-256');
@@ -35,6 +35,9 @@ export async function POST(req: NextRequest) {
 
   const payloadHash = crypto.createHash('sha256').update(raw).digest('hex');
   const supabase = getServiceSupabase();
+  if (!supabase) {
+    return NextResponse.json({ error: 'storage not configured' }, { status: 503 });
+  }
 
   // Idempotency: if this delivery already arrived, drop it.
   const { error: insertErr } = await supabase

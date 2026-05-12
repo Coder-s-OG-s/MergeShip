@@ -19,6 +19,8 @@ type BootstrapOutput = {
  */
 export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
   const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured on this deployment');
+
   const {
     data: { user },
     error: userErr,
@@ -40,6 +42,8 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
 
   // Use service role for the UPSERT — RLS would block users from inserting their own row.
   const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role not configured');
+
   const { data: profile, error: upsertErr } = await service
     .from('profiles')
     .upsert(

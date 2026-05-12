@@ -91,6 +91,7 @@ export const auditRun = inngest.createFunction(
 
     await step.run('mark-profile-audited', async () => {
       const sb = getServiceSupabase();
+      if (!sb) throw new Error('service role not configured');
       await sb.from('profiles').update({ audit_completed: true }).eq('id', userId);
     });
 

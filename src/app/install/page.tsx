@@ -11,6 +11,10 @@ export const dynamic = 'force-dynamic';
  */
 export default async function InstallPage() {
   const sb = getServerSupabase();
+  if (!sb) {
+    return <NotConfiguredNotice />;
+  }
+
   const {
     data: { user },
   } = await sb.auth.getUser();
@@ -50,6 +54,19 @@ export default async function InstallPage() {
         <p className="mt-8 text-sm text-gray-500">
           We only ask for read access to your repos and write access on issues you&apos;re working
           on. You can revoke it any time in GitHub settings.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function NotConfiguredNotice() {
+  return (
+    <div className="min-h-screen px-6 py-20 text-white">
+      <div className="mx-auto max-w-xl">
+        <h1 className="mb-4 font-display text-3xl font-bold">Service not configured</h1>
+        <p className="text-gray-400">
+          Auth is not wired up on this deployment yet. Check back soon.
         </p>
       </div>
     </div>
