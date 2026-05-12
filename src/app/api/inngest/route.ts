@@ -9,6 +9,7 @@ import {
   processInstallationReposEvent,
 } from '@/inngest/functions/process-installation-event';
 import { issuesSweep } from '@/inngest/functions/issues-sweep';
+import { recommendationsBuild } from '@/inngest/functions/recommendations-build';
 import { streakDetect, recsExpire, activityLogCleanup } from '@/inngest/functions/maintenance';
 
 export const { GET, POST, PUT } = serve({
@@ -21,6 +22,7 @@ export const { GET, POST, PUT } = serve({
     processInstallationEvent,
     processInstallationReposEvent,
     issuesSweep,
+    recommendationsBuild,
     streakDetect,
     recsExpire,
     activityLogCleanup,
