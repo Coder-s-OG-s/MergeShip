@@ -4,6 +4,8 @@ import { isOk } from '@/lib/result';
 
 export const dynamic = 'force-dynamic';
 
+const LANGUAGE_TABS = ['TypeScript', 'Python', 'Go', 'Rust'] as const;
+
 export default async function LeaderboardPage({
   searchParams,
 }: {
@@ -17,25 +19,26 @@ export default async function LeaderboardPage({
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-3xl">
         <h1 className="font-display text-3xl font-bold">Leaderboard</h1>
-        <nav className="mt-4 flex gap-3 text-sm">
+        <nav className="mt-4 flex flex-wrap gap-2 text-sm">
           <Link
             href="/leaderboard?scope=global"
             className={`rounded-lg px-3 py-1 ${scope === 'global' ? 'bg-zinc-800' : 'text-zinc-400 hover:text-white'}`}
           >
             Global
           </Link>
-          <Link
-            href="/leaderboard?scope=cohort&id=gssoc-26"
-            className={`rounded-lg px-3 py-1 ${scope === 'cohort' ? 'bg-zinc-800' : 'text-zinc-400 hover:text-white'}`}
-          >
-            GSSoC &apos;26
-          </Link>
-          <Link
-            href="/leaderboard?scope=language&id=TypeScript"
-            className={`rounded-lg px-3 py-1 ${scope === 'language' ? 'bg-zinc-800' : 'text-zinc-400 hover:text-white'}`}
-          >
-            TypeScript
-          </Link>
+          {LANGUAGE_TABS.map((lang) => (
+            <Link
+              key={lang}
+              href={`/leaderboard?scope=language&id=${lang}`}
+              className={`rounded-lg px-3 py-1 ${
+                scope === 'language' && scopeId === lang
+                  ? 'bg-zinc-800'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              {lang}
+            </Link>
+          ))}
         </nav>
 
         <ul className="mt-6 divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900">

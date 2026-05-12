@@ -123,13 +123,15 @@ NEXT_PUBLIC_APP_URL=https://mergeship.dev
 
 Leave `MOCK_*` vars unset in production.
 
-## 8. Seed cohorts
+## 8. Seed cohorts (optional)
 
-In Supabase SQL editor, insert your first cohort row:
+Cohorts are groupings used by leaderboards — e.g. participants in an OSS program (GSoC, LFX Mentorship, Outreachy, any of them), a class, a hackathon batch. Skip this if you don't have one yet; the global + per-language leaderboards work without any cohort rows.
+
+Example, replace with whatever makes sense for your launch:
 
 ```sql
 insert into cohorts (slug, name, starts_at, ends_at)
-values ('gssoc-26', 'GSSoC 2026', '2026-05-15', '2026-08-15');
+values ('spring-26', 'Spring 2026', '2026-03-01', '2026-06-30');
 ```
 
 ## 9. Merge the branch
