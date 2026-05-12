@@ -1,5 +1,6 @@
 import { getRecommendations } from '@/app/actions/recommendations';
 import { getServerSupabase } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/service';
 import { redirect } from 'next/navigation';
 import { isErr, isOk } from '@/lib/result';
 import RecCards from './rec-cards';
@@ -18,7 +19,10 @@ export default async function DashboardPage() {
   } = await sb.auth.getUser();
   if (!user) redirect('/');
 
-  const { data: profile } = await sb
+  // Service role for the profile read — same reasoning as middleware /install:
+  // user-scoped client can miss the row during session cookie refresh.
+  const service = getServiceSupabase();
+  const { data: profile } = await (service ?? sb)
     .from('profiles')
     .select('github_handle, xp, level, audit_completed')
     .eq('id', user.id)
