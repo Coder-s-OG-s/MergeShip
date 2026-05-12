@@ -58,9 +58,7 @@ export const githubInstallations = pgTable(
   'github_installations',
   {
     id: bigint('id', { mode: 'number' }).primaryKey(),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => profiles.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => profiles.id, { onDelete: 'cascade' }),
     accountLogin: text('account_login').notNull(),
     accountType: text('account_type', { enum: ['User', 'Organization'] }).notNull(),
     repositorySelection: text('repository_selection', { enum: ['all', 'selected'] }).notNull(),
