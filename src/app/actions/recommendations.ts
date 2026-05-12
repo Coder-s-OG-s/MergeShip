@@ -3,7 +3,7 @@
 import { sql } from 'drizzle-orm';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
-import { getDb, schema } from '@/lib/db/client';
+import { tryGetDb, schema } from '@/lib/db/client';
 import { rateLimit } from '@/lib/rate-limit';
 import { ok, err, type Result } from '@/lib/result';
 import { cacheGet, cacheSet, cacheDel } from '@/lib/cache';
@@ -55,7 +55,8 @@ export async function getRecommendations(): Promise<Result<RecCard[]>> {
 
   // Phase 2: pull recs that already exist in the DB. The background sweep that
   // populates the recs table is wired in a separate Inngest function.
-  const db = getDb();
+  const db = tryGetDb();
+  if (!db) return ok([]);
   const rows = await db
     .select({
       id: schema.recommendations.id,

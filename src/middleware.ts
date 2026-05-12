@@ -27,6 +27,8 @@ const GATE_BYPASS_PREFIXES = [
 
 function shouldBypassGate(pathname: string): boolean {
   if (pathname === '/') return true;
+  // Public profile pages — /@username — open to anyone.
+  if (pathname.startsWith('/@')) return true;
   return GATE_BYPASS_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
