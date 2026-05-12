@@ -34,17 +34,53 @@ export const issuesSweep = inngest.createFunction(
 
         const octokit = await getInstallOctokit(install.id);
 
+        // Resolve fork → upstream. The interesting issues live on the
+        // upstream a user forked from, not on the fork itself. Dedup the
+        // resulting set so two users forking the same project don't
+        // sweep it twice.
+        const targets = new Set<string>();
         for (const repo of repos ?? []) {
           const [owner, name] = repo.repo_full_name.split('/');
           if (!owner || !name) continue;
+          try {
+            const meta = await octokit.repos.get({ owner, repo: name });
+            const upstream = meta.data.fork
+              ? (meta.data.parent?.full_name ?? null)
+              : repo.repo_full_name;
+            if (upstream) targets.add(upstream);
+          } catch {
+            // Repo went private, deleted, or the install lost access —
+            // skip silently.
+          }
+        }
 
-          const { data: issues } = await octokit.issues.listForRepo({
-            owner,
-            repo: name,
-            state: 'open',
-            per_page: 30,
-            sort: 'updated',
-          });
+        for (const target of targets) {
+          const [owner, name] = target.split('/');
+          if (!owner || !name) continue;
+
+          let issues: Array<{
+            number: number;
+            title: string;
+            body: string | null;
+            html_url: string;
+            comments: number;
+            labels: Array<string | { name?: string }>;
+            pull_request?: unknown;
+          }> = [];
+          try {
+            const res = await octokit.issues.listForRepo({
+              owner,
+              repo: name,
+              state: 'open',
+              per_page: 30,
+              sort: 'updated',
+            });
+            issues = res.data as typeof issues;
+          } catch {
+            // Public-issue read should work even without install access;
+            // if it fails the upstream isn't reachable, skip.
+            continue;
+          }
 
           for (const issue of issues) {
             if (issue.pull_request) continue; // skip PRs
@@ -71,7 +107,7 @@ export const issuesSweep = inngest.createFunction(
 
             await sb.from('issues').upsert(
               {
-                repo_full_name: repo.repo_full_name,
+                repo_full_name: target,
                 github_issue_number: issue.number,
                 title: issue.title,
                 body_excerpt: (issue.body ?? '').slice(0, 500),
@@ -97,6 +133,13 @@ export const issuesSweep = inngest.createFunction(
         }
       }
       return total;
+    });
+
+    // Build per-user recommendations off the freshly-scored issue pool.
+    await step.run('build-recommendations', async () => {
+      const sb = getServiceSupabase();
+      if (!sb) throw new Error('service role missing');
+      await inngest.send({ name: 'recommendations/build', data: {} });
     });
 
     return { swept: sweepCount };
