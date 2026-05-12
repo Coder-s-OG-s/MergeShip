@@ -27,34 +27,39 @@ export default async function InstallPage() {
   // resolve account_login → user_id. Quietly no-ops if already bootstrapped.
   const bootstrap = await bootstrapProfile().catch(() => null);
 
-  // If they already have an active install, skip the gate.
-  const { data: existing } = await sb
-    .from('github_installations')
-    .select('id')
-    .eq('user_id', user.id)
-    .is('uninstalled_at', null)
-    .maybeSingle();
+  // Use service role for the install lookup. RLS would also work, but the
+  // user-scoped client can miss rows during the brief window when the
+  // session cookie is being refreshed by middleware, leaving users stuck
+  // on this page despite a perfectly good install row. Bypass by going
+  // straight to the source of truth.
+  const service = getServiceSupabase();
+  if (service && bootstrap?.ok) {
+    // 1. Already linked to this user → straight to onboarding.
+    const { data: linked } = await service
+      .from('github_installations')
+      .select('id')
+      .eq('user_id', user.id)
+      .is('uninstalled_at', null)
+      .maybeSingle();
+    if (linked) redirect('/onboarding');
 
-  if (existing) redirect('/onboarding');
-
-  // Back-link orphan installations: if the user installed before their profile
-  // row existed, the webhook handler stashed nothing. Recover by matching
-  // account_login → github_handle. Uses service role to bypass RLS on the
-  // installation table.
-  if (bootstrap?.ok) {
-    const service = getServiceSupabase();
-    if (service) {
-      const { data: orphan } = await service
-        .from('github_installations')
-        .select('id')
-        .eq('account_login', bootstrap.data.githubHandle)
-        .is('user_id', null)
-        .is('uninstalled_at', null)
-        .maybeSingle();
-      if (orphan) {
-        await service.from('github_installations').update({ user_id: user.id }).eq('id', orphan.id);
-        redirect('/onboarding');
+    // 2. Row exists by account_login but user_id is null or stale → link it
+    //    to the current user. Covers orphans from pre-bootstrap webhooks and
+    //    accounts that re-authed under a new auth.users.id.
+    const { data: byHandle } = await service
+      .from('github_installations')
+      .select('id, user_id')
+      .eq('account_login', bootstrap.data.githubHandle)
+      .is('uninstalled_at', null)
+      .maybeSingle();
+    if (byHandle) {
+      if (byHandle.user_id !== user.id) {
+        await service
+          .from('github_installations')
+          .update({ user_id: user.id })
+          .eq('id', byHandle.id);
       }
+      redirect('/onboarding');
     }
   }
 
