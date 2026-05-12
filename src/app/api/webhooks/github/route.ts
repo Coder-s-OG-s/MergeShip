@@ -39,28 +39,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'storage not configured' }, { status: 503 });
   }
 
-  // Idempotency: if this delivery already arrived, drop it.
+  // Record the delivery. Duplicate UUIDs (replays from GitHub's "Redeliver"
+  // button) are still forwarded to Inngest — the downstream functions are
+  // idempotent on their own writes via UNIQUE constraints, so a replay is
+  // safe and sometimes necessary to recover from a prior failure.
   const { error: insertErr } = await supabase
     .from('webhook_deliveries')
     .insert({ id: deliveryId, event_type: eventType, payload_hash: payloadHash });
 
+  let duplicate = false;
   if (insertErr) {
-    // 23505 = unique_violation in Postgres
     if (insertErr.code === '23505') {
-      return NextResponse.json({ ok: true, duplicate: true });
+      duplicate = true;
+    } else {
+      return NextResponse.json(
+        {
+          error: 'persist failed',
+          code: insertErr.code,
+          message: insertErr.message,
+          details: insertErr.details,
+          hint: insertErr.hint,
+        },
+        { status: 500 },
+      );
     }
-    // Surface the real error so misconfigurations are visible in GitHub's
-    // delivery view. GitHub is the only caller; nothing sensitive leaks.
-    return NextResponse.json(
-      {
-        error: 'persist failed',
-        code: insertErr.code,
-        message: insertErr.message,
-        details: insertErr.details,
-        hint: insertErr.hint,
-      },
-      { status: 500 },
-    );
   }
 
   await inngest.send({
@@ -68,5 +70,5 @@ export async function POST(req: NextRequest) {
     data: { deliveryId, eventType, payload: JSON.parse(raw) },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, duplicate });
 }
