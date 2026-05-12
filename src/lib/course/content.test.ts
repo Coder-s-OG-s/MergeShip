@@ -13,7 +13,8 @@ describe('course content', () => {
 
   it('moduleBySlug finds existing module', () => {
     const first = COURSE_MODULES[0];
-    expect(moduleBySlug(first.slug)).toBe(first);
+    expect(first).toBeDefined();
+    expect(moduleBySlug(first!.slug)).toBe(first);
   });
 
   it('moduleBySlug returns undefined for unknown slug', () => {
