@@ -45,12 +45,18 @@ export const processInstallationEvent = inngest.createFunction(
           .eq('github_handle', install.account.login)
           .maybeSingle();
 
+        // Reset uninstalled_at / suspended_at on every create so reinstalls
+        // and unsuspends after a previous uninstall don't leave the row
+        // looking dead. Installation IDs are reused by GitHub when the same
+        // app is reinstalled on the same account.
         await sb.from('github_installations').upsert({
           id: install.id,
           user_id: profile?.id ?? null,
           account_login: install.account.login,
           account_type: install.account.type,
           repository_selection: install.repository_selection,
+          uninstalled_at: null,
+          suspended_at: null,
         });
 
         // GitHub only includes `repositories` in the payload when the user
