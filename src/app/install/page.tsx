@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { getServerSupabase } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/service';
 import { redirect } from 'next/navigation';
+import { bootstrapProfile } from '@/app/actions/profile';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +23,10 @@ export default async function InstallPage() {
 
   if (!user) redirect('/');
 
+  // Idempotent — makes sure a profile row exists so the install webhook can
+  // resolve account_login → user_id. Quietly no-ops if already bootstrapped.
+  const bootstrap = await bootstrapProfile().catch(() => null);
+
   // If they already have an active install, skip the gate.
   const { data: existing } = await sb
     .from('github_installations')
@@ -30,6 +36,27 @@ export default async function InstallPage() {
     .maybeSingle();
 
   if (existing) redirect('/onboarding');
+
+  // Back-link orphan installations: if the user installed before their profile
+  // row existed, the webhook handler stashed nothing. Recover by matching
+  // account_login → github_handle. Uses service role to bypass RLS on the
+  // installation table.
+  if (bootstrap?.ok) {
+    const service = getServiceSupabase();
+    if (service) {
+      const { data: orphan } = await service
+        .from('github_installations')
+        .select('id')
+        .eq('account_login', bootstrap.data.githubHandle)
+        .is('user_id', null)
+        .is('uninstalled_at', null)
+        .maybeSingle();
+      if (orphan) {
+        await service.from('github_installations').update({ user_id: user.id }).eq('id', orphan.id);
+        redirect('/onboarding');
+      }
+    }
+  }
 
   const slug = process.env.GITHUB_APP_SLUG ?? 'mergeship';
   const installUrl = `https://github.com/apps/${slug}/installations/new`;

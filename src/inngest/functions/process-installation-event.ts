@@ -34,23 +34,19 @@ export const processInstallationEvent = inngest.createFunction(
       const install = payload.installation;
 
       if (payload.action === 'created') {
-        // Find a profile that matches account_login; the user just signed up on
-        // GitHub OAuth, then went through the install flow. Their profiles row
-        // is already there (bootstrapped at OAuth callback).
+        // Try to resolve account_login → profile. If no profile yet (user
+        // installed before signing in, or webhook beat the OAuth callback's
+        // bootstrap), store the row with user_id = null. /install will
+        // back-link it on the user's next visit.
         const { data: profile } = await sb
           .from('profiles')
           .select('id')
           .eq('github_handle', install.account.login)
           .maybeSingle();
-        if (!profile) {
-          // Best-effort: no matching profile means the user installed without
-          // signing in. Skip — next sign-in's bootstrap will re-link.
-          return { skipped: true, reason: 'no_profile' };
-        }
 
         await sb.from('github_installations').upsert({
           id: install.id,
-          user_id: profile.id,
+          user_id: profile?.id ?? null,
           account_login: install.account.login,
           account_type: install.account.type,
           repository_selection: install.repository_selection,
@@ -64,7 +60,7 @@ export const processInstallationEvent = inngest.createFunction(
             })),
           );
         }
-        return { ok: true };
+        return { ok: true, linked: Boolean(profile) };
       }
 
       if (payload.action === 'deleted') {
