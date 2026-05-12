@@ -1,5 +1,6 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { getInstallOctokit } from '@/lib/github/app';
 
 /**
  * GitHub App installation lifecycle:
@@ -52,15 +53,34 @@ export const processInstallationEvent = inngest.createFunction(
           repository_selection: install.repository_selection,
         });
 
-        if (payload.repositories) {
-          await sb.from('installation_repositories').insert(
-            payload.repositories.map((r) => ({
+        // GitHub only includes `repositories` in the payload when the user
+        // picked "Selected repositories". For "All repositories" installs the
+        // array is omitted — we have to ask the API. Either way, normalize to
+        // the same set of installation_repositories rows.
+        let repos: Array<{ full_name: string }> = payload.repositories ?? [];
+        if (repos.length === 0) {
+          try {
+            const octokit = await getInstallOctokit(install.id);
+            const res = await octokit.paginate(octokit.apps.listReposAccessibleToInstallation, {
+              per_page: 100,
+            });
+            repos = (res as unknown as Array<{ full_name: string }>).map((r) => ({
+              full_name: r.full_name,
+            }));
+          } catch {
+            // Best-effort. issues-sweep will re-attempt to discover repos later.
+          }
+        }
+        if (repos.length > 0) {
+          await sb.from('installation_repositories').upsert(
+            repos.map((r) => ({
               installation_id: install.id,
               repo_full_name: r.full_name,
             })),
+            { onConflict: 'installation_id,repo_full_name' },
           );
         }
-        return { ok: true, linked: Boolean(profile) };
+        return { ok: true, linked: Boolean(profile), repoCount: repos.length };
       }
 
       if (payload.action === 'deleted') {
