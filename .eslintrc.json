@@ -1,0 +1,27 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    "no-unused-vars": "off",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "prefer-const": "error",
+    "eqeqeq": ["error", "always", { "null": "ignore" }]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "scripts/**/*", "src/lib/logger.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules",
+    ".next",
+    "dist",
+    "build",
+    "coverage",
+    "supabase/migrations",
+    "src/components/landing/HeroScene.tsx",
+    "src/components/landing/LandingPage.tsx"
+  ]
+}

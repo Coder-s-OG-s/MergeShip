@@ -1,0 +1,27 @@
+node_modules
+.next
+out
+dist
+build
+coverage
+*.lock
+*.log
+.env*
+.vercel
+.supabase
+public
+
+# Partner's landing components — keep untouched during backend rebuild
+src/components/landing/HeroScene.tsx
+src/components/landing/LandingPage.tsx
+src/app/landing.css
+
+# Pre-existing partner files we won't reformat
+.github/ISSUE_TEMPLATE
+docs
+next.config.js
+tailwind.config.js
+src/app/globals.css
+
+# Drizzle / Supabase auto-generated
+supabase/migrations
