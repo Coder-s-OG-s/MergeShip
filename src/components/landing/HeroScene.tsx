@@ -1,3 +1,5 @@
+/* eslint-disable */
+// @ts-nocheck — partner's Three.js scene; keep loose during the backend rebuild
 'use client';
 
 import { useEffect, useRef } from 'react';

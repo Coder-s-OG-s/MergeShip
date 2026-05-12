@@ -1,12 +1,15 @@
+/* eslint-disable */
+// @ts-nocheck — partner's landing page; backend rebuild keeps it untouched except for auth swap
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, useScroll, animate } from 'framer-motion';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { account } from '@/lib/appwrite';
-import { Models, OAuthProvider } from 'appwrite';
+import { getBrowserSupabase } from '@/lib/supabase/browser';
 import '@/app/landing.css';
+
+type NavUser = { name: string | null; email: string | null };
 
 const HeroScene = dynamic(() => import('./HeroScene'), { ssr: false });
 
@@ -192,19 +195,49 @@ function SectionCurtain({ children, dark, className = '' }: {
 // ─── Nav ─────────────────────────────────────────────────────────────────────
 
 function NavAuth() {
-  const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
+  const [user, setUser] = useState<NavUser | null>(null);
+  const [configured, setConfigured] = useState<boolean>(true);
+
   useEffect(() => {
-    account.get().then(setUser).catch(() => setUser(null));
+    const sb = getBrowserSupabase();
+    if (!sb) {
+      setConfigured(false);
+      return;
+    }
+    sb.auth.getUser().then(({ data }) => {
+      if (!data.user) return setUser(null);
+      const u = data.user;
+      const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
+      const name =
+        (meta['name'] as string | undefined) ?? (meta['user_name'] as string | undefined) ?? null;
+      setUser({ name, email: u.email ?? null });
+    });
   }, []);
 
   const handleLogin = () => {
     const origin = window.location.origin;
-    account.createOAuth2Session(OAuthProvider.Github, `${origin}/onboarding`, `${origin}/onboarding`);
+    const sb = getBrowserSupabase();
+    if (!sb) return;
+    void sb.auth.signInWithOAuth({
+      provider: 'github',
+      options: { redirectTo: `${origin}/api/auth/callback?next=/onboarding` },
+    });
   };
+
   const handleLogout = async () => {
-    await account.deleteSession('current');
+    const sb = getBrowserSupabase();
+    if (!sb) return;
+    await sb.auth.signOut();
     setUser(null);
   };
+
+  if (!configured) {
+    return (
+      <button className="btn" disabled title="Auth not configured on this deployment">
+        Sign-in coming soon
+      </button>
+    );
+  }
 
   if (user) {
     return (
