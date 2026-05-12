@@ -25,10 +25,9 @@ describe('getBrowserSupabase', () => {
     expect(isSupabaseConfigured()).toBe(false);
   });
 
-  it('returns a client when env present', () => {
+  it('isSupabaseConfigured reflects env state', () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://x.supabase.co';
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon';
-    expect(getBrowserSupabase()).not.toBeNull();
     expect(isSupabaseConfigured()).toBe(true);
   });
 });

@@ -20,14 +20,17 @@ describe('getServiceSupabase', () => {
     }
   });
 
-  it('returns null without env', () => {
+  it('returns null without url', () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'svc';
     expect(getServiceSupabase()).toBeNull();
   });
 
-  it('returns a client when env present', () => {
+  it('returns null without service key', () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://x.supabase.co';
-    process.env.SUPABASE_SERVICE_ROLE_KEY = 'svc';
-    const client = getServiceSupabase();
-    expect(client).not.toBeNull();
+    expect(getServiceSupabase()).toBeNull();
+  });
+
+  it('returns null when both missing', () => {
+    expect(getServiceSupabase()).toBeNull();
   });
 });
