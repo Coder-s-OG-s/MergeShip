@@ -9,53 +9,99 @@ import { DifficultySchema } from '@/lib/llm/schemas';
  * Pulls open issues from every active GitHub App install, scores difficulty,
  * upserts into the issues table.
  *
- * Cron: every 30 min.
+ * Cron: every 30 min. The function is split into named steps so the run
+ * trace shows where rows drop. Each step returns counts + a sample so a
+ * single Inngest run trace tells us exactly what's happening.
  */
+
+type RepoRow = { repo_full_name: string };
+type ResolvedTarget = { target: string; via: string; isFork: boolean };
+
 export const issuesSweep = inngest.createFunction(
   { id: 'issues-sweep' },
   { cron: '*/30 * * * *' },
   async ({ step }) => {
-    const sweepCount = await step.run('sweep-all-installs', async () => {
+    const installs = await step.run('list-installs', async () => {
       const sb = getServiceSupabase();
       if (!sb) throw new Error('service role missing');
-
-      const { data: installs } = await sb
+      const { data } = await sb
         .from('github_installations')
         .select('id, account_login')
         .is('uninstalled_at', null)
         .is('suspended_at', null);
+      return data ?? [];
+    });
 
-      let total = 0;
-      for (const install of installs ?? []) {
-        const { data: repos } = await sb
+    let totalUpserts = 0;
+    const perInstallReport: Array<{
+      install: number;
+      account: string;
+      repos: number;
+      targets: number;
+      sampleTargets: string[];
+      issues: number;
+      upserts: number;
+      errors: string[];
+    }> = [];
+
+    for (const install of installs) {
+      // Each install is its own checkpoint so we can see the boundary in
+      // the trace if one install blows up.
+      const report = await step.run(`process-install-${install.id}`, async () => {
+        const sb = getServiceSupabase();
+        if (!sb) throw new Error('service role missing');
+
+        const errors: string[] = [];
+
+        const { data: repoRows } = await sb
           .from('installation_repositories')
           .select('repo_full_name')
           .eq('installation_id', install.id);
 
-        const octokit = await getInstallOctokit(install.id);
+        const repos = (repoRows ?? []) as RepoRow[];
+
+        let octokit;
+        try {
+          octokit = await getInstallOctokit(install.id);
+        } catch (e) {
+          return {
+            install: install.id,
+            account: install.account_login,
+            repos: repos.length,
+            targets: 0,
+            sampleTargets: [],
+            issues: 0,
+            upserts: 0,
+            errors: [`install-token: ${(e as Error).message}`],
+          };
+        }
 
         // Resolve fork → upstream. The interesting issues live on the
-        // upstream a user forked from, not on the fork itself. Dedup the
-        // resulting set so two users forking the same project don't
-        // sweep it twice.
-        const targets = new Set<string>();
-        for (const repo of repos ?? []) {
+        // upstream a user forked from, not on the fork itself. Dedup
+        // so two users forking the same project don't sweep it twice.
+        const resolved: ResolvedTarget[] = [];
+        const targetSet = new Set<string>();
+        for (const repo of repos) {
           const [owner, name] = repo.repo_full_name.split('/');
           if (!owner || !name) continue;
           try {
             const meta = await octokit.repos.get({ owner, repo: name });
-            const upstream = meta.data.fork
-              ? (meta.data.parent?.full_name ?? null)
-              : repo.repo_full_name;
-            if (upstream) targets.add(upstream);
-          } catch {
-            // Repo went private, deleted, or the install lost access —
-            // skip silently.
+            const isFork = Boolean(meta.data.fork);
+            const upstream = isFork ? (meta.data.parent?.full_name ?? null) : repo.repo_full_name;
+            if (upstream && !targetSet.has(upstream)) {
+              targetSet.add(upstream);
+              resolved.push({ target: upstream, via: repo.repo_full_name, isFork });
+            }
+          } catch (e) {
+            errors.push(`repos.get ${repo.repo_full_name}: ${(e as Error).message}`);
           }
         }
 
-        for (const target of targets) {
-          const [owner, name] = target.split('/');
+        let issuesSeen = 0;
+        let upserts = 0;
+
+        for (const t of resolved) {
+          const [owner, name] = t.target.split('/');
           if (!owner || !name) continue;
 
           let issues: Array<{
@@ -76,14 +122,14 @@ export const issuesSweep = inngest.createFunction(
               sort: 'updated',
             });
             issues = res.data as typeof issues;
-          } catch {
-            // Public-issue read should work even without install access;
-            // if it fails the upstream isn't reachable, skip.
+          } catch (e) {
+            errors.push(`issues.list ${t.target}: ${(e as Error).message}`);
             continue;
           }
 
           for (const issue of issues) {
-            if (issue.pull_request) continue; // skip PRs
+            if (issue.pull_request) continue;
+            issuesSeen += 1;
 
             const labels = (issue.labels ?? []).map((l) =>
               typeof l === 'string' ? l : (l.name ?? ''),
@@ -105,9 +151,9 @@ export const issuesSweep = inngest.createFunction(
               },
             );
 
-            await sb.from('issues').upsert(
+            const { error } = await sb.from('issues').upsert(
               {
-                repo_full_name: target,
+                repo_full_name: t.target,
                 github_issue_number: issue.number,
                 title: issue.title,
                 body_excerpt: (issue.body ?? '').slice(0, 500),
@@ -118,7 +164,7 @@ export const issuesSweep = inngest.createFunction(
                 state: 'open',
                 url: issue.html_url,
                 repo_health_score: repoHealth({
-                  stars: 100, // refined by a future repo-meta sweep
+                  stars: 100,
                   recentCommits30d: 5,
                   hasContributingMd: true,
                   hasLicense: true,
@@ -127,21 +173,42 @@ export const issuesSweep = inngest.createFunction(
               },
               { onConflict: 'repo_full_name,github_issue_number' },
             );
-
-            total += 1;
+            if (error) {
+              errors.push(
+                `upsert ${t.target}#${issue.number}: ${error.code ?? ''} ${error.message}`,
+              );
+            } else {
+              upserts += 1;
+            }
           }
         }
-      }
-      return total;
-    });
 
-    // Build per-user recommendations off the freshly-scored issue pool.
+        return {
+          install: install.id,
+          account: install.account_login,
+          repos: repos.length,
+          targets: resolved.length,
+          sampleTargets: resolved
+            .slice(0, 10)
+            .map((r) => `${r.target} (via ${r.via}${r.isFork ? ', fork' : ''})`),
+          issues: issuesSeen,
+          upserts,
+          errors: errors.slice(0, 10),
+        };
+      });
+
+      perInstallReport.push(report);
+      totalUpserts += report.upserts;
+    }
+
     await step.run('build-recommendations', async () => {
-      const sb = getServiceSupabase();
-      if (!sb) throw new Error('service role missing');
       await inngest.send({ name: 'recommendations/build', data: {} });
     });
 
-    return { swept: sweepCount };
+    return {
+      installs: installs.length,
+      totalUpserts,
+      perInstall: perInstallReport,
+    };
   },
 );
