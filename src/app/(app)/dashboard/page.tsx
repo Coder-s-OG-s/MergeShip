@@ -4,7 +4,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { redirect } from 'next/navigation';
 import { isErr, isOk } from '@/lib/result';
 import RecCards from './rec-cards';
-import { xpToNextLevel } from '@/lib/xp/curve';
+import { xpToNextLevel, xpForLevel } from '@/lib/xp/curve';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,11 +28,18 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .maybeSingle();
 
-  const recsResult = await getRecommendations();
-
   const xp = profile?.xp ?? 0;
   const level = profile?.level ?? 0;
   const { needed, next } = xpToNextLevel(xp);
+
+  // L0 users get sent to the course first — they don't have the context
+  // to act on recommendations. Once they finish the course, the completion
+  // XP (+150) bumps them to L1 and this redirect stops firing.
+  if (level === 0 && profile?.audit_completed) {
+    redirect('/onboarding');
+  }
+
+  const recsResult = await getRecommendations();
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -70,12 +77,7 @@ export default async function DashboardPage() {
             <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-800">
               <div
                 className="h-full bg-purple-500"
-                style={{
-                  width:
-                    next == null
-                      ? '100%'
-                      : `${Math.min(100, 100 - (needed / (needed + Math.max(1, xp))) * 100)}%`,
-                }}
+                style={{ width: `${levelProgressPct(xp, level)}%` }}
               />
             </div>
           </div>
@@ -95,6 +97,14 @@ export default async function DashboardPage() {
       </div>
     </div>
   );
+}
+
+function levelProgressPct(xp: number, level: number): number {
+  const floor = xpForLevel(level);
+  const ceiling = xpForLevel(level + 1);
+  if (ceiling <= floor) return 100;
+  const pct = ((xp - floor) / (ceiling - floor)) * 100;
+  return Math.max(0, Math.min(100, pct));
 }
 
 function EmptyRecs() {

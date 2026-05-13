@@ -55,6 +55,11 @@ export const processReviewEvent = inngest.createFunction(
     if (payload.action !== 'submitted') return { skipped: true, action: payload.action };
     if (!isSubstantive(payload.review)) return { skipped: true, reason: 'not_substantive' };
 
+    // Self-review block — author reviewing their own PR can't earn mentor XP.
+    if (payload.review.user.login.toLowerCase() === payload.pull_request.user.login.toLowerCase()) {
+      return { skipped: true, reason: 'self_review' };
+    }
+
     return await step.run('award-help-review', async () => {
       const sb = getServiceSupabase();
       if (!sb) throw new Error('service role missing');

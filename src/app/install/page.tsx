@@ -66,6 +66,17 @@ export default async function InstallPage() {
           .from('github_installations')
           .update({ user_id: user.id })
           .eq('id', byHandle.id);
+        // Fire audit now that the link exists. Idempotent.
+        const { inngest } = await import('@/inngest/client');
+        await inngest.send({
+          name: 'audit/run',
+          data: {
+            userId: user.id,
+            githubHandle: bootstrap.data.githubHandle,
+            githubId: bootstrap.data.githubId,
+            installationId: byHandle.id,
+          },
+        });
       }
       redirect('/onboarding');
     }
