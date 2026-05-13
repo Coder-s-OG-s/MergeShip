@@ -8,8 +8,8 @@ import { getServiceSupabase } from '@/lib/supabase/service';
  * signed in (middleware already handles this; layout is belt-and-suspenders
  * for the case where middleware ran with stale env).
  *
- * Renders a minimal top nav so testers can move between dashboard / course /
- * leaderboard / help-inbox without poking URLs by hand.
+ * Renders a minimal top nav so testers can move between dashboard,
+ * leaderboard, and help-inbox without poking URLs by hand.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = getServerSupabase();
@@ -43,9 +43,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </Link>
           <Link href="/dashboard" className="hover:text-white">
             Dashboard
-          </Link>
-          <Link href="/onboarding" className="hover:text-white">
-            Course
           </Link>
           <Link href="/leaderboard" className="hover:text-white">
             Leaderboard

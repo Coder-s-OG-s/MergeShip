@@ -39,7 +39,7 @@ export default async function InstallPage() {
     // the previous one (reinstalls after the old row was force-reactivated).
     // maybeSingle() would error and fall through, leaving the user stuck.
 
-    // 1. Already linked to this user → straight to onboarding.
+    // 1. Already linked to this user → straight to dashboard.
     const { data: linkedRows } = await service
       .from('github_installations')
       .select('id')
@@ -47,7 +47,7 @@ export default async function InstallPage() {
       .is('uninstalled_at', null)
       .order('installed_at', { ascending: false })
       .limit(1);
-    if (linkedRows && linkedRows.length > 0) redirect('/onboarding');
+    if (linkedRows && linkedRows.length > 0) redirect('/dashboard');
 
     // 2. Row exists by account_login but user_id is null or stale → link it
     //    to the current user. Covers orphans from pre-bootstrap webhooks and
@@ -78,7 +78,7 @@ export default async function InstallPage() {
           },
         });
       }
-      redirect('/onboarding');
+      redirect('/dashboard');
     }
   }
 

@@ -284,23 +284,6 @@ export const profileTags = pgTable(
   }),
 );
 
-// ---------- course progress ----------
-
-export const courseProgress = pgTable(
-  'course_progress',
-  {
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => profiles.id, { onDelete: 'cascade' }),
-    moduleSlug: text('module_slug').notNull(),
-    quizScore: integer('quiz_score'),
-    completedAt: timestamp('completed_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.userId, t.moduleSlug] }),
-  }),
-);
-
 // ---------- webhook idempotency ----------
 
 export const webhookDeliveries = pgTable('webhook_deliveries', {
