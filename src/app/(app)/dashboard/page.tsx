@@ -32,13 +32,6 @@ export default async function DashboardPage() {
   const level = profile?.level ?? 0;
   const { needed, next } = xpToNextLevel(xp);
 
-  // L0 users get sent to the course first — they don't have the context
-  // to act on recommendations. Once they finish the course, the completion
-  // XP (+150) bumps them to L1 and this redirect stops firing.
-  if (level === 0 && profile?.audit_completed) {
-    redirect('/onboarding');
-  }
-
   const recsResult = await getRecommendations();
 
   return (

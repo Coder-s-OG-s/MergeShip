@@ -31,12 +31,6 @@ describe('refIds — idempotency key shapes', () => {
   it('streak', () => {
     expect(refIds.streak('2026-05-12')).toBe('streak:2026-05-12');
   });
-  it('courseModule', () => {
-    expect(refIds.courseModule('day-1')).toBe('module:day-1');
-  });
-  it('course', () => {
-    expect(refIds.course()).toBe('course:foundational');
-  });
   it('firstTime', () => {
     expect(refIds.firstTime('merge')).toBe('first:merge');
   });

@@ -17,8 +17,6 @@ export const XP_REWARDS = {
   CONFIRMED_BUG: 10,
   STREAK_PER_DAY: 10,
   STREAK_CAP: 100,
-  COURSE_MODULE: 10,
-  COURSE_COMPLETED: 100,
   FIRST_TIME_MULTIPLIER: 2,
   AUDIT_MAX: 1580,
 } as const;
@@ -43,8 +41,6 @@ export const XP_SOURCE = {
   HELP_REVIEW: 'help_review',
   ISSUE_AUTHORED_CLOSED: 'issue_authored_closed',
   STREAK: 'streak',
-  COURSE_MODULE_COMPLETED: 'course_module_completed',
-  COURSE_COMPLETED: 'course_completed',
   FIRST_TIME_BONUS: 'first_time_bonus',
   MAINTAINER_REVOKE: 'maintainer_revoke',
   PENALTY: 'penalty',
@@ -61,8 +57,6 @@ export const refIds = {
   helpReview: (helpId: number, login: string) => `help-review:${helpId}:${login}`,
   audit: (githubId: string) => `audit:${githubId}`,
   streak: (isoDate: string) => `streak:${isoDate}`,
-  courseModule: (slug: string) => `module:${slug}`,
-  course: () => 'course:foundational',
   firstTime: (kind: string) => `first:${kind}`,
 } as const;
 

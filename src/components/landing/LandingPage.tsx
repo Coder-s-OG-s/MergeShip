@@ -220,7 +220,7 @@ function NavAuth() {
     if (!sb) return;
     void sb.auth.signInWithOAuth({
       provider: 'github',
-      options: { redirectTo: `${origin}/api/auth/callback?next=/onboarding` },
+      options: { redirectTo: `${origin}/api/auth/callback?next=/dashboard` },
     });
   };
 
@@ -327,7 +327,7 @@ function Hero() {
             MergeShip changes that — level by level, PR by PR.
           </FadeUp>
           <FadeUp className="hero-ctas" delay={1.1} y={24}>
-            <Link href="/onboarding" className="btn">Start Contributing →</Link>
+            <Link href="/dashboard" className="btn">Start Contributing →</Link>
             <a href="#how" className="btn-ghost">see how it works →</a>
           </FadeUp>
         </div>
@@ -357,7 +357,7 @@ function Hero() {
             and lets peer-verified PRs reach you pre-checked.
           </FadeUp>
           <FadeUp className="hero-ctas" delay={1.2} y={24}>
-            <Link href="/onboarding" className="btn btn-light">Connect Your Org →</Link>
+            <Link href="/dashboard" className="btn btn-light">Connect Your Org →</Link>
             <a href="#how" className="btn-ghost dark">see the dashboard →</a>
           </FadeUp>
         </div>
@@ -724,7 +724,7 @@ function CtaSplit() {
         <h2>Your first real contribution starts here.</h2>
         <div>
           <motion.a
-            href="/onboarding"
+            href="/dashboard"
             className="btn"
             whileHover={{ scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
@@ -739,7 +739,7 @@ function CtaSplit() {
         <h2>Connect your org. Review with confidence.</h2>
         <div>
           <motion.a
-            href="/onboarding"
+            href="/dashboard"
             className="btn btn-light"
             whileHover={{ scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}

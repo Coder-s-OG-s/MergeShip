@@ -10,7 +10,7 @@ import { bootstrapProfile } from '@/app/actions/profile';
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.clone();
   const code = url.searchParams.get('code');
-  const next = url.searchParams.get('next') ?? '/onboarding';
+  const next = url.searchParams.get('next') ?? '/dashboard';
 
   if (!code) {
     url.pathname = '/';
