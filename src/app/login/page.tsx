@@ -18,7 +18,7 @@ export default function LoginPage() {
       }
       await sb.auth.signInWithOAuth({
         provider: 'github',
-        options: { redirectTo: `${origin}/api/auth/callback?next=/dashboard` },
+        options: { redirectTo: `${origin}/api/auth/callback?next=/analyzing` },
       });
     } catch (error) {
       console.error('Error logging in:', error);
