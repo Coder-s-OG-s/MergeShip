@@ -116,38 +116,67 @@ async function handleMerge(
   prUrl: string,
   repo: string,
   pr: PrPayload['pull_request'],
-): Promise<{ xpAwarded: boolean; recId?: number }> {
+): Promise<{ xpAwarded: boolean; recId?: number; reason?: string }> {
   const sb = getServiceSupabase();
   if (!sb) throw new Error('service role missing');
 
-  // Find the recommendation linked to this PR.
+  // First try the linked rec.
   const { data: rec } = await sb
     .from('recommendations')
     .select('id, user_id, difficulty, xp_reward, status')
     .eq('linked_pr_url', prUrl)
     .maybeSingle();
 
-  if (!rec) {
-    // unrecommended merge — small XP if the author exists.
-    const { data: profile } = await sb
-      .from('profiles')
-      .select('id')
-      .eq('github_handle', pr.user.login)
-      .maybeSingle();
-    if (!profile) return { xpAwarded: false };
-    await insertXpEvent({
-      userId: profile.id,
-      source: XP_SOURCE.UNRECOMMENDED_MERGE,
-      refType: 'pr',
-      refId: refIds.pr(repo, pr.number),
-      repo,
-      xpDelta: 5,
-    });
-    return { xpAwarded: true };
+  if (rec) {
+    if (rec.status === 'completed') return { xpAwarded: false, recId: rec.id };
+    return await awardRecommendedMerge(sb, rec, repo, pr);
   }
 
-  if (rec.status === 'completed') return { xpAwarded: false, recId: rec.id };
+  // No linked rec — the common case is the user opened the PR before
+  // clicking Claim, so pull_request.opened ran with no claim to link to.
+  // Retry the link logic now using the PR body/title issue refs.
+  const linkedId = await tryLinkByIssueRef(sb, repo, pr);
+  if (linkedId) {
+    const { data: relinked } = await sb
+      .from('recommendations')
+      .select('id, user_id, difficulty, xp_reward, status')
+      .eq('id', linkedId)
+      .maybeSingle();
+    if (relinked && relinked.status !== 'completed') {
+      await sb.from('recommendations').update({ linked_pr_url: prUrl }).eq('id', linkedId);
+      return await awardRecommendedMerge(sb, relinked, repo, pr);
+    }
+  }
 
+  // Truly unrecommended. Anti-abuse: no XP when the author merges into
+  // their own repo (doc rule — self-actions on own repo don't count).
+  const repoOwner = repo.split('/')[0]?.toLowerCase();
+  const author = pr.user.login.toLowerCase();
+  if (repoOwner === author) return { xpAwarded: false, reason: 'self_merge' };
+
+  const { data: profile } = await sb
+    .from('profiles')
+    .select('id')
+    .eq('github_handle', pr.user.login)
+    .maybeSingle();
+  if (!profile) return { xpAwarded: false };
+  await insertXpEvent({
+    userId: profile.id,
+    source: XP_SOURCE.UNRECOMMENDED_MERGE,
+    refType: 'pr',
+    refId: refIds.pr(repo, pr.number),
+    repo,
+    xpDelta: 5,
+  });
+  return { xpAwarded: true };
+}
+
+async function awardRecommendedMerge(
+  sb: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  rec: { id: number; user_id: string; difficulty: string; xp_reward: number | null },
+  repo: string,
+  pr: PrPayload['pull_request'],
+): Promise<{ xpAwarded: boolean; recId: number }> {
   const difficulty = rec.difficulty as 'E' | 'M' | 'H';
   const inserted = await insertXpEvent({
     userId: rec.user_id,
@@ -165,6 +194,8 @@ async function handleMerge(
     .eq('id', rec.id);
 
   await cacheDelByPrefix(`recs:${rec.user_id}`);
+  await cacheDelByPrefix(`profile:public:`);
+  await cacheDelByPrefix(`leaderboard:`);
 
   if (inserted) {
     await sb.from('activity_log').insert({
@@ -175,4 +206,40 @@ async function handleMerge(
   }
 
   return { xpAwarded: inserted, recId: rec.id };
+}
+
+async function tryLinkByIssueRef(
+  sb: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  repo: string,
+  pr: PrPayload['pull_request'],
+): Promise<number | null> {
+  const issueRefs = [...extractIssueNumbers(pr.body), ...extractIssueNumbers(pr.title)];
+  if (issueRefs.length === 0) return null;
+
+  const { data: profile } = await sb
+    .from('profiles')
+    .select('id')
+    .eq('github_handle', pr.user.login)
+    .maybeSingle();
+  if (!profile) return null;
+
+  const { data: claims } = await sb
+    .from('recommendations')
+    .select('id, issues!inner(repo_full_name, github_issue_number)')
+    .eq('user_id', profile.id)
+    .in('status', ['open', 'claimed']);
+
+  for (const claim of claims ?? []) {
+    // Supabase types the joined `issues` field as an array even for a
+    // single-row !inner join. Normalise.
+    const raw = (claim as unknown as { issues: unknown }).issues;
+    const issue = Array.isArray(raw)
+      ? (raw[0] as { repo_full_name?: string; github_issue_number?: number } | undefined)
+      : (raw as { repo_full_name?: string; github_issue_number?: number } | undefined);
+    if (!issue?.repo_full_name || typeof issue.github_issue_number !== 'number') continue;
+    if (issue.repo_full_name === repo && issueRefs.includes(issue.github_issue_number)) {
+      return (claim as { id: number }).id;
+    }
+  }
+  return null;
 }

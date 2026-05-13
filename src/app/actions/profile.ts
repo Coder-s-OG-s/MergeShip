@@ -8,6 +8,7 @@ import { ok, err, type Result } from '@/lib/result';
 type BootstrapOutput = {
   profileId: string;
   githubHandle: string;
+  githubId: string;
   auditQueued: boolean;
 };
 
@@ -83,6 +84,7 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
   return ok({
     profileId: profile.id,
     githubHandle: profile.github_handle,
+    githubId,
     auditQueued,
   });
 }

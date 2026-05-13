@@ -95,6 +95,29 @@ export const processInstallationEvent = inngest.createFunction(
             { onConflict: 'installation_id,repo_full_name' },
           );
         }
+
+        // Trigger audit now that we have a linked user and a fresh install
+        // token. audit-run is idempotent — if it already ran (e.g. via the
+        // bootstrap path), the profile.audit_completed short-circuit kicks in.
+        if (profile) {
+          const { data: profileRow } = await sb
+            .from('profiles')
+            .select('github_handle, github_id')
+            .eq('id', profile.id)
+            .maybeSingle();
+          if (profileRow) {
+            await inngest.send({
+              name: 'audit/run',
+              data: {
+                userId: profile.id,
+                githubHandle: profileRow.github_handle,
+                githubId: profileRow.github_id,
+                installationId: install.id,
+              },
+            });
+          }
+        }
+
         return { ok: true, linked: Boolean(profile), repoCount: repos.length };
       }
 
