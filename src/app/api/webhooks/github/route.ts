@@ -65,10 +65,25 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  await inngest.send({
-    name: `github/${eventType}`,
-    data: { deliveryId, eventType, payload: JSON.parse(raw) },
-  });
+  try {
+    await inngest.send({
+      name: `github/${eventType}`,
+      data: { deliveryId, eventType, payload: JSON.parse(raw) },
+    });
+  } catch (e) {
+    // Delivery row is already persisted; downstream processing can be replayed
+    // from the Inngest UI or by re-firing the webhook. In local dev without an
+    // Inngest dev server this is expected — log and 202 so contributors testing
+    // sim-webhook don't see a misleading 500.
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[webhook] inngest.send failed (${(e as Error).message}). Delivery ${deliveryId} ` +
+          `persisted; start \`npx inngest-cli@latest dev\` to process events.`,
+      );
+      return NextResponse.json({ ok: true, duplicate, dispatched: false }, { status: 202 });
+    }
+    throw e;
+  }
 
   return NextResponse.json({ ok: true, duplicate });
 }

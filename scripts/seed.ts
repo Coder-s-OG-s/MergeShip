@@ -116,14 +116,27 @@ async function seedPersona(p: Persona): Promise<void> {
     audit_completed: p.seedXp > 0,
   });
 
-  // Seed a fake install so the gate passes.
+  // Seed a fake install so the install gate passes.
+  const installationId = 1_000_000 + Math.abs(hashCode(p.handle));
   await sb.from('github_installations').upsert({
-    id: 1_000_000 + Math.abs(hashCode(p.handle)),
+    id: installationId,
     user_id: userId,
     account_login: p.handle,
     account_type: 'User',
     repository_selection: 'all',
   });
+
+  // Maintainer personas also need a junction row so isUserMaintainer() returns
+  // true and /maintainer doesn't 307 them back to /dashboard. Same install id
+  // they own → org_admin permission so they see every repo on it.
+  if (p.role === 'maintainer' || p.role === 'both') {
+    await sb.from('github_installation_users').upsert({
+      installation_id: installationId,
+      user_id: userId,
+      permission_level: 'org_admin',
+      source: 'install_creator',
+    });
+  }
 
   if (p.seedXp > 0) {
     // One audit event — trigger recomputes xp + level + inserts level_ups as needed.
