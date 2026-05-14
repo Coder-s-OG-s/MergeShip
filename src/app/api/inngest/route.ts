@@ -15,6 +15,7 @@ import {
   processMembershipEvent,
   processMemberEvent,
 } from '@/inngest/functions/process-membership-events';
+import { prBackfill } from '@/inngest/functions/pr-backfill';
 import { streakDetect, recsExpire, activityLogCleanup } from '@/inngest/functions/maintenance';
 
 export const { GET, POST, PUT } = serve({
@@ -31,6 +32,7 @@ export const { GET, POST, PUT } = serve({
     maintainerDiscover,
     processMembershipEvent,
     processMemberEvent,
+    prBackfill,
     streakDetect,
     recsExpire,
     activityLogCleanup,
