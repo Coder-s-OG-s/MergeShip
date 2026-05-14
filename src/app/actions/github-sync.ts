@@ -4,6 +4,7 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { cacheDel } from '@/lib/cache';
 import { ok, err, type Result } from '@/lib/result';
+import { parsePRState, calculateStreak } from './github-sync-helpers';
 
 export type GitHubPR = {
   id: string;
@@ -20,59 +21,6 @@ export type SyncOutput = {
   streak: number;
   prs: GitHubPR[];
 };
-
-// Pure helper — exported for testing.
-export function parsePRState(
-  apiState: string,
-  mergedAt: string | null,
-): 'open' | 'closed' | 'merged' {
-  if (mergedAt != null) return 'merged';
-  if (apiState === 'open') return 'open';
-  return 'closed';
-}
-
-// Pure helper — exported for testing.
-// days: array from GraphQL contributionDays (any order, any date range).
-// today: YYYY-MM-DD string representing the current date.
-export function calculateStreak(
-  days: { date: string; contributionCount: number }[],
-  today: string,
-): number {
-  const sorted = [...days]
-    .filter((d) => d.date <= today)
-    .sort((a, b) => b.date.localeCompare(a.date));
-
-  let streak = 0;
-  let expectingDate: string | null = null;
-
-  for (const day of sorted) {
-    if (expectingDate === null) {
-      if (day.contributionCount > 0) {
-        streak++;
-        expectingDate = prevDay(day.date);
-      } else {
-        expectingDate = prevDay(day.date);
-        continue;
-      }
-    } else {
-      if (day.date !== expectingDate) break;
-      if (day.contributionCount > 0) {
-        streak++;
-        expectingDate = prevDay(day.date);
-      } else {
-        break;
-      }
-    }
-  }
-
-  return streak;
-}
-
-function prevDay(dateStr: string): string {
-  const d = new Date(dateStr);
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
 
 async function fetchMergedCount(token: string, handle: string): Promise<number> {
   const res = await fetch(

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateStreak, parsePRState } from './github-sync';
+import { calculateStreak, parsePRState } from './github-sync-helpers';
 
 describe('calculateStreak', () => {
   const day = (date: string, count: number) => ({ date, contributionCount: count });
