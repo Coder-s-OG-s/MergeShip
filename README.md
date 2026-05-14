@@ -1,4 +1,4 @@
-<h1 align="center">🚢 MergeShip</h1>
+<h1 align="center">MergeShip</h1>
 
 <p align="center">
   [cite_start]<strong>An Open Source Ecosystem and Organisation Management Platform [cite: 1]</strong>
