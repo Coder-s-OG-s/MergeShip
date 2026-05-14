@@ -23,7 +23,32 @@ import {
 } from '@/lib/maintainer/community';
 import { inngest } from '@/inngest/client';
 
+import { classifyTriage, type IssueTriageBucket } from '@/lib/maintainer/issue-triage';
+
 export type { MaintainerInstall, MaintainerPrRow };
+
+export type MaintainerIssueRow = {
+  id: number;
+  repoFullName: string;
+  number: number;
+  title: string;
+  url: string;
+  state: 'open' | 'closed';
+  authorLogin: string | null;
+  assigneeLogin: string | null;
+  labels: string[];
+  commentsCount: number;
+  lastEventAt: string | null;
+  githubCreatedAt: string | null;
+  triage: IssueTriageBucket;
+};
+
+const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
+  'needs-triage',
+  'in-progress',
+  'stale',
+  'closed',
+]);
 
 const PAGE_SIZE = 25;
 
@@ -187,6 +212,126 @@ export async function getMaintainerPrQueue(args: {
   const page_rows = filtered.slice(0, PAGE_SIZE);
   const hasMore = filtered.length > PAGE_SIZE;
   return ok({ rows: page_rows, hasMore });
+}
+
+export async function getMaintainerIssueQueue(args: {
+  installationId: number;
+  buckets?: IssueTriageBucket[];
+  repos?: string[];
+  page?: number;
+}): Promise<Result<{ rows: MaintainerIssueRow[]; hasMore: boolean }>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const limited = await rateLimit({
+    namespace: 'maint:issues',
+    key: user.id,
+    limit: 60,
+    windowSec: 60,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) {
+    return ok({ rows: [], hasMore: false });
+  }
+
+  const scopedRepos =
+    args.repos && args.repos.length > 0 ? repos.filter((r) => args.repos!.includes(r)) : repos;
+  if (scopedRepos.length === 0) {
+    return ok({ rows: [], hasMore: false });
+  }
+
+  // Default: open issues only. Buckets validated against the enum.
+  const buckets = (args.buckets ?? ['needs-triage', 'in-progress', 'stale']).filter((b) =>
+    ISSUE_BUCKETS.has(b),
+  );
+
+  // Pull a generous slice — we classify in app code, can't filter buckets in SQL.
+  const page = Math.max(0, args.page ?? 0);
+  const states: ('open' | 'closed')[] = buckets.includes('closed') ? ['open', 'closed'] : ['open'];
+
+  type RawIssue = {
+    id: number;
+    repo_full_name: string;
+    github_issue_number: number;
+    title: string;
+    url: string;
+    state: 'open' | 'closed';
+    author_login: string | null;
+    assignee_login: string | null;
+    labels: string[] | null;
+    comments_count: number;
+    last_event_at: string | null;
+    github_created_at: string | null;
+  };
+
+  const { data: issuesRaw } = await service
+    .from('issues')
+    .select(
+      'id, repo_full_name, github_issue_number, title, url, state, author_login, ' +
+        'assignee_login, labels, comments_count, last_event_at, github_created_at',
+    )
+    .in('repo_full_name', scopedRepos)
+    .in('state', states)
+    .order('last_event_at', { ascending: false, nullsFirst: false })
+    .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE * 4);
+
+  const rows: MaintainerIssueRow[] = ((issuesRaw ?? []) as unknown as RawIssue[]).map((r) => {
+    const triage = classifyTriage({
+      state: r.state,
+      assigneeLogin: r.assignee_login,
+      labels: r.labels,
+      lastEventAt: r.last_event_at ? new Date(r.last_event_at) : null,
+      githubCreatedAt: r.github_created_at ? new Date(r.github_created_at) : null,
+    });
+    return {
+      id: r.id,
+      repoFullName: r.repo_full_name,
+      number: r.github_issue_number,
+      title: r.title,
+      url: r.url,
+      state: r.state,
+      authorLogin: r.author_login,
+      assigneeLogin: r.assignee_login,
+      labels: r.labels ?? [],
+      commentsCount: r.comments_count,
+      lastEventAt: r.last_event_at,
+      githubCreatedAt: r.github_created_at,
+      triage,
+    };
+  });
+
+  const filtered = rows.filter((r) => buckets.includes(r.triage));
+  // needs-triage first, then stale, then in-progress, then closed.
+  const bucketOrder: Record<IssueTriageBucket, number> = {
+    'needs-triage': 0,
+    stale: 1,
+    'in-progress': 2,
+    closed: 3,
+  };
+  filtered.sort((a, b) => {
+    const d = bucketOrder[a.triage] - bucketOrder[b.triage];
+    if (d !== 0) return d;
+    // Within a bucket: most recent event first; nulls last.
+    const at = a.lastEventAt ? Date.parse(a.lastEventAt) : 0;
+    const bt = b.lastEventAt ? Date.parse(b.lastEventAt) : 0;
+    return bt - at;
+  });
+
+  const pageRows = filtered.slice(0, PAGE_SIZE);
+  return ok({ rows: pageRows, hasMore: filtered.length > PAGE_SIZE });
 }
 
 export async function refreshMaintainerBackfill(
