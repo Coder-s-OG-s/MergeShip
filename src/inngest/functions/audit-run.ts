@@ -2,8 +2,11 @@ import { inngest } from '../client';
 import { getInstallOctokit, getUserOctokit } from '@/lib/github/app';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { computeAuditScore, type AuditSignals } from '@/lib/xp/audit';
+import { clampAuditScoreToLevel } from '@/lib/xp/audit-clamp';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_SOURCE, refIds } from '@/lib/xp/sources';
+
+const AUDIT_MAX_LEVEL = 2;
 
 /**
  * Audit pipeline. Fires once per user, ideally right after their GitHub App
@@ -122,19 +125,22 @@ export const auditRun = inngest.createFunction(
         yearlyContributions: 0, // populated in Phase 2 from heatmap source
         followers: user.data.followers,
       };
-      const auditScore = computeAuditScore(signals);
+      const rawAuditScore = computeAuditScore(signals);
+      // Anti-cheat: audit-only placement never exceeds L2 regardless of the
+      // raw score. Going beyond requires actual MergeShip activity.
+      const auditScore = clampAuditScoreToLevel(rawAuditScore, AUDIT_MAX_LEVEL);
 
       const inserted = await insertXpEvent({
         userId,
         source: XP_SOURCE.GITHUB_AUDIT,
         refId: refIds.audit(githubId),
         xpDelta: auditScore,
-        metadata: { signals },
+        metadata: { signals, rawAuditScore, clampedToLevel: AUDIT_MAX_LEVEL },
       });
 
       await sb.from('profiles').update({ audit_completed: true }).eq('id', userId);
 
-      return { inserted, auditScore, signals };
+      return { inserted, rawAuditScore, auditScore, signals };
     });
   },
 );

@@ -2,6 +2,7 @@ import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_REWARDS, XP_SOURCE, refIds } from '@/lib/xp/sources';
+import { applyCap } from '@/lib/xp/caps';
 
 /**
  * Webhook handler for GitHub `pull_request_review` events.
@@ -93,6 +94,23 @@ export const processReviewEvent = inngest.createFunction(
         .maybeSingle();
 
       if (!helpReq) return { skipped: true, reason: 'no_open_help_request' };
+
+      // Daily review cap. Counts xp_events with source=help_review for this
+      // reviewer today; blocks the next event if already at cap.
+      const dayStartIso = new Date(
+        new Date().toISOString().slice(0, 10) + 'T00:00:00Z',
+      ).toISOString();
+      const { count: todaysReviewCount } = await sb
+        .from('xp_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', reviewer.id)
+        .eq('source', XP_SOURCE.HELP_REVIEW)
+        .gte('created_at', dayStartIso);
+
+      const cap = applyCap('review', todaysReviewCount ?? 0, 1);
+      if (!cap.allowed) {
+        return { skipped: true, reason: 'daily_review_cap_reached' };
+      }
 
       const { data: mentee } = await sb
         .from('profiles')
