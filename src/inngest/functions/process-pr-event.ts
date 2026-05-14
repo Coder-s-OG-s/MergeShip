@@ -21,14 +21,28 @@ import { cacheDelByPrefix } from '@/lib/cache';
  */
 
 type PrPayload = {
-  action: 'opened' | 'closed' | 'reopened' | 'edited' | string;
+  action:
+    | 'opened'
+    | 'closed'
+    | 'reopened'
+    | 'edited'
+    | 'synchronize'
+    | 'ready_for_review'
+    | 'converted_to_draft'
+    | string;
   pull_request: {
+    id: number;
     number: number;
     html_url: string;
     title: string;
     body: string | null;
+    state: 'open' | 'closed';
+    draft: boolean;
     merged: boolean;
     merged_at: string | null;
+    closed_at: string | null;
+    created_at: string;
+    updated_at: string;
     user: { login: string };
     base: { repo: { full_name: string } };
   };
@@ -59,6 +73,17 @@ export const processPrEvent = inngest.createFunction(
     const repo = pr.base.repo.full_name;
     const prUrl = pr.html_url;
 
+    // Maintainer-side mirror. Wrapped + swallowing so a failure here can
+    // never block the existing contributor XP / claim-linking paths below.
+    await step.run('upsert-pr-row', async () => {
+      try {
+        await upsertPrRow(repo, pr, action);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    });
+
     if (action === 'opened') {
       return await step.run('link-pr-to-claim', async () => linkPrToClaim(prUrl, repo, pr));
     }
@@ -70,6 +95,68 @@ export const processPrEvent = inngest.createFunction(
     return { skipped: true, action };
   },
 );
+
+async function upsertPrRow(
+  repo: string,
+  pr: PrPayload['pull_request'],
+  action: string,
+): Promise<void> {
+  const sb = getServiceSupabase();
+  if (!sb) return;
+
+  // Only mirror PRs in repos we actually have install access to. Stops us
+  // polluting the table if a misconfigured webhook ever reaches us.
+  const { data: knownRepo } = await sb
+    .from('installation_repositories')
+    .select('repo_full_name')
+    .eq('repo_full_name', repo)
+    .limit(1)
+    .maybeSingle();
+  if (!knownRepo) return;
+
+  const state = derivePrState(pr, action);
+  const draft = pr.draft === true;
+
+  // Author lookup is a best-effort link to the MergeShip profile by handle.
+  const { data: authorProfile } = await sb
+    .from('profiles')
+    .select('id')
+    .eq('github_handle', pr.user.login)
+    .maybeSingle();
+
+  await sb.from('pull_requests').upsert(
+    {
+      github_pr_id: pr.id,
+      repo_full_name: repo,
+      number: pr.number,
+      title: pr.title,
+      body_excerpt: (pr.body ?? '').slice(0, 500),
+      author_login: pr.user.login,
+      author_user_id: authorProfile?.id ?? null,
+      state,
+      draft,
+      url: pr.html_url,
+      github_created_at: pr.created_at,
+      github_updated_at: pr.updated_at,
+      merged_at: pr.merged_at,
+      closed_at: pr.closed_at,
+      fetched_at: new Date().toISOString(),
+    },
+    { onConflict: 'repo_full_name,number' },
+  );
+}
+
+function derivePrState(
+  pr: PrPayload['pull_request'],
+  action: string,
+): 'open' | 'closed' | 'merged' {
+  if (action === 'closed') {
+    return pr.merged === true ? 'merged' : 'closed';
+  }
+  if (pr.merged === true) return 'merged';
+  if (pr.state === 'closed') return pr.merged_at ? 'merged' : 'closed';
+  return 'open';
+}
 
 async function linkPrToClaim(
   prUrl: string,
