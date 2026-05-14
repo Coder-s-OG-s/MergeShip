@@ -1,100 +1,96 @@
-# MergeShip
+<h1 align="center"> MergeShip</h1>
 
-MergeShip is a platform designed to streamline the open source contribution and maintenance experience. It provides specialized dashboards for both contributors and maintainers to better manage repositories, triage issues, track pull requests, and foster community engagement.
+<p align="center">
+  <strong>An open-source orchestration platform streamlining community-driven development.</strong>
+</p>
 
-## Features
+<p align="center">
+  <a href="#-about-the-project">About</a> •
+  <a href="#-tech-stack">Tech Stack</a> •
+  <a href="#-architecture">Architecture</a> •
+  <a href="#-quick-start-local-setup">Quick Start</a> •
+  <a href="#-contributing">Contributing</a>
+</p>
 
-### Contributor Dashboard
+---
 
-- **Discovery**: Find tailored issues to work on based on skill set and interests.
-- **Workflow Tracking**: Manage active pull requests and engaged issues.
-- **Community & Mentorship**: Connect with mentors and track personal achievements.
-- **Leaderboards**: Engage in gamified community leaderboards based on contribution metrics.
+## About The Project
 
-### Maintainer Command Center
+**MergeShip** is a powerful platform designed to enhance the open-source ecosystem. It orchestrates contributions by evaluating PR events, scoring issue difficulties, and providing tailored recommendations to contributors. With a built-in XP system, AI-assisted routing, and robust background task processing, MergeShip makes open-source management seamless and engaging.
 
-- **Overview**: High-level repository health, urgent issues, and pull request metrics.
-- **Team Workload**: Real-time team capacity and automated reassignment recommendations.
-- **Issue Triage**: AI-powered issue categorization and duplicate detection to maintain a clean backlog.
-- **Analytics**: Deep-dive metrics into merge velocity, closure rates, and contributor retention.
+## Tech Stack
 
-## Getting Started
+MergeShip is built with a highly scalable, modern engineering stack:
 
-Follow these instructions to set up the project on your local machine for development and testing.
+* **Framework:** Next.js (App Router) & React
+* **Database & Auth:** Supabase (Local Postgres + Auth Studio)
+* **ORM:** Drizzle ORM
+* **Background Jobs:** Inngest (Webhooks, Audits, PR processing)
+* **AI / LLM:** Groq Router
+* **Testing:** Vitest (Integration & Unit Testing)
+
+## Architecture Overview
+
+Our codebase follows a strict, domain-driven design structure:
+
+* `src/app/` - Next.js routes (authenticated dashboards, public profiles, API callbacks).
+* `src/lib/` - Core business logic:
+  * `/db` - Drizzle schemas and database clients.
+  * `/github` - Octokit factories and HMAC webhook verifiers.
+  * `/pipeline` - Difficulty scoring and recommendation ranking.
+  * `/xp` - Gamification system, event auditing, and caps.
+* `inngest/` - Asynchronous background functions for processing heavy workloads.
+* `supabase/` - SQL migrations and Docker configurations.
+* `tests/` & `__fixtures__/` - High-coverage test suites and mock data.
+
+## Quick Start (Local Setup)
+
+We've optimized our DevEx so you can go from `git clone` to your first PR in under 10 minutes.
 
 ### Prerequisites
+* **Node.js**: v20+
+* **Docker**: Required for running the local Supabase instance.
+* **Package Manager**: npm
 
-Ensure you have the following installed on your system:
+### Installation & Bootstrapping
 
-- Node.js (v18 or higher recommended)
-- npm (Node Package Manager)
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/Coder-s-OG-s/MergeShip.git](https://github.com/Coder-s-OG-s/MergeShip.git)
+   cd MergeShip
+   ```
 
-### Installation
+2. **Install dependencies & set up environments:**
+   ```bash
+   npm install
+   cp .env.example .env.local
+   ```
 
-1. Clone the repository to your local machine:
-
-```bash
-git clone git@github.com:Coder-s-OG-s/MergeShip.git
-cd MergeShip
+3. **Start the local Supabase & Seed Database:**
+   ```bash
+   make supabase-start    # Starts local Postgres + Auth + Studio in Docker
+   make db-seed           # Seeds synthetic dev personas
+   
 ```
 
-1. Install the project dependencies:
-
-```bash
-npm install
+4. **Run the development server:**
+   ```bash
+   npm run dev
+   
 ```
+   *Open [http://localhost:3001](http://localhost:3001) in your browser.*
 
-1. Copy environment variables:
-
-```bash
-cp .env.example .env.local
-```
-
-### Running the Development Server
-
-Start the local development server:
-
-```bash
-npm run dev
-```
-
-The application will be available at `http://localhost:3000`.
-
-## Environment Variables
-
-Create `.env.local` with the following values:
-
-```bash
-NEXT_PUBLIC_APPWRITE_ENDPOINT=https://sgp.cloud.appwrite.io/v1
-NEXT_PUBLIC_APPWRITE_PROJECT_ID=<your_appwrite_project_id>
-
-APPWRITE_ENDPOINT=https://sgp.cloud.appwrite.io/v1
-APPWRITE_PROJECT_ID=<your_appwrite_project_id>
-APPWRITE_API_KEY=<your_appwrite_server_api_key>
-```
-
-## Auth/Profile API
-
-- `GET /api/me`
-  - Protected endpoint (requires active session JWT in `Authorization: Bearer <token>`)
-  - Returns current user profile
-- `POST /api/me`
-  - Protected bootstrap endpoint for first-login profile initialization (JWT required)
-  - Creates/normalizes contributor profile with:
-    - `github_id`
-    - `username`
-    - `avatar_url`
-    - `joined_at`
-    - `default_level = L1`
-
-### Project Structure
-
-- `src/app`: Contains the Next.js application routes (App Router).
-  - `(contributor)`: Routes specific to the contributor experience.
-  - `(maintainer)`: Routes specific to the maintainer experience.
-- `src/components`: Reusable React components.
-- `src/data`: Mock data for development and testing.
+> **Dev Authentication:** To save you from configuring a personal GitHub OAuth App for local work, we use seeded Dev Personas (Alice, Bob, Carol, etc.). Simply go to `http://localhost:3001/dev/login` for instant sign-in.
 
 ## Contributing
 
-We welcome contributions to improve MergeShip. Please review the project structure and ensure any changes align with the established design language and component architecture.
+We maintain a strict engineering bar (100% strict TypeScript, 0 lint warnings, 80%+ coverage) to keep the codebase healthy. 
+
+We welcome contributions! Please review our guidelines before starting:
+* [Contributing Guidelines](./CONTRIBUTING.md) - Includes our local testing and PR flow.
+* [AI Usage Policy](./docs/ai-usage-policy.md) - Rules for AI-assisted coding.
+* [Code of Conduct](./.github/CODE_OF_CONDUCT.md) - Our community standards.
+
+## 📄 License
+
+This project is open-source and available under the [MIT License](LICENSE).
