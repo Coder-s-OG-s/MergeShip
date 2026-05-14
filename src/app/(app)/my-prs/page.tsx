@@ -64,10 +64,12 @@ export default async function MyPRsPage() {
   let rawPRs: GitHubPR[] = [];
   if (!prsCache) {
     const { data: prsData } = await service
-      .from('github_prs')
-      .select('id, title, repo_full_name, state, pr_number, pr_url, opened_at')
-      .eq('user_id', user.id)
-      .order('opened_at', { ascending: false });
+      .from('pull_requests')
+      .select(
+        'id, github_pr_id, repo_full_name, number, title, state, url, github_created_at, merged_at',
+      )
+      .eq('author_user_id', user.id)
+      .order('github_created_at', { ascending: false });
 
     rawPRs = (prsData ?? []) as GitHubPR[];
     prsCache = { prs: rawPRs.map((pr) => ({ ...pr })) };
@@ -81,7 +83,7 @@ export default async function MyPRsPage() {
   //   linked_pr_url links a rec to a PR
   // - help_requests: status = open | escalated | resolved | expired
   //   pr_url links a help request to a PR; resolved_by = mentor's profile id
-  const prUrls = basePRs.map((pr) => pr.pr_url).filter(Boolean);
+  const prUrls = basePRs.map((pr) => pr.url).filter(Boolean);
   let enrichedPRs: EnrichedPR[] = basePRs;
 
   if (prUrls.length > 0) {
@@ -113,7 +115,7 @@ export default async function MyPRsPage() {
       );
     }
 
-    // Index by pr_url for O(1) lookup
+    // Index by url for O(1) lookup
     const recByUrl: Record<string, any> = Object.fromEntries(
       (recData ?? []).map((r: any) => [r.linked_pr_url, r]),
     );
@@ -136,8 +138,8 @@ export default async function MyPRsPage() {
     }
 
     enrichedPRs = basePRs.map((pr) => {
-      const rec = recByUrl[pr.pr_url];
-      const help = helpByUrl[pr.pr_url];
+      const rec = recByUrl[pr.url];
+      const help = helpByUrl[pr.url];
 
       let mentor_status: 'pending' | 'approved' | null = null;
       let reviewed_by: string | null = null;

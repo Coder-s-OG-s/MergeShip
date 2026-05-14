@@ -176,12 +176,12 @@ function PRCard({ pr }: { pr: EnrichedPR }) {
 
       {/* PR Title */}
       <a
-        href={pr.pr_url}
+        href={pr.url}
         target="_blank"
         rel="noopener noreferrer"
         className="mb-3 block font-mono text-[15px] font-medium text-white transition-colors hover:text-[#39d353]"
       >
-        {pr.title} <span className="text-zinc-500">#{pr.pr_number}</span>
+        {pr.title} <span className="text-zinc-500">#{pr.number}</span>
       </a>
 
       {/* Bottom meta */}
@@ -248,7 +248,7 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
     case 'pending_review':
       return (
         <a
-          href={pr.pr_url}
+          href={pr.url}
           target="_blank"
           rel="noopener noreferrer"
           className={`${base} border-[#2d333b] text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800`}
@@ -259,7 +259,7 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
     case 'submitted':
       return (
         <a
-          href={pr.pr_url}
+          href={pr.url}
           target="_blank"
           rel="noopener noreferrer"
           className={`${base} border-[#39d353]/60 bg-[#39d353]/10 text-[#39d353] hover:bg-[#39d353]/20`}
@@ -270,7 +270,7 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
     case 'merged':
       return (
         <a
-          href={pr.pr_url}
+          href={pr.url}
           target="_blank"
           rel="noopener noreferrer"
           className={`${base} border-[#2d333b] text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800`}
@@ -281,7 +281,7 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
     case 'closed':
       return (
         <a
-          href={pr.pr_url}
+          href={pr.url}
           target="_blank"
           rel="noopener noreferrer"
           className={`${base} border-[#2d333b] text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800`}
@@ -292,7 +292,7 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
     default:
       return (
         <a
-          href={pr.pr_url}
+          href={pr.url}
           target="_blank"
           rel="noopener noreferrer"
           className={`${base} border-[#2d333b] text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800`}
@@ -304,7 +304,7 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
 }
 
 function PRMeta({ pr }: { pr: EnrichedPR }) {
-  const timeAgo = formatRelativeTime(pr.opened_at);
+  const timeAgo = formatRelativeTime(pr.github_created_at);
 
   return (
     <>

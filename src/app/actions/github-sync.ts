@@ -2,143 +2,27 @@
 
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { getInstallationToken } from '@/lib/github/app';
 import { cacheDel } from '@/lib/cache';
 import { ok, err, type Result } from '@/lib/result';
-import { parsePRState, calculateStreak } from './github-sync-helpers';
+import { fetchMergedCount, fetchContributionStreak } from './github-sync-helpers';
 
 export type GitHubPR = {
-  id: string;
-  title: string;
+  id: number;
+  github_pr_id: number;
   repo_full_name: string;
+  number: number;
+  title: string;
   state: 'open' | 'closed' | 'merged';
-  pr_number: number;
-  pr_url: string;
-  opened_at: string;
+  url: string;
+  github_created_at: string;
+  merged_at: string | null;
 };
 
 export type SyncOutput = {
   merges: number;
   streak: number;
-  prs: GitHubPR[];
 };
-
-async function fetchMergedCount(token: string, handle: string): Promise<number> {
-  const res = await fetch(
-    `https://api.github.com/search/issues?q=is:pr+is:merged+author:${handle}&per_page=1`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    },
-  );
-  if (!res.ok) throw new Error(`GitHub Search API ${res.status}`);
-  const data = (await res.json()) as { total_count: number };
-  return data.total_count;
-}
-
-async function fetchContributionStreak(token: string, login: string): Promise<number> {
-  const to = new Date();
-  const from = new Date(to);
-  from.setFullYear(from.getFullYear() - 1);
-
-  const query = `
-    query($login: String!, $from: DateTime!, $to: DateTime!) {
-      user(login: $login) {
-        contributionsCollection(from: $from, to: $to) {
-          contributionCalendar {
-            weeks {
-              contributionDays {
-                date
-                contributionCount
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
-
-  const res = await fetch('https://api.github.com/graphql', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      query,
-      variables: { login, from: from.toISOString(), to: to.toISOString() },
-    }),
-  });
-
-  if (!res.ok) throw new Error(`GitHub GraphQL ${res.status}`);
-  const json = (await res.json()) as {
-    data?: {
-      user?: {
-        contributionsCollection?: {
-          contributionCalendar?: {
-            weeks: { contributionDays: { date: string; contributionCount: number }[] }[];
-          };
-        };
-      };
-    };
-  };
-
-  const weeks = json.data?.user?.contributionsCollection?.contributionCalendar?.weeks ?? [];
-  const days = weeks.flatMap((w) => w.contributionDays);
-  const today = new Date().toISOString().slice(0, 10);
-  return calculateStreak(days, today);
-}
-
-async function fetchAllPRs(token: string, handle: string): Promise<GitHubPR[]> {
-  const allPRs: GitHubPR[] = [];
-  const maxPages = 3;
-
-  for (let page = 1; page <= maxPages; page++) {
-    const res = await fetch(
-      `https://api.github.com/search/issues?q=is:pr+author:${handle}&sort=updated&per_page=100&page=${page}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-      },
-    );
-    if (!res.ok) throw new Error(`GitHub Search API ${res.status}`);
-    const data = (await res.json()) as {
-      items: {
-        node_id: string;
-        title: string;
-        number: number;
-        html_url: string;
-        state: string;
-        repository_url: string;
-        created_at: string;
-        pull_request?: { merged_at: string | null };
-      }[];
-    };
-
-    for (const item of data.items) {
-      const repoFullName = item.repository_url.replace('https://api.github.com/repos/', '');
-      const state = parsePRState(item.state, item.pull_request?.merged_at ?? null);
-      allPRs.push({
-        id: item.node_id,
-        title: item.title,
-        repo_full_name: repoFullName,
-        state,
-        pr_number: item.number,
-        pr_url: item.html_url,
-        opened_at: item.created_at,
-      });
-    }
-
-    if (data.items.length < 100) break;
-  }
-
-  return allPRs;
-}
 
 export async function syncGitHubStats(): Promise<Result<SyncOutput>> {
   const sb = getServerSupabase();
@@ -148,12 +32,6 @@ export async function syncGitHubStats(): Promise<Result<SyncOutput>> {
     data: { user },
   } = await sb.auth.getUser();
   if (!user) return err('not_authenticated', 'Sign in first');
-
-  const sessionRes = await sb.auth.getSession();
-  const providerToken = sessionRes.data.session?.provider_token;
-  if (!providerToken) {
-    return err('no_token', 'GitHub token unavailable. Sign out and sign in again.', true);
-  }
 
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'Service role not configured');
@@ -165,11 +43,29 @@ export async function syncGitHubStats(): Promise<Result<SyncOutput>> {
     .single();
   if (!profile) return err('no_profile', 'Profile not found');
 
+  // Get the GitHub App installation token — does not expire after 1h like provider_token
+  const { data: installRows } = await service
+    .from('github_installations')
+    .select('id')
+    .eq('user_id', user.id)
+    .is('uninstalled_at', null)
+    .order('installed_at', { ascending: false })
+    .limit(1);
+
+  const installId = (installRows as { id: number }[] | null)?.[0]?.id;
+  if (!installId) {
+    return err(
+      'no_installation',
+      'No GitHub App installation found. Install the GitHub App first.',
+    );
+  }
+
   try {
-    const [merges, streak, prs] = await Promise.all([
-      fetchMergedCount(providerToken, profile.github_handle),
-      fetchContributionStreak(providerToken, profile.github_handle),
-      fetchAllPRs(providerToken, profile.github_handle),
+    const token = await getInstallationToken(installId);
+
+    const [merges, streak] = await Promise.all([
+      fetchMergedCount(token, profile.github_handle),
+      fetchContributionStreak(token, profile.github_handle),
     ]);
 
     await service
@@ -181,15 +77,9 @@ export async function syncGitHubStats(): Promise<Result<SyncOutput>> {
       })
       .eq('id', user.id);
 
-    // Replace all PRs: delete existing then insert fresh batch
-    await service.from('github_prs').delete().eq('user_id', user.id);
-    if (prs.length > 0) {
-      await service.from('github_prs').insert(prs.map((pr) => ({ ...pr, user_id: user.id })));
-    }
-
     await cacheDel(`gh:dashboard:${user.id}`);
 
-    return ok({ merges, streak, prs });
+    return ok({ merges, streak });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     if (msg.includes('429') || msg.toLowerCase().includes('rate limit')) {

@@ -52,15 +52,15 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
         ) : (
           filtered.map((pr) => (
             <div key={pr.id} className="border-b border-[#2d333b] pb-6 last:border-0">
-              <Link href={pr.pr_url} target="_blank" rel="noopener noreferrer">
+              <Link href={pr.url} target="_blank" rel="noopener noreferrer">
                 <h3 className="mb-1 text-[15px] text-white hover:underline">{pr.title}</h3>
               </Link>
               <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500">
-                #{pr.pr_number} · {pr.repo_full_name} · {formatDate(pr.opened_at)}
+                #{pr.number} · {pr.repo_full_name} · {formatDate(pr.github_created_at)}
               </div>
               <div className="flex items-center gap-3">
                 <StateBadge state={pr.state} />
-                {claimedSet.has(pr.pr_url) && (
+                {claimedSet.has(pr.url) && (
                   <span className="border border-purple-700 bg-purple-900/30 px-2 py-0.5 text-[10px] uppercase tracking-widest text-purple-300">
                     CLAIMED
                   </span>

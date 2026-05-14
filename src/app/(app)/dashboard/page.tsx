@@ -1,15 +1,25 @@
 import { getRecommendations } from '@/app/actions/recommendations';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { SyncButton } from './sync-button';
+import { GitHubPRsPanel } from './github-prs-panel';
 import { redirect } from 'next/navigation';
 import { isOk } from '@/lib/result';
 import { xpToNextLevel, xpForLevel } from '@/lib/xp/curve';
+import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
 import { ArrowRight, TrendingUp, Box } from 'lucide-react';
+import type { GitHubPR } from '@/app/actions/github-sync';
 
 export const dynamic = 'force-dynamic';
 
 const DIFFICULTY_LABEL: Record<string, string> = { E: 'L1', M: 'L2', H: 'L3' };
+
+type DashboardCache = {
+  merges: number | null;
+  streak: number | null;
+  syncedAt: string | null;
+};
 
 export default async function DashboardPage() {
   const sb = getServerSupabase();
@@ -27,7 +37,9 @@ export default async function DashboardPage() {
 
   const { data: profile } = await service
     .from('profiles')
-    .select('github_handle, xp, level, audit_completed')
+    .select(
+      'github_handle, xp, level, audit_completed, github_total_merges, github_streak, github_stats_synced_at',
+    )
     .eq('id', user.id)
     .maybeSingle();
 
@@ -36,18 +48,60 @@ export default async function DashboardPage() {
   const { needed, next } = xpToNextLevel(xp);
   const nextLevel = next ?? level;
 
+  // Read stats from Redis cache, fall back to profile data
+  const cacheKey = `gh:dashboard:${user.id}`;
+  let dashCache = await cacheGet<DashboardCache>(cacheKey);
+
+  if (!dashCache) {
+    dashCache = {
+      merges: (profile?.github_total_merges as number | null) ?? null,
+      streak: (profile?.github_streak as number | null) ?? null,
+      syncedAt: (profile?.github_stats_synced_at as string | null) ?? null,
+    };
+    await cacheSet(cacheKey, dashCache, 300);
+  }
+
+  // Query pull_requests directly (populated by webhooks)
+  const { data: prsData } = await service
+    .from('pull_requests')
+    .select(
+      'id, github_pr_id, repo_full_name, number, title, state, url, github_created_at, merged_at',
+    )
+    .eq('author_user_id', user.id)
+    .order('github_created_at', { ascending: false });
+
+  const prs = (prsData ?? []) as GitHubPR[];
+
+  // Active Issues: claimed recommendations only
+  const { data: claimedRecs } = await service
+    .from('recommendations')
+    .select(
+      `
+      id,
+      status,
+      xp_reward,
+      linked_pr_url,
+      difficulty,
+      issues (
+        title,
+        repo_full_name,
+        url
+      )
+    `,
+    )
+    .eq('user_id', user.id)
+    .eq('status', 'claimed')
+    .limit(2);
+
+  const claimedPrUrls = (claimedRecs ?? [])
+    .map((r: any) => r.linked_pr_url)
+    .filter(Boolean) as string[];
+
   const recsResult = await getRecommendations();
   let recs: any[] = [];
   if (isOk(recsResult)) {
     recs = recsResult.data.slice(0, 2);
   }
-
-  // Total Merges
-  const { count: mergesCount } = await service
-    .from('xp_events')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .in('source', ['recommended_merge', 'unrecommended_merge']);
 
   // Mentor points
   const { data: mentorEvents } = await service
@@ -57,14 +111,6 @@ export default async function DashboardPage() {
     .in('source', ['review', 'help_review']);
   const mentorPoints = mentorEvents?.reduce((acc, e) => acc + (e.xp_delta || 0), 0) || 0;
 
-  // Streak
-  const { count: streakCount } = await service
-    .from('xp_events')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .eq('source', 'streak');
-  const streak = streakCount || 0;
-
   // Leaderboard
   const { data: leaders } = await service
     .from('profiles')
@@ -72,34 +118,14 @@ export default async function DashboardPage() {
     .order('xp', { ascending: false })
     .limit(4);
 
-  // My PRs (only active or completed work)
-  const { data: myPrsData } = await service
-    .from('recommendations')
-    .select(
-      `
-      id,
-      status,
-      xp_reward,
-      linked_pr_url,
-      issues (
-        title,
-        repo_full_name
-      )
-    `,
-    )
-    .eq('user_id', user.id)
-    .in('status', ['claimed', 'completed'])
-    .limit(3);
-
   // Mentees
   const { data: menteesData } = await service
     .from('help_requests')
-    .select(`id, pr_url, status, user_id`)
+    .select('id, pr_url, status, user_id')
     .eq('resolved_by', user.id)
     .in('status', ['open', 'escalated'])
     .limit(2);
 
-  // Enrich mentees with handles
   let enrichedMentees: any[] = [];
   if (menteesData && menteesData.length > 0) {
     const userIds = menteesData.map((m: any) => m.user_id);
@@ -107,35 +133,15 @@ export default async function DashboardPage() {
       .from('profiles')
       .select('id, github_handle')
       .in('id', userIds);
-
     enrichedMentees = menteesData.map((m: any) => {
       const p = menteeProfiles?.find((p) => p.id === m.user_id);
       return { ...m, github_handle: p?.github_handle || 'Unknown' };
     });
   }
 
-  // Orgs for dropdown
-  const { data: insts } = await service
-    .from('github_installations')
-    .select(
-      `
-      account_login,
-      installation_repositories (
-        repo_full_name
-      )
-    `,
-    )
-    .eq('user_id', user.id);
-
-  const orgs = new Set<string>();
-  insts?.forEach((inst: any) => {
-    if (inst.account_login) orgs.add(inst.account_login);
-    inst.installation_repositories?.forEach((repo: any) => {
-      const org = repo.repo_full_name?.split('/')[0];
-      if (org) orgs.add(org);
-    });
-  });
-  const orgList = Array.from(orgs);
+  const merges = dashCache.merges;
+  const streak = dashCache.streak;
+  const syncedAt = dashCache.syncedAt;
 
   return (
     <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
@@ -151,16 +157,7 @@ export default async function DashboardPage() {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            {orgList.length > 0 && (
-              <select className="cursor-pointer appearance-none border border-zinc-700 bg-[#1c2128] px-4 py-3 text-[11px] font-bold uppercase tracking-widest text-zinc-300 focus:border-[#10b981] focus:outline-none">
-                <option value="all">All Organizations</option>
-                {orgList.map((org) => (
-                  <option key={org} value={org}>
-                    {org}
-                  </option>
-                ))}
-              </select>
-            )}
+            <SyncButton lastSyncedAt={syncedAt} />
           </div>
         </header>
 
@@ -196,7 +193,7 @@ export default async function DashboardPage() {
             </div>
             <div className="flex items-end gap-2">
               <span className="font-serif text-4xl leading-none">
-                {(mergesCount || 0).toString().padStart(2, '0')}
+                {(merges ?? 0).toString().padStart(2, '0')}
               </span>
               <TrendingUp className="mb-1 h-4 w-4 text-[#10b981]" />
             </div>
@@ -222,7 +219,7 @@ export default async function DashboardPage() {
             </div>
             <div className="flex items-end gap-2">
               <span className="font-serif text-4xl leading-none">
-                {streak.toString().padStart(2, '0')}
+                {(streak ?? 0).toString().padStart(2, '0')}
               </span>
               <span className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
                 DAYS 🔥
@@ -249,7 +246,43 @@ export default async function DashboardPage() {
               </div>
 
               <div className="space-y-6">
-                {recs.length > 0 ? (
+                {(claimedRecs ?? []).length > 0 ? (
+                  (claimedRecs ?? []).map((rec: any, i: number) => {
+                    const issue = Array.isArray(rec.issues) ? rec.issues[0] : rec.issues;
+                    return (
+                      <div
+                        key={rec.id || i}
+                        className="border-b border-[#2d333b] pb-6 last:border-0 last:pb-0"
+                      >
+                        <div className="mb-4 flex items-start justify-between">
+                          <div className="flex gap-3">
+                            <span className="border border-zinc-700 px-2 py-0.5 text-[10px] uppercase text-zinc-400">
+                              {issue?.repo_full_name?.split('/')[1] || 'REPO'}
+                            </span>
+                            <span className="bg-white px-2 py-0.5 text-[10px] font-bold text-black">
+                              {DIFFICULTY_LABEL[rec.difficulty] ?? rec.difficulty}
+                            </span>
+                          </div>
+                          <span className="text-[10px] uppercase tracking-widest text-zinc-500">
+                            CLAIMED
+                          </span>
+                        </div>
+                        <a
+                          href={issue?.url ?? '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mb-5 block font-serif text-2xl text-white hover:text-zinc-300"
+                        >
+                          {issue?.title || 'Untitled Issue'}
+                        </a>
+                        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-zinc-400">
+                          <div className="h-2 w-2 bg-white" />
+                          IN PROGRESS
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : recs.length > 0 ? (
                   recs.map((rec, i) => (
                     <div
                       key={rec.id || i}
@@ -333,62 +366,11 @@ export default async function DashboardPage() {
 
           {/* Right Column */}
           <div className="space-y-16">
-            <section>
-              <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
-                <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">MY PRS</h2>
-                <Link
-                  href="/my-prs"
-                  className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-zinc-400 hover:text-white"
-                >
-                  VIEW ALL <ArrowRight className="h-3 w-3" />
-                </Link>
-              </div>
-
-              <div className="space-y-8">
-                {myPrsData && myPrsData.length > 0 ? (
-                  myPrsData.map((pr: any) => {
-                    const issue = pr.issues;
-                    const repo = issue?.repo_full_name?.split('/')[1] || 'UNKNOWN';
-                    const isMerged = pr.status === 'completed';
-                    return (
-                      <div key={pr.id} className="border-b border-[#2d333b] pb-6 last:border-0">
-                        <h3 className="mb-2 text-[17px] text-white">
-                          {issue?.title || 'Unknown PR'}
-                        </h3>
-                        <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
-                          #{pr.id} • {repo}
-                        </div>
-                        <div className="flex items-center justify-between">
-                          {isMerged ? (
-                            <>
-                              <div className="inline-block border border-[#10b981] bg-[#064e3b]/30 px-2 py-1 text-[10px] uppercase tracking-widest text-[#10b981]">
-                                <div className="flex items-center gap-2">
-                                  <div className="h-1.5 w-1.5 bg-[#10b981]" /> MERGED ✓
-                                </div>
-                              </div>
-                              <span className="text-[11px] uppercase tracking-widest text-[#10b981]">
-                                +{pr.xp_reward || 0} XP
-                              </span>
-                            </>
-                          ) : (
-                            <div className="inline-block border border-[#b45309] bg-[#451a03]/30 px-2 py-1 text-[10px] uppercase tracking-widest text-[#fbbf24]">
-                              <div className="flex items-center gap-2">
-                                <div className="h-1.5 w-1.5 bg-[#fbbf24]" />{' '}
-                                {pr.status.replace('_', ' ')}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
-                    No PRs tracked yet.
-                  </div>
-                )}
-              </div>
-            </section>
+            <GitHubPRsPanel
+              prs={prs}
+              claimedPrUrls={claimedPrUrls}
+              githubHandle={profile?.github_handle ?? ''}
+            />
 
             <section>
               <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">

@@ -16,6 +16,7 @@ import {
   processMemberEvent,
 } from '@/inngest/functions/process-membership-events';
 import { streakDetect, recsExpire, activityLogCleanup } from '@/inngest/functions/maintenance';
+import { githubStatsSync } from '@/inngest/functions/github-stats-sync';
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -34,5 +35,6 @@ export const { GET, POST, PUT } = serve({
     streakDetect,
     recsExpire,
     activityLogCleanup,
+    githubStatsSync,
   ],
 });

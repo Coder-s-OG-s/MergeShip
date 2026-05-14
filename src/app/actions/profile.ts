@@ -57,7 +57,7 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
       },
       { onConflict: 'id' },
     )
-    .select('id, github_handle, audit_completed')
+    .select('id, github_handle, audit_completed, github_stats_synced_at')
     .single();
 
   if (upsertErr || !profile) {
@@ -89,6 +89,13 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
     name: 'maintainer/discover',
     data: { userId: profile.id, githubHandle: profile.github_handle },
   });
+
+  if (!profile.github_stats_synced_at) {
+    await inngest.send({
+      name: 'github/stats-sync',
+      data: { userId: profile.id, githubHandle: profile.github_handle },
+    });
+  }
 
   return ok({
     profileId: profile.id,
