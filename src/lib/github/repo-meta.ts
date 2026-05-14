@@ -14,6 +14,7 @@ export type RepoMetaResponse = {
   stargazers_count: number;
   pushed_at: string | null;
   license: { spdx_id: string | null } | null;
+  language?: string | null;
 };
 
 export function mapRepoMeta(
@@ -32,24 +33,29 @@ export function mapRepoMeta(
 
 const META_TTL_S = 60 * 60 * 24; // 24h — repo meta changes slowly
 
+export type RepoMetrics = RepoHealthInput & { language: string | null };
+
 /**
  * Fetch + cache repo meta. Falls back to a sensible default if any API
- * call fails so the sweep never blocks on a flaky repo.
+ * call fails so the sweep never blocks on a flaky repo. Returns the
+ * RepoHealthInput shape plus the primary language so the rec ranker
+ * can mark language matches.
  */
-export async function fetchRepoHealthInput(
+export async function fetchRepoMetrics(
   octokit: Octokit,
   owner: string,
   repo: string,
-): Promise<RepoHealthInput> {
-  const cacheKey = `gh:repo-health:${owner}/${repo}`;
-  const cached = await cacheGet<RepoHealthInput>(cacheKey);
+): Promise<RepoMetrics> {
+  const cacheKey = `gh:repo-metrics:${owner}/${repo}`;
+  const cached = await cacheGet<RepoMetrics>(cacheKey);
   if (cached) return cached;
 
-  const fallback: RepoHealthInput = {
+  const fallback: RepoMetrics = {
     stars: 0,
     recentCommits30d: 0,
     hasContributingMd: false,
     hasLicense: false,
+    language: null,
   };
 
   try {
@@ -75,10 +81,24 @@ export async function fetchRepoHealthInput(
     const hasContributingMd =
       contributingRes.status === 'fulfilled' ? contributingRes.value === true : false;
 
-    const mapped = mapRepoMeta(meta, { recentCommits30d, hasContributingMd });
-    await cacheSet(cacheKey, mapped, META_TTL_S);
-    return mapped;
+    const health = mapRepoMeta(meta, { recentCommits30d, hasContributingMd });
+    const out: RepoMetrics = { ...health, language: meta.language ?? null };
+    await cacheSet(cacheKey, out, META_TTL_S);
+    return out;
   } catch {
     return fallback;
   }
+}
+
+/**
+ * Backwards-compatible alias for callers that just want the health
+ * input shape. Internally uses fetchRepoMetrics so the cache is shared.
+ */
+export async function fetchRepoHealthInput(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+): Promise<RepoHealthInput> {
+  const { language: _ignored, ...health } = await fetchRepoMetrics(octokit, owner, repo);
+  return health;
 }
