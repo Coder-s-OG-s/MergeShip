@@ -2,7 +2,8 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { redirect } from 'next/navigation';
 import { xpToNextLevel, xpForLevel } from '@/lib/xp/curve';
-import { cacheGet, cacheSet } from '@/lib/cache';
+import { cacheGet, cacheSet, cacheDel } from '@/lib/cache';
+import { getInstallationToken } from '@/lib/github/app';
 import { PRList } from './pr-list';
 import type { GitHubPR } from '@/app/actions/github-sync';
 
@@ -19,6 +20,93 @@ type EnrichedPR = GitHubPR & {
 type PRsCache = {
   prs: EnrichedPR[];
 };
+
+type GitHubSearchItem = {
+  id: number;
+  number: number;
+  title: string;
+  html_url: string;
+  state: string;
+  created_at: string;
+  pull_request?: { merged_at: string | null; url: string };
+  repository_url: string;
+};
+
+async function fetchAndBackfillPRs(
+  service: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  userId: string,
+  githubHandle: string,
+  installId: number | null,
+): Promise<GitHubPR[]> {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+
+  if (installId) {
+    try {
+      const token = await getInstallationToken(installId);
+      headers['Authorization'] = `Bearer ${token}`;
+    } catch {
+      // proceed without auth — public PRs still visible
+    }
+  }
+
+  // Fetch up to 100 PRs authored by this user across all of GitHub
+  const url = `https://api.github.com/search/issues?q=is:pr+author:${encodeURIComponent(githubHandle)}&sort=created&order=desc&per_page=100`;
+  let items: GitHubSearchItem[] = [];
+  try {
+    const res = await fetch(url, { headers });
+    if (res.ok) {
+      const data = (await res.json()) as { items?: GitHubSearchItem[] };
+      items = data.items ?? [];
+    }
+  } catch {
+    return [];
+  }
+
+  if (items.length === 0) return [];
+
+  // Map to pull_requests row shape
+  const rows = items.map((item) => {
+    const repoFullName = item.repository_url.replace('https://api.github.com/repos/', '');
+    const mergedAt = item.pull_request?.merged_at ?? null;
+    const state: 'open' | 'closed' | 'merged' = mergedAt
+      ? 'merged'
+      : item.state === 'open'
+        ? 'open'
+        : 'closed';
+
+    return {
+      github_pr_id: item.id,
+      repo_full_name: repoFullName,
+      number: item.number,
+      title: item.title,
+      author_login: githubHandle,
+      author_user_id: userId,
+      state,
+      url: item.html_url,
+      github_created_at: item.created_at,
+      merged_at: mergedAt,
+    };
+  });
+
+  // Upsert into pull_requests so webhook-future events will also exist
+  await service
+    .from('pull_requests')
+    .upsert(rows, { onConflict: 'github_pr_id', ignoreDuplicates: false });
+
+  // Re-query to get DB-assigned ids
+  const { data: saved } = await service
+    .from('pull_requests')
+    .select(
+      'id, github_pr_id, repo_full_name, number, title, state, url, github_created_at, merged_at',
+    )
+    .eq('author_user_id', userId)
+    .order('github_created_at', { ascending: false });
+
+  return (saved ?? []) as GitHubPR[];
+}
 
 export default async function MyPRsPage() {
   const sb = getServerSupabase();
@@ -72,38 +160,53 @@ export default async function MyPRsPage() {
       .order('github_created_at', { ascending: false });
 
     rawPRs = (prsData ?? []) as GitHubPR[];
+
+    // If no PRs in DB yet, fetch from GitHub API and backfill
+    if (rawPRs.length === 0 && profile?.github_handle) {
+      const { data: installRow } = await service
+        .from('github_installations')
+        .select('id')
+        .eq('user_id', user.id)
+        .is('uninstalled_at', null)
+        .order('installed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      rawPRs = await fetchAndBackfillPRs(
+        service,
+        user.id,
+        profile.github_handle,
+        installRow?.id ?? null,
+      );
+
+      // Invalidate cache after backfill so next load hits fresh DB data
+      await cacheDel(cacheKey);
+    }
+
     prsCache = { prs: rawPRs.map((pr) => ({ ...pr })) };
     await cacheSet(cacheKey, prsCache, 300);
   }
 
   const basePRs: EnrichedPR[] = prsCache.prs;
 
-  // Enrich PRs with mentor/review data from the correct schema:
-  // - recommendations: status = open | claimed | completed | expired | reassigned, no mentor_id
-  //   linked_pr_url links a rec to a PR
-  // - help_requests: status = open | escalated | resolved | expired
-  //   pr_url links a help request to a PR; resolved_by = mentor's profile id
+  // Enrich PRs with mentor/review data
   const prUrls = basePRs.map((pr) => pr.url).filter(Boolean);
   let enrichedPRs: EnrichedPR[] = basePRs;
 
   if (prUrls.length > 0) {
-    // Recommendations matched by linked_pr_url
     const { data: recData } = await service
       .from('recommendations')
       .select('linked_pr_url, status, xp_reward')
       .eq('user_id', user.id)
       .in('linked_pr_url', prUrls);
 
-    // Help requests matched by pr_url (user's own help requests)
     const { data: helpData } = await service
       .from('help_requests')
       .select('pr_url, status, resolved_by')
       .eq('user_id', user.id)
       .in('pr_url', prUrls);
 
-    // Fetch reviewer handles from resolved_by IDs
     const resolverIds = (helpData ?? []).map((h: any) => h.resolved_by).filter(Boolean) as string[];
-
     let resolverHandles: Record<string, { handle: string; level: number }> = {};
     if (resolverIds.length > 0) {
       const { data: resolverData } = await service
@@ -115,11 +218,9 @@ export default async function MyPRsPage() {
       );
     }
 
-    // Index by url for O(1) lookup
     const recByUrl: Record<string, any> = Object.fromEntries(
       (recData ?? []).map((r: any) => [r.linked_pr_url, r]),
     );
-    // Multiple help requests per PR possible — take the most relevant (open > escalated > resolved)
     const helpByUrl: Record<string, any> = {};
     const STATUS_PRIORITY: Record<string, number> = {
       open: 0,
@@ -147,16 +248,13 @@ export default async function MyPRsPage() {
       let xp_earned: number | null = null;
       let close_reason: string | null = null;
 
-      // MENTOR APPROVED: recommendation was completed (mentor signed off)
       if (rec?.status === 'completed') {
         mentor_status = 'approved';
         xp_earned = rec.xp_reward ?? null;
       }
 
-      // PENDING REVIEW: user has an active help request on this PR
       if (!mentor_status && help && (help.status === 'open' || help.status === 'escalated')) {
         mentor_status = 'pending';
-        // Reviewer: whoever resolved_by points to (may be assigned mentor)
         const info = help.resolved_by ? resolverHandles[help.resolved_by] : undefined;
         if (info) {
           reviewed_by = info.handle;
@@ -164,29 +262,19 @@ export default async function MyPRsPage() {
         }
       }
 
-      // Also mark pending if rec is 'claimed' and has an active help request
       if (!mentor_status && rec?.status === 'claimed' && help?.status === 'open') {
         mentor_status = 'pending';
       }
 
-      // Close reason for closed PRs
       if (pr.state === 'closed') {
         close_reason = 'Closed by maintainer';
       }
 
-      // XP for merged PRs
       if (pr.state === 'merged' && !xp_earned && rec?.xp_reward) {
         xp_earned = rec.xp_reward;
       }
 
-      return {
-        ...pr,
-        mentor_status,
-        reviewed_by,
-        mentor_level,
-        xp_earned,
-        close_reason,
-      };
+      return { ...pr, mentor_status, reviewed_by, mentor_level, xp_earned, close_reason };
     });
   }
 
@@ -194,8 +282,6 @@ export default async function MyPRsPage() {
   const prsMerged = enrichedPRs.filter((pr) => pr.state === 'merged').length;
   const prsTotal = enrichedPRs.length;
   const successRate = prsTotal > 0 ? Math.round((prsMerged / prsTotal) * 100) : 0;
-
-  // Avg review time (using XP events as proxy for now)
   const avgReviewDays = 2.3;
 
   const levelFloor = xpForLevel(level);
@@ -209,21 +295,17 @@ export default async function MyPRsPage() {
     <div className="flex min-h-screen bg-[#111318] font-mono text-white">
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto px-10 py-10">
-        {/* Header */}
         <header className="mb-8">
           <h1 className="font-sans text-[36px] font-black tracking-tight text-white">
             My Pull Requests
           </h1>
         </header>
-
-        {/* PR list with tabs */}
         <PRList prs={enrichedPRs} />
       </div>
 
       {/* Right Stats Panel */}
       <aside className="w-[260px] shrink-0 border-l border-[#2d333b] p-6">
         <div className="rounded-sm border border-[#2d333b] bg-[#161b22] p-5">
-          {/* Title */}
           <div className="mb-5 flex items-center gap-2">
             <svg className="h-4 w-4 text-[#39d353]" fill="currentColor" viewBox="0 0 16 16">
               <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm0 1.5a6.5 6.5 0 110 13 6.5 6.5 0 010-13zM7 4v5l4.5 2.7.8-1.3L8.5 8.5V4H7z" />
@@ -233,7 +315,6 @@ export default async function MyPRsPage() {
             </span>
           </div>
 
-          {/* Total XP */}
           <div className="mb-5">
             <div className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">Total XP</div>
             <div className="font-sans text-[44px] font-black leading-none text-[#39d353]">
@@ -241,7 +322,6 @@ export default async function MyPRsPage() {
             </div>
           </div>
 
-          {/* PRs Merged + Success Rate */}
           <div className="mb-5 grid grid-cols-2 gap-4">
             <div>
               <div className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
@@ -261,7 +341,6 @@ export default async function MyPRsPage() {
             </div>
           </div>
 
-          {/* Avg Review Time */}
           <div className="mb-5 border-t border-[#2d333b] pt-5">
             <div className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
               Avg Review Time
@@ -271,7 +350,6 @@ export default async function MyPRsPage() {
             </div>
           </div>
 
-          {/* Level Progress */}
           <div className="border-t border-[#2d333b] pt-5">
             <div className="mb-2 flex justify-between text-[10px] uppercase tracking-widest text-zinc-500">
               <span>L{level}</span>
@@ -288,7 +366,6 @@ export default async function MyPRsPage() {
           </div>
         </div>
 
-        {/* Profile info */}
         <div className="mt-4 rounded-sm border border-[#2d333b] bg-[#161b22] p-4">
           <div className="flex items-center gap-3">
             {profile?.avatar_url ? (
