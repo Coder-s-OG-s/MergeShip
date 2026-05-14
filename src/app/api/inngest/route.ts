@@ -19,6 +19,8 @@ import { prBackfill } from '@/inngest/functions/pr-backfill';
 import { streakDetect, recsExpire, activityLogCleanup } from '@/inngest/functions/maintenance';
 import { githubStatsSync } from '@/inngest/functions/github-stats-sync';
 import { mentorPostComment } from '@/inngest/functions/mentor-post-comment';
+import { processIssueEvent } from '@/inngest/functions/process-issue-event';
+import { processIssueCommentEvent } from '@/inngest/functions/process-issue-comment-event';
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -40,5 +42,7 @@ export const { GET, POST, PUT } = serve({
     activityLogCleanup,
     githubStatsSync,
     mentorPostComment,
+    processIssueEvent,
+    processIssueCommentEvent,
   ],
 });
