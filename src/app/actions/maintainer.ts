@@ -349,4 +349,6 @@ export async function deleteCommunityLink(linkId: number): Promise<Result<{ ok: 
   return ok({ ok: true });
 }
 
-export { COMMUNITY_KINDS };
+// (COMMUNITY_KINDS is imported directly from '@/lib/maintainer/community'
+// in client / page code — re-exporting it here would violate Next.js's
+// 'use server' rule that only async functions may be exported.)
