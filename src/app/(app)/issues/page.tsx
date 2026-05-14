@@ -21,11 +21,13 @@ type LinkedRec = {
   linked_pr_url: string;
   status: string;
   xp_reward: number;
-  issues: {
-    title: string;
-    repo_full_name: string;
-    url: string;
-  } | null;
+  issues:
+    | {
+        title: string;
+        repo_full_name: string;
+        url: string;
+      }[]
+    | null;
 };
 
 export default async function IssuesPage({ searchParams }: { searchParams: SearchParams }) {
@@ -96,19 +98,19 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
                 <div key={rec.id} className="border-b border-[#2d333b] py-5 last:border-0">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <span className="text-[10px] uppercase tracking-widest text-zinc-600">
-                      {rec.issues?.repo_full_name ?? '—'}
+                      {rec.issues?.[0]?.repo_full_name ?? '—'}
                     </span>
                     <StatusBadge status={rec.status} />
                   </div>
 
                   <div className="mb-3 flex items-start justify-between gap-4">
                     <a
-                      href={rec.issues?.url ?? '#'}
+                      href={rec.issues?.[0]?.url ?? '#'}
                       target="_blank"
                       rel="noreferrer"
                       className="font-serif text-lg leading-snug text-white hover:text-zinc-300"
                     >
-                      {rec.issues?.title ?? 'Untitled Issue'}
+                      {rec.issues?.[0]?.title ?? 'Untitled Issue'}
                     </a>
                     <span className="shrink-0 text-[10px] uppercase tracking-widest text-emerald-600">
                       +{rec.xp_reward} XP
