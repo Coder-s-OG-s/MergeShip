@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Outfit, Inter, DM_Serif_Display, DM_Mono, DM_Sans } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 
 const outfit = Outfit({
@@ -55,7 +56,10 @@ export default function RootLayout({
       lang="en"
       className={`dark ${outfit.variable} ${inter.variable} ${dmSerifDisplay.variable} ${dmMono.variable} ${dmSans.variable}`}
     >
-      <body className="bg-dark-900 text-white antialiased">{children}</body>
+      <body className="bg-dark-900 text-white antialiased">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
