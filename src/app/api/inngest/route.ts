@@ -18,6 +18,7 @@ import {
 import { prBackfill } from '@/inngest/functions/pr-backfill';
 import { streakDetect, recsExpire, activityLogCleanup } from '@/inngest/functions/maintenance';
 import { githubStatsSync } from '@/inngest/functions/github-stats-sync';
+import { mentorPostComment } from '@/inngest/functions/mentor-post-comment';
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -38,5 +39,6 @@ export const { GET, POST, PUT } = serve({
     recsExpire,
     activityLogCleanup,
     githubStatsSync,
+    mentorPostComment,
   ],
 });
