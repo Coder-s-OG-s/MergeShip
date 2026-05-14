@@ -28,6 +28,7 @@ type GitHubSearchItem = {
   html_url: string;
   state: string;
   created_at: string;
+  updated_at: string;
   pull_request?: { merged_at: string | null; url: string };
   repository_url: string;
 };
@@ -87,6 +88,7 @@ async function fetchAndBackfillPRs(
       state,
       url: item.html_url,
       github_created_at: item.created_at,
+      github_updated_at: item.updated_at ?? item.created_at,
       merged_at: mergedAt,
     };
   });
@@ -150,7 +152,10 @@ export default async function MyPRsPage() {
   let prsCache = await cacheGet<PRsCache>(cacheKey);
 
   let rawPRs: GitHubPR[] = [];
-  if (!prsCache) {
+  if (!prsCache || prsCache.prs.length === 0) {
+    // Clear stale empty cache before re-fetching
+    if (prsCache) await cacheDel(cacheKey);
+    prsCache = null;
     const { data: prsData } = await service
       .from('pull_requests')
       .select(
