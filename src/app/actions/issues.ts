@@ -87,7 +87,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
   }[];
 
   const issueIds = rows.map((i) => i.id);
-  let recMap = new Map<number, { id: number; status: string }>();
+  const recMap = new Map<number, { id: number; status: string }>();
   if (issueIds.length > 0) {
     const { data: recsData } = await service
       .from('recommendations')
