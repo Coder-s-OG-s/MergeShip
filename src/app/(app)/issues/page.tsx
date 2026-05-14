@@ -54,7 +54,7 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
     : [];
 
   // Step 2: fetch issue details separately (avoids FK detection issues)
-  let issueMap = new Map<number, { title: string; repo_full_name: string; url: string }>();
+  const issueMap = new Map<number, { title: string; repo_full_name: string; url: string }>();
   if (linkedRecsRaw.length > 0 && service) {
     const issueIds = linkedRecsRaw.map((r: any) => r.issue_id).filter(Boolean);
     const { data: issuesData } = await service
