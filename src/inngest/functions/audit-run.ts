@@ -3,6 +3,7 @@ import { getInstallOctokit, getUserOctokit } from '@/lib/github/app';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { computeAuditScore, type AuditSignals } from '@/lib/xp/audit';
 import { clampAuditScoreToLevel } from '@/lib/xp/audit-clamp';
+import { pickPrimaryLanguage } from '@/lib/xp/primary-language';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_SOURCE, refIds } from '@/lib/xp/sources';
 
@@ -112,9 +113,9 @@ export const auditRun = inngest.createFunction(
         sort: 'pushed',
       });
 
-      const distinctLanguages = new Set(
-        repos.data.map((r) => r.language).filter((l): l is string => Boolean(l)),
-      ).size;
+      const languageList = repos.data.map((r) => r.language) as Array<string | null>;
+      const distinctLanguages = new Set(languageList.filter((l): l is string => Boolean(l))).size;
+      const primaryLanguage = pickPrimaryLanguage(languageList);
 
       const signals: AuditSignals = {
         accountAgeYears,
@@ -138,7 +139,13 @@ export const auditRun = inngest.createFunction(
         metadata: { signals, rawAuditScore, clampedToLevel: AUDIT_MAX_LEVEL },
       });
 
-      await sb.from('profiles').update({ audit_completed: true }).eq('id', userId);
+      await sb
+        .from('profiles')
+        .update({
+          audit_completed: true,
+          ...(primaryLanguage ? { primary_language: primaryLanguage } : {}),
+        })
+        .eq('id', userId);
 
       return { inserted, rawAuditScore, auditScore, signals };
     });
