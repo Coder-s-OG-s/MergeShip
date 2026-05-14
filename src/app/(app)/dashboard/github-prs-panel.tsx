@@ -17,7 +17,7 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
   const [filter, setFilter] = useState<Filter>('open');
   const claimedSet = new Set(claimedPrUrls);
 
-  const filtered = prs.filter((pr) => pr.state === filter).slice(0, 5);
+  const filtered = prs.filter((pr) => pr.state === filter);
 
   return (
     <section>
@@ -44,30 +44,32 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="max-h-[520px] overflow-y-auto pr-1 [&::-webkit-scrollbar-thumb:hover]:bg-zinc-500 [&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-1">
         {filtered.length === 0 ? (
           <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
             No {filter} PRs.
           </div>
         ) : (
-          filtered.map((pr) => (
-            <div key={pr.id} className="border-b border-[#2d333b] pb-6 last:border-0">
-              <Link href={pr.url} target="_blank" rel="noopener noreferrer">
-                <h3 className="mb-1 text-[15px] text-white hover:underline">{pr.title}</h3>
-              </Link>
-              <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500">
-                #{pr.number} · {pr.repo_full_name} · {formatDate(pr.github_created_at)}
+          <div className="space-y-6">
+            {filtered.map((pr) => (
+              <div key={pr.id} className="border-b border-[#2d333b] pb-6 last:border-0">
+                <Link href={pr.url} target="_blank" rel="noopener noreferrer">
+                  <h3 className="mb-1 text-[15px] text-white hover:underline">{pr.title}</h3>
+                </Link>
+                <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500">
+                  #{pr.number} · {pr.repo_full_name} · {formatDate(pr.github_created_at)}
+                </div>
+                <div className="flex items-center gap-3">
+                  <StateBadge state={pr.state} />
+                  {claimedSet.has(pr.url) && (
+                    <span className="border border-purple-700 bg-purple-900/30 px-2 py-0.5 text-[10px] uppercase tracking-widest text-purple-300">
+                      CLAIMED
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <StateBadge state={pr.state} />
-                {claimedSet.has(pr.url) && (
-                  <span className="border border-purple-700 bg-purple-900/30 px-2 py-0.5 text-[10px] uppercase tracking-widest text-purple-300">
-                    CLAIMED
-                  </span>
-                )}
-              </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
     </section>

@@ -99,7 +99,7 @@ export default async function DashboardPage() {
   const recsResult = await getRecommendations();
   let recs: any[] = [];
   if (isOk(recsResult)) {
-    recs = recsResult.data.slice(0, 2);
+    recs = recsResult.data;
   }
 
   // Mentor points
