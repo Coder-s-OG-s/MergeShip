@@ -134,6 +134,13 @@ export const processInstallationEvent = inngest.createFunction(
           }
         }
 
+        // Backfill historic PRs into pull_requests so the maintainer queue
+        // isn't empty when they land on /maintainer for the first time.
+        await inngest.send({
+          name: 'pr-backfill/installation',
+          data: { installationId: install.id },
+        });
+
         return { ok: true, linked: Boolean(profile), repoCount: repos.length };
       }
 
@@ -219,6 +226,17 @@ export const processInstallationReposEvent = inngest.createFunction(
             repo_full_name: r.full_name,
           })),
         );
+        // Fan-out a per-repo backfill for each new repo so the maintainer
+        // queue picks them up without waiting for the next cron tick.
+        for (const r of payload.repositories_added) {
+          await inngest.send({
+            name: 'pr-backfill/repo',
+            data: {
+              installationId: payload.installation.id,
+              repoFullName: r.full_name,
+            },
+          });
+        }
       }
       if (payload.repositories_removed?.length) {
         const removed = payload.repositories_removed.map((r) => r.full_name);

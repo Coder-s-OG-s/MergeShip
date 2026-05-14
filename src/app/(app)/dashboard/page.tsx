@@ -4,6 +4,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { SyncButton } from './sync-button';
 import { GitHubPRsPanel } from './github-prs-panel';
 import RecCards from './rec-cards';
+import LevelUpBanner from './level-up-banner';
 import { redirect } from 'next/navigation';
 import { isOk } from '@/lib/result';
 import { xpToNextLevel, xpForLevel } from '@/lib/xp/curve';
@@ -145,6 +146,7 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
       <div className="mx-auto max-w-6xl">
+        <LevelUpBanner />
         {/* Header */}
         <header className="mb-12 flex flex-col justify-between gap-6 border-b border-[#2d333b] pb-6 md:flex-row md:items-end">
           <div>

@@ -67,6 +67,7 @@ type ProfileData = {
   prsMerged: number;
   menteesHelped: number;
   orgsContributed: number;
+  streakDays: number;
   achievements: Achievement[];
   timeline: TimelineEvent[];
   orgs: OrgEntry[];
@@ -240,6 +241,9 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     },
   ];
 
+  const { getPublicStreak } = await import('@/app/actions/streak');
+  const { days: streakDays } = await getPublicStreak(profile.id);
+
   const data: ProfileData = {
     githubHandle: profile.github_handle,
     displayName: profile.display_name,
@@ -249,6 +253,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     prsMerged,
     menteesHelped,
     orgsContributed,
+    streakDays,
     achievements,
     timeline,
     orgs,
@@ -427,7 +432,7 @@ export default async function PublicProfile({ params }: { params: { handle: stri
             {/* Stats grid */}
             <div className="border-t border-[#21262d] pt-8">
               <h2 className="mb-5 text-[11px] uppercase tracking-widest text-zinc-500">Stats</h2>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div className="border border-[#21262d] bg-[#161b22] p-4">
                   <div className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
                     Total XP
@@ -448,6 +453,14 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                   </div>
                   <div className="font-serif text-2xl font-bold text-white">
                     {profile.prsMerged}
+                  </div>
+                </div>
+                <div className="border border-[#21262d] bg-[#161b22] p-4">
+                  <div className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
+                    Activity Streak
+                  </div>
+                  <div className="font-serif text-2xl font-bold text-white">
+                    {profile.streakDays}d
                   </div>
                 </div>
               </div>
