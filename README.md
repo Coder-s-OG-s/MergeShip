@@ -55,57 +55,33 @@ The codebase follows a domain-driven design structure:
 - `supabase/` - SQL migrations and Docker configurations.
 - `tests/` & `__fixtures__/` - High-coverage test suites and mock data.
 
-## Quick Start (Local Setup)
+## Quick Start
 
-The development environment is optimized to get you from clone to first PR in under 10 minutes.
+Works on macOS, Linux, and Windows (WSL2). Full step-by-step in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-### Prerequisites
+```bash
+git clone https://github.com/Coder-s-OG-s/MergeShip.git
+cd MergeShip
+npm install
+cp .env.example .env.local
+make supabase-start        # boots local Postgres + Auth in Docker
+# paste ANON_KEY and SERVICE_ROLE_KEY from the output into .env.local
+make db-reset              # migrations + seeded personas
+npm run dev                # http://localhost:3001
+```
 
-- **Node.js**: v20 or higher
-- **Docker**: Required for running the local Supabase instance
-- **Package Manager**: npm
+Open `http://localhost:3001/dev/login` and click any persona to sign in. No GitHub OAuth or external accounts required for local work.
 
-### Installation Steps
-
-1. **Clone the repository:**
-
-   ```bash
-   git clone [https://github.com/Coder-s-OG-s/MergeShip.git](https://github.com/Coder-s-OG-s/MergeShip.git)
-   cd MergeShip
-   ```
-
-2. **Install dependencies and set up environment:**
-
-   ```bash
-   npm install
-   cp .env.example .env.local
-   ```
-
-3. **Start local Supabase and Seed Data:**
-
-   ```bash
-   make supabase-start    # Starts Postgres, Auth, and Studio via Docker
-   make db-seed           # Seeds synthetic dev personas
-   ```
-
-4. **Run the development server:**
-   ```bash
-   npm run dev
-   ```
-   Access the app at http://localhost:3001.
-
-**Note on Authentication:** For local development, use the seeded personas at http://localhost:3001/dev/login for instant sign-in without configuring OAuth.
+For prerequisites, troubleshooting, and the full contributor workflow, read [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Contributing
 
-We maintain a high engineering bar with strict TypeScript, zero lint warnings, and 80%+ test coverage.
+We maintain a high engineering bar: strict TypeScript, zero lint warnings, and 80%+ test coverage on `lib/`.
 
-Please review our guidelines before contributing:
-
-- [Contributing Guidelines](./CONTRIBUTING.md)
+- [Contributing Guidelines](./CONTRIBUTING.md) — local setup, PR workflow, code style
+- [Deployment Guide](./docs/deployment.md) — production setup (Vercel + real Supabase + GitHub App)
 - [AI Usage Policy](./docs/ai-usage-policy.md)
-- [Setup Guide](./docs/setup-guide.md)
-- [Code of Conduct](./.github/CODE_OF_CONDUCT.md)
+- [Code of Conduct](./CODE_OF_CONDUCT.md)
 
 ## License
 
