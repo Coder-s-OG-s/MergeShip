@@ -18,22 +18,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   let handle: string | null = null;
   let level = 0;
+  let isMaintainer = false;
   const service = getServiceSupabase();
   if (service) {
     const { data: profile } = await service
       .from('profiles')
-      .select('github_handle, level')
+      .select('github_handle, level, role')
       .eq('id', user.id)
       .maybeSingle();
     handle = profile?.github_handle ?? null;
     level = profile?.level ?? 0;
+    const roleIsMaintainer = profile?.role === 'maintainer' || profile?.role === 'both';
+    if (roleIsMaintainer) isMaintainer = true;
   }
 
-  let isMaintainer = false;
-  try {
-    isMaintainer = await isUserMaintainer(user.id);
-  } catch {
-    // never break the layout
+  if (!isMaintainer) {
+    try {
+      isMaintainer = await isUserMaintainer(user.id);
+    } catch {
+      // never break the layout
+    }
   }
 
   return (
