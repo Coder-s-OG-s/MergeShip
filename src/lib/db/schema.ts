@@ -107,6 +107,7 @@ export const issues = pgTable(
       .default('open'),
     url: text('url').notNull(),
     repoHealthScore: integer('repo_health_score'),
+    repoLanguage: text('repo_language'),
     summary: text('summary'),
     scoredAt: timestamp('scored_at', { withTimezone: true }),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
