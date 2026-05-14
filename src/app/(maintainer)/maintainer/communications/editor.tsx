@@ -66,13 +66,15 @@ export default function CommunityEditor({
 
   return (
     <section className="mt-8 space-y-6">
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-        <h2 className="mb-3 font-display text-lg font-semibold">Add or update</h2>
+      <div className="rounded-lg border border-[#30363d] bg-[#161b22] p-5">
+        <h2 className="mb-3 text-[13px] font-bold uppercase tracking-widest text-[#8b949e]">
+          Add or update
+        </h2>
         <div className="grid gap-2 sm:grid-cols-[10rem,1fr,12rem,auto]">
           <select
             value={kind}
             onChange={(e) => setKind(e.target.value as CommunityKind)}
-            className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
+            className="rounded border border-[#30363d] bg-[#0d1117] px-2 py-1.5 text-sm text-white focus:border-[#00d26a] focus:outline-none"
           >
             {kinds.map((k) => (
               <option key={k} value={k}>
@@ -85,50 +87,52 @@ export default function CommunityEditor({
             placeholder="https://discord.gg/..."
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
+            className="min-w-0 rounded border border-[#30363d] bg-[#0d1117] px-2 py-1.5 text-sm text-white placeholder-zinc-600 focus:border-[#00d26a] focus:outline-none"
           />
           <input
             type="text"
             placeholder="optional label"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
+            className="rounded border border-[#30363d] bg-[#0d1117] px-2 py-1.5 text-sm text-white placeholder-zinc-600 focus:border-[#00d26a] focus:outline-none"
           />
           <button
             onClick={onAdd}
             disabled={pending || !url}
-            className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-500 disabled:opacity-50"
+            className="rounded bg-[#00d26a] px-3 py-1.5 text-sm font-bold text-black transition-colors hover:bg-[#00d26a]/80 disabled:opacity-50"
           >
             {pending ? 'Saving…' : 'Save'}
           </button>
         </div>
         {error && (
-          <p className="mt-3 text-sm text-rose-400" role="alert">
+          <p className="mt-3 text-sm text-[#f85149]" role="alert">
             {error}
           </p>
         )}
-        <p className="mt-3 text-xs text-zinc-500">One link per kind. Save again to update.</p>
+        <p className="mt-3 text-[11px] text-zinc-600">One link per kind. Save again to update.</p>
       </div>
 
-      <ul className="divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900">
+      <ul className="divide-y divide-[#30363d] rounded-lg border border-[#30363d] bg-[#161b22]">
         {links.length === 0 ? (
-          <li className="p-5 text-sm text-zinc-500">No links yet.</li>
+          <li className="p-5 text-[12px] text-zinc-500">No links yet.</li>
         ) : (
           links.map((l) => (
             <li key={l.id} className="flex items-center gap-3 p-4">
-              <span className="w-20 text-xs uppercase tracking-wide text-zinc-500">{l.kind}</span>
+              <span className="w-20 text-[10px] uppercase tracking-wider text-[#8b949e]">
+                {l.kind}
+              </span>
               <a
                 href={l.url}
                 target="_blank"
                 rel="noreferrer"
-                className="flex-1 truncate text-sm text-purple-300 hover:underline"
+                className="flex-1 truncate text-[12px] text-[#00d26a] hover:underline"
               >
                 {l.label ?? l.url}
               </a>
               <button
                 onClick={() => onDelete(l.id)}
                 disabled={pending}
-                className="text-xs text-zinc-500 hover:text-rose-400 disabled:opacity-50"
+                className="text-[11px] text-zinc-600 transition-colors hover:text-[#f85149] disabled:opacity-50"
               >
                 Remove
               </button>

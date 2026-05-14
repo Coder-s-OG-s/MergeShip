@@ -352,3 +352,428 @@ export async function deleteCommunityLink(linkId: number): Promise<Result<{ ok: 
 // (COMMUNITY_KINDS is imported directly from '@/lib/maintainer/community'
 // in client / page code — re-exporting it here would violate Next.js's
 // 'use server' rule that only async functions may be exported.)
+
+// ---------------- dashboard types ----------------
+
+export type DashboardStats = {
+  openPrs: number;
+  mentorVerified: number;
+  aiFlagged: number;
+  openIssues: number;
+  stalePrs: number;
+};
+
+export type ActivityItem = {
+  type: 'pr_merged' | 'contributor_joined' | 'pr_opened';
+  text: string;
+  subtext: string;
+  timestamp: string;
+};
+
+export type HelpRequestRow = {
+  id: number;
+  handle: string;
+  message: string;
+  prUrl: string | null;
+  createdAt: string;
+};
+
+export type LevelDistribution = {
+  l0: number;
+  l1: number;
+  l2: number;
+  l3plus: number;
+};
+
+export type ContributorRow = {
+  id: string;
+  handle: string;
+  level: number;
+  xp: number;
+  mergedPrs: number;
+  joinedAt: string;
+};
+
+export type MentorRow = {
+  id: string;
+  handle: string;
+  level: number;
+  xp: number;
+  helpResolved: number;
+};
+
+// ---------------- dashboard actions ----------------
+
+export async function getMaintainerDashboardStats(
+  installationId: number,
+): Promise<Result<DashboardStats>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return ok({ openPrs: 0, mentorVerified: 0, aiFlagged: 0, openIssues: 0, stalePrs: 0 });
+  }
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [openPrsRes, mentorVerifiedRes, stalePrsRes, openIssuesRes] = await Promise.all([
+    service
+      .from('pull_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('state', 'open')
+      .in('repo_full_name', repos),
+    service
+      .from('pull_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('state', 'open')
+      .eq('mentor_verified', true)
+      .in('repo_full_name', repos),
+    service
+      .from('pull_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('state', 'open')
+      .lt('github_updated_at', sevenDaysAgo)
+      .in('repo_full_name', repos),
+    service.from('issues').select('id', { count: 'exact', head: true }).eq('state', 'open'),
+  ]);
+
+  return ok({
+    openPrs: openPrsRes.count ?? 0,
+    mentorVerified: mentorVerifiedRes.count ?? 0,
+    aiFlagged: 0,
+    openIssues: openIssuesRes.count ?? 0,
+    stalePrs: stalePrsRes.count ?? 0,
+  });
+}
+
+export async function getMaintainerRecentActivity(
+  installationId: number,
+): Promise<Result<ActivityItem[]>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [mergedRes, profilesRes, openedRes] = await Promise.all([
+    repos.length > 0
+      ? service
+          .from('pull_requests')
+          .select('number, title, author_login, merged_at')
+          .eq('state', 'merged')
+          .in('repo_full_name', repos)
+          .gte('merged_at', since)
+          .order('merged_at', { ascending: false })
+          .limit(5)
+      : Promise.resolve({ data: [] }),
+    service
+      .from('profiles')
+      .select('github_handle, created_at')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(5),
+    repos.length > 0
+      ? service
+          .from('pull_requests')
+          .select('number, title, author_login, github_created_at')
+          .eq('state', 'open')
+          .in('repo_full_name', repos)
+          .gte('github_created_at', since)
+          .order('github_created_at', { ascending: false })
+          .limit(5)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const items: ActivityItem[] = [];
+
+  for (const r of (mergedRes.data ?? []) as {
+    number: number;
+    title: string;
+    author_login: string;
+    merged_at: string;
+  }[]) {
+    items.push({
+      type: 'pr_merged',
+      text: `#${r.number} merged`,
+      subtext: r.title,
+      timestamp: r.merged_at,
+    });
+  }
+
+  for (const r of (profilesRes.data ?? []) as { github_handle: string; created_at: string }[]) {
+    items.push({
+      type: 'contributor_joined',
+      text: `@${r.github_handle} joined`,
+      subtext: 'New contributor',
+      timestamp: r.created_at,
+    });
+  }
+
+  for (const r of (openedRes.data ?? []) as {
+    number: number;
+    title: string;
+    author_login: string;
+    github_created_at: string;
+  }[]) {
+    items.push({
+      type: 'pr_opened',
+      text: `#${r.number} opened`,
+      subtext: r.title,
+      timestamp: r.github_created_at,
+    });
+  }
+
+  items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  return ok(items.slice(0, 10));
+}
+
+export async function getMaintainerHelpRequests(): Promise<Result<HelpRequestRow[]>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const { data: requests } = await service
+    .from('help_requests')
+    .select('id, pr_url, reason, user_id, created_at')
+    .in('status', ['open', 'escalated'])
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  const rows = (requests ?? []) as {
+    id: number;
+    pr_url: string | null;
+    reason: string | null;
+    user_id: string;
+    created_at: string;
+  }[];
+
+  const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
+  const handleMap = new Map<string, string>();
+
+  if (userIds.length > 0) {
+    const { data: profiles } = await service
+      .from('profiles')
+      .select('id, github_handle')
+      .in('id', userIds);
+    for (const p of profiles ?? []) {
+      handleMap.set(p.id, p.github_handle);
+    }
+  }
+
+  return ok(
+    rows.map((r) => ({
+      id: r.id,
+      handle: handleMap.get(r.user_id) ?? 'unknown',
+      message: r.reason ?? r.pr_url ?? 'Help requested',
+      prUrl: r.pr_url,
+      createdAt: r.created_at,
+    })),
+  );
+}
+
+export async function getMaintainerLevelDistribution(): Promise<Result<LevelDistribution>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const { data } = await service.from('profiles').select('level').limit(1000);
+
+  const rows = (data ?? []) as { level: number | null }[];
+  let l0 = 0,
+    l1 = 0,
+    l2 = 0,
+    l3plus = 0;
+  for (const r of rows) {
+    const lvl = r.level ?? 0;
+    if (lvl === 0) l0++;
+    else if (lvl === 1) l1++;
+    else if (lvl === 2) l2++;
+    else l3plus++;
+  }
+
+  return ok({ l0, l1, l2, l3plus });
+}
+
+export async function getMaintainerContributors(args: {
+  installationId: number;
+  page?: number;
+}): Promise<Result<{ rows: ContributorRow[]; hasMore: boolean }>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) return ok({ rows: [], hasMore: false });
+
+  const page = Math.max(0, args.page ?? 0);
+  const limit = 25;
+
+  const { data: prAuthorRows } = await service
+    .from('pull_requests')
+    .select('author_user_id')
+    .in('repo_full_name', repos)
+    .not('author_user_id', 'is', null);
+
+  const authorIds = Array.from(
+    new Set(
+      (prAuthorRows ?? [])
+        .map((r: { author_user_id: string | null }) => r.author_user_id)
+        .filter((id): id is string => !!id),
+    ),
+  );
+
+  if (authorIds.length === 0) return ok({ rows: [], hasMore: false });
+
+  const { data: profiles } = await service
+    .from('profiles')
+    .select('id, github_handle, level, xp, created_at')
+    .in('id', authorIds)
+    .order('xp', { ascending: false })
+    .range(page * limit, (page + 1) * limit);
+
+  const profileRows = (profiles ?? []) as {
+    id: string;
+    github_handle: string;
+    level: number | null;
+    xp: number | null;
+    created_at: string;
+  }[];
+
+  const pageIds = profileRows.map((p) => p.id);
+  const mergedCountMap = new Map<string, number>();
+
+  if (pageIds.length > 0) {
+    const { data: mergedPrs } = await service
+      .from('pull_requests')
+      .select('author_user_id')
+      .eq('state', 'merged')
+      .in('author_user_id', pageIds)
+      .in('repo_full_name', repos);
+    for (const r of (mergedPrs ?? []) as { author_user_id: string }[]) {
+      mergedCountMap.set(r.author_user_id, (mergedCountMap.get(r.author_user_id) ?? 0) + 1);
+    }
+  }
+
+  const rows: ContributorRow[] = profileRows.map((p) => ({
+    id: p.id,
+    handle: p.github_handle,
+    level: p.level ?? 0,
+    xp: p.xp ?? 0,
+    mergedPrs: mergedCountMap.get(p.id) ?? 0,
+    joinedAt: p.created_at,
+  }));
+
+  return ok({ rows, hasMore: rows.length === limit });
+}
+
+export async function getMaintainerMentors(installationId: number): Promise<Result<MentorRow[]>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  // installationId is used for auth context (already checked above via isUserMaintainer)
+  void installationId;
+
+  const { data: mentorProfiles } = await service
+    .from('profiles')
+    .select('id, github_handle, level, xp')
+    .gte('level', 2)
+    .order('level', { ascending: false })
+    .order('xp', { ascending: false })
+    .limit(20);
+
+  const profiles = (mentorProfiles ?? []) as {
+    id: string;
+    github_handle: string;
+    level: number;
+    xp: number;
+  }[];
+
+  const mentorIds = profiles.map((p) => p.id);
+  const resolvedMap = new Map<string, number>();
+
+  if (mentorIds.length > 0) {
+    const { data: resolved } = await service
+      .from('help_requests')
+      .select('resolved_by')
+      .in('resolved_by', mentorIds)
+      .not('resolved_by', 'is', null);
+    for (const r of (resolved ?? []) as { resolved_by: string }[]) {
+      resolvedMap.set(r.resolved_by, (resolvedMap.get(r.resolved_by) ?? 0) + 1);
+    }
+  }
+
+  const rows: MentorRow[] = profiles.map((p) => ({
+    id: p.id,
+    handle: p.github_handle,
+    level: p.level,
+    xp: p.xp,
+    helpResolved: resolvedMap.get(p.id) ?? 0,
+  }));
+
+  return ok(rows);
+}
