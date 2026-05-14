@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Search, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   claimIssue,
+  unclaimIssue,
   type IssueWithStatus,
   type IssueFilter,
   type IssuesPageResult,
@@ -30,14 +31,15 @@ function timeAgo(dateStr: string): string {
 function IssueCard({
   issue,
   onClaim,
-  claiming,
+  onUnclaim,
+  actionPending,
 }: {
   issue: IssueWithStatus;
   onClaim: (id: number) => void;
-  claiming: boolean;
+  onUnclaim: (recId: number) => void;
+  actionPending: boolean;
 }) {
   const isClaimed = issue.userRecStatus === 'claimed';
-  const isOpen = issue.userRecStatus === 'open';
   const repoName = issue.repoFullName.split('/')[1] ?? issue.repoFullName;
   const org = issue.repoFullName.split('/')[0] ?? '';
 
@@ -71,7 +73,14 @@ function IssueCard({
         </span>
       </div>
 
-      <h3 className="mb-3 font-serif text-xl leading-snug text-white">{issue.title}</h3>
+      <a
+        href={issue.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mb-3 block font-serif text-xl leading-snug text-white hover:text-zinc-300"
+      >
+        {issue.title}
+      </a>
 
       {issue.labels && issue.labels.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
@@ -100,15 +109,22 @@ function IssueCard({
             >
               VIEW <ExternalLink className="h-3 w-3" />
             </a>
+            <button
+              onClick={() => issue.userRecId && onUnclaim(issue.userRecId)}
+              disabled={actionPending || !issue.userRecId}
+              className="border border-zinc-700 px-3 py-1.5 text-[10px] uppercase tracking-widest text-zinc-500 transition-colors hover:border-red-800 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {actionPending ? '...' : 'UNCLAIM'}
+            </button>
           </>
         ) : (
           <>
             <button
               onClick={() => onClaim(issue.id)}
-              disabled={claiming}
+              disabled={actionPending}
               className="border border-zinc-600 px-4 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {claiming ? 'CLAIMING...' : 'CLAIM ISSUE'}
+              {actionPending ? 'CLAIMING...' : 'CLAIM ISSUE'}
             </button>
             <a
               href={issue.url}
@@ -133,18 +149,21 @@ function IssueCard({
 export function IssuesList({
   initialData,
   initialFilters,
+  repoOptions,
 }: {
   initialData: IssuesPageResult;
   initialFilters: IssueFilter;
+  repoOptions: string[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [claimingId, setClaimingId] = useState<number | null>(null);
-  const [claimError, setClaimError] = useState<string | null>(null);
+  const [actionIssueId, setActionIssueId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const [search, setSearch] = useState(initialFilters.search ?? '');
   const [state, setState] = useState<'open' | 'closed'>(initialFilters.state ?? 'open');
   const [difficulty, setDifficulty] = useState<string>(initialFilters.difficulty ?? '');
+  const [repo, setRepo] = useState<string>(initialFilters.repo ?? '');
   const [showClaimed, setShowClaimed] = useState(initialFilters.showClaimed ?? false);
 
   const navigate = useCallback(
@@ -153,6 +172,7 @@ export function IssuesList({
         q: string;
         state: string;
         difficulty: string;
+        repo: string;
         claimed: string;
         page: string;
       }>,
@@ -161,27 +181,41 @@ export function IssuesList({
       const q = overrides.q ?? search;
       const st = overrides.state ?? state;
       const diff = overrides.difficulty ?? difficulty;
+      const r = overrides.repo ?? repo;
       const sc = overrides.claimed ?? String(showClaimed);
       const pg = overrides.page ?? '1';
       if (q) params.set('q', q);
       if (st !== 'open') params.set('state', st);
       if (diff) params.set('difficulty', diff);
+      if (r) params.set('repo', r);
       if (sc === 'true') params.set('claimed', 'true');
       if (pg !== '1') params.set('page', pg);
       startTransition(() => {
         router.push(`/issues${params.size > 0 ? `?${params.toString()}` : ''}`);
       });
     },
-    [router, search, state, difficulty, showClaimed],
+    [router, search, state, difficulty, repo, showClaimed],
   );
 
   const handleClaim = async (issueId: number) => {
-    setClaimingId(issueId);
-    setClaimError(null);
+    setActionIssueId(issueId);
+    setActionError(null);
     const result = await claimIssue(issueId);
-    setClaimingId(null);
+    setActionIssueId(null);
     if (!result.ok) {
-      setClaimError(result.error.message);
+      setActionError(result.error.message);
+      return;
+    }
+    router.refresh();
+  };
+
+  const handleUnclaim = async (recId: number, issueId: number) => {
+    setActionIssueId(issueId);
+    setActionError(null);
+    const result = await unclaimIssue(recId);
+    setActionIssueId(null);
+    if (!result.ok) {
+      setActionError(result.error.message);
       return;
     }
     router.refresh();
@@ -193,8 +227,8 @@ export function IssuesList({
   return (
     <div>
       {/* Filters */}
-      <div className="mb-10 flex flex-wrap items-center gap-4">
-        <div className="relative min-w-[200px] flex-1">
+      <div className="mb-10 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[180px] flex-1">
           <Search className="absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-500" />
           <input
             type="text"
@@ -205,6 +239,24 @@ export function IssuesList({
             className="w-full border border-[#2d333b] bg-[#161b22] py-2 pl-9 pr-4 text-[11px] uppercase tracking-widest text-zinc-300 placeholder-zinc-600 outline-none focus:border-zinc-500"
           />
         </div>
+
+        {repoOptions.length > 0 && (
+          <select
+            value={repo}
+            onChange={(e) => {
+              setRepo(e.target.value);
+              navigate({ repo: e.target.value, page: '1' });
+            }}
+            className="border border-[#2d333b] bg-[#161b22] px-3 py-2 text-[11px] uppercase tracking-widest text-zinc-300 outline-none focus:border-zinc-500"
+          >
+            <option value="">ALL REPOS</option>
+            {repoOptions.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        )}
 
         <select
           value={difficulty}
@@ -247,9 +299,9 @@ export function IssuesList({
         </label>
       </div>
 
-      {claimError && (
+      {actionError && (
         <div className="mb-6 border border-red-800 bg-red-900/20 px-4 py-3 text-[11px] uppercase tracking-widest text-red-400">
-          {claimError}
+          {actionError}
         </div>
       )}
 
@@ -270,7 +322,8 @@ export function IssuesList({
               key={issue.id}
               issue={issue}
               onClaim={handleClaim}
-              claiming={claimingId === issue.id}
+              onUnclaim={(recId) => handleUnclaim(recId, issue.id)}
+              actionPending={actionIssueId === issue.id}
             />
           ))
         )}

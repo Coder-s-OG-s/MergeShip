@@ -12,6 +12,7 @@ export type IssueFilter = {
   search?: string;
   state?: 'open' | 'closed';
   difficulty?: 'E' | 'M' | 'H';
+  repo?: string;
   showClaimed?: boolean;
   page?: number;
 };
@@ -37,6 +38,36 @@ export type IssuesPageResult = {
   page: number;
   pageSize: number;
 };
+
+export async function getRepoOptions(): Promise<Result<string[]>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const { data: insts } = await service
+    .from('github_installations')
+    .select('id')
+    .eq('user_id', user.id);
+
+  const instIds = (insts ?? []).map((i: { id: number }) => i.id);
+  if (instIds.length === 0) return ok([]);
+
+  const { data: repoRows } = await service
+    .from('installation_repositories')
+    .select('repo_full_name')
+    .in('installation_id', instIds);
+
+  const repos = [
+    ...new Set((repoRows ?? []).map((r: { repo_full_name: string }) => r.repo_full_name)),
+  ].sort();
+  return ok(repos);
+}
 
 export async function getIssuesPage(filters: IssueFilter): Promise<Result<IssuesPageResult>> {
   const sb = getServerSupabase();
@@ -68,6 +99,9 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
   }
   if (filters.difficulty) {
     query = query.eq('difficulty', filters.difficulty);
+  }
+  if (filters.repo) {
+    query = query.eq('repo_full_name', filters.repo);
   }
 
   const { data, count, error } = await query;
@@ -200,4 +234,38 @@ export async function claimIssue(issueId: number): Promise<Result<{ recId: numbe
   });
 
   return ok({ recId: inserted.id });
+}
+
+export async function unclaimIssue(recId: number): Promise<Result<void>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const rateRes = await rateLimit({
+    namespace: 'issues:unclaim',
+    key: user.id,
+    limit: 20,
+    windowSec: 60,
+  });
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true);
+
+  const { data, error } = await service
+    .from('recommendations')
+    .update({ status: 'open', claimed_at: null })
+    .eq('id', recId)
+    .eq('user_id', user.id)
+    .eq('status', 'claimed')
+    .select('id')
+    .maybeSingle();
+
+  if (error) return err('persist_failed', error.message);
+  if (!data) return err('not_found', 'no claimed recommendation found');
+
+  await cacheDel(`recs:${user.id}`);
+  return ok(undefined);
 }
