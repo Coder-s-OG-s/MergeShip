@@ -50,6 +50,82 @@ describe('insertXpEvent', () => {
   });
 });
 
+describe('insertXpEvent tripwire', () => {
+  it('writes activity_log when daily total crosses threshold', async () => {
+    // First execute call = sumXpToday returning 1950 prior to this event.
+    // Then onConflictDoNothing returns inserted row.
+    // Then second execute call = activity_log insert.
+    mockExecute.mockResolvedValueOnce([{ sum: 1950 }]);
+    mockReturning.mockResolvedValueOnce([{ id: 7 }]);
+    mockExecute.mockResolvedValueOnce({});
+    const { insertXpEvent } = await import('./events');
+    const inserted = await insertXpEvent({
+      userId: 'u-trip',
+      source: 'recommended_merge',
+      refId: 'pr:foo:99',
+      xpDelta: 100, // 1950 + 100 = 2050 → crosses
+    });
+    expect(inserted).toBe(true);
+    // 2 execute calls total: one for sumXpToday, one for activity_log insert.
+    expect(mockExecute).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not write tripwire when prior total already over threshold', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 2100 }]); // already over
+    mockReturning.mockResolvedValueOnce([{ id: 8 }]);
+    const { insertXpEvent } = await import('./events');
+    await insertXpEvent({
+      userId: 'u-over',
+      source: 'recommended_merge',
+      refId: 'pr:foo:100',
+      xpDelta: 50,
+    });
+    // Only the sumXpToday execute fired; no activity_log execute.
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not write tripwire when total stays under threshold', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 100 }]);
+    mockReturning.mockResolvedValueOnce([{ id: 9 }]);
+    const { insertXpEvent } = await import('./events');
+    await insertXpEvent({
+      userId: 'u-low',
+      source: 'comment',
+      refId: 'comment:x:1:1',
+      xpDelta: 1,
+    });
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not write tripwire on idempotent duplicate (insert returned no rows)', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 1950 }]);
+    mockReturning.mockResolvedValueOnce([]); // duplicate, no row
+    const { insertXpEvent } = await import('./events');
+    const inserted = await insertXpEvent({
+      userId: 'u-dup',
+      source: 'recommended_merge',
+      refId: 'pr:foo:99',
+      xpDelta: 100,
+    });
+    expect(inserted).toBe(false);
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it('swallows tripwire write errors silently', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 1950 }]);
+    mockReturning.mockResolvedValueOnce([{ id: 10 }]);
+    mockExecute.mockRejectedValueOnce(new Error('activity_log down'));
+    const { insertXpEvent } = await import('./events');
+    const inserted = await insertXpEvent({
+      userId: 'u-err',
+      source: 'recommended_merge',
+      refId: 'pr:foo:101',
+      xpDelta: 100,
+    });
+    expect(inserted).toBe(true); // tripwire failure doesn't undo the insert
+  });
+});
+
 describe('sumXp', () => {
   it('sums xp_events for the user', async () => {
     mockExecute.mockResolvedValueOnce([{ sum: 250 }]);

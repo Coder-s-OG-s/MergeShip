@@ -20,6 +20,7 @@ type IssueRow = {
   difficulty: 'E' | 'M' | 'H';
   xp_reward: number;
   repo_health_score: number | null;
+  repo_language: string | null;
   scored_at: string;
 };
 
@@ -36,40 +37,49 @@ export const recommendationsBuild = inngest.createFunction(
       const { data: pool } = await sb
         .from('issues')
         .select(
-          'id, repo_full_name, github_issue_number, title, difficulty, xp_reward, repo_health_score, scored_at',
+          'id, repo_full_name, github_issue_number, title, difficulty, xp_reward, repo_health_score, repo_language, scored_at',
         )
         .eq('state', 'open')
         .order('scored_at', { ascending: false })
         .limit(500);
 
-      const candidates: ScoredIssue[] = (pool ?? []).map((i: IssueRow) => ({
-        id: i.id,
-        repoFullName: i.repo_full_name,
-        number: i.github_issue_number,
-        title: i.title,
-        difficulty: i.difficulty,
-        xpReward: i.xp_reward,
-        repoHealthScore: i.repo_health_score ?? 50,
-        freshnessHours: Math.max(0, (Date.now() - new Date(i.scored_at).getTime()) / 36e5),
-        languageMatch: false, // populated in Phase 2 from profile.primary_language
-      }));
+      const rawPool = (pool ?? []) as unknown as IssueRow[];
 
-      if (candidates.length === 0) return { users: 0, inserted: 0 };
+      if (rawPool.length === 0) return { users: 0, inserted: 0 };
 
       // Pull every user with an active install — these are the only users
       // who pass the gate and have a dashboard worth populating.
       const { data: users } = await sb
         .from('github_installations')
-        .select('user_id, profiles!inner(id, level)')
+        .select('user_id, profiles!inner(id, level, primary_language)')
         .is('uninstalled_at', null)
         .not('user_id', 'is', null);
 
-      type UserRow = { user_id: string; profiles: { level: number | null } };
+      type UserRow = {
+        user_id: string;
+        profiles: { level: number | null; primary_language: string | null };
+      };
       const userList = (users ?? []) as unknown as UserRow[];
 
       let totalInserted = 0;
       for (const u of userList) {
         const level = u.profiles?.level ?? 0;
+        const userLang = u.profiles?.primary_language ?? null;
+
+        // Build per-user candidates so languageMatch reflects this user's
+        // primary_language. Pool is shared; only the language flag varies.
+        const candidates: ScoredIssue[] = rawPool.map((i) => ({
+          id: i.id,
+          repoFullName: i.repo_full_name,
+          number: i.github_issue_number,
+          title: i.title,
+          difficulty: i.difficulty,
+          xpReward: i.xp_reward,
+          repoHealthScore: i.repo_health_score ?? 50,
+          freshnessHours: Math.max(0, (Date.now() - new Date(i.scored_at).getTime()) / 36e5),
+          languageMatch:
+            userLang !== null && i.repo_language !== null && i.repo_language === userLang,
+        }));
 
         // Skip issues this user has already seen — any prior rec, regardless
         // of status. Reassigned / expired ones aren't worth re-offering.

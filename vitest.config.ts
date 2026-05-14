@@ -10,7 +10,14 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],
       include: ['src/lib/**/*.ts'],
-      exclude: ['src/lib/**/*.test.ts', 'src/lib/db/schema.ts', 'src/lib/supabase/server.ts'],
+      exclude: [
+        'src/lib/**/*.test.ts',
+        'src/lib/db/schema.ts',
+        'src/lib/supabase/server.ts',
+        // DB-query-only glue: thin async wrappers around Supabase queries
+        // with no pure logic worth covering separately.
+        'src/lib/maintainer/detect.ts',
+      ],
       thresholds: {
         lines: 80,
         branches: 75,
