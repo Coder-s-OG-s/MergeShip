@@ -9,6 +9,7 @@ import {
   type IssueWithStatus,
   type IssueFilter,
   type IssuesPageResult,
+  type RepoOption,
 } from '@/app/actions/issues';
 
 const DIFFICULTY_LABEL: Record<string, string> = { E: 'L1', M: 'L2', H: 'L3' };
@@ -153,7 +154,7 @@ export function IssuesList({
 }: {
   initialData: IssuesPageResult;
   initialFilters: IssueFilter;
-  repoOptions: string[];
+  repoOptions: RepoOption[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -250,9 +251,9 @@ export function IssuesList({
             className="border border-[#2d333b] bg-[#161b22] px-3 py-2 text-[11px] uppercase tracking-widest text-zinc-300 outline-none focus:border-zinc-500"
           >
             <option value="">ALL REPOS</option>
-            {repoOptions.map((r) => (
-              <option key={r} value={r}>
-                {r}
+            {repoOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>

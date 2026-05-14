@@ -39,7 +39,12 @@ export type IssuesPageResult = {
   pageSize: number;
 };
 
-export async function getRepoOptions(): Promise<Result<string[]>> {
+export type RepoOption = {
+  label: string; // user's repo name (fork name if forked)
+  value: string; // upstream repo name to filter issues by
+};
+
+export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
   const sb = getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
@@ -63,10 +68,50 @@ export async function getRepoOptions(): Promise<Result<string[]>> {
     .select('repo_full_name')
     .in('installation_id', instIds);
 
-  const repos = [
+  const userRepos = [
     ...new Set((repoRows ?? []).map((r: { repo_full_name: string }) => r.repo_full_name)),
-  ].sort();
-  return ok(repos);
+  ];
+  if (userRepos.length === 0) return ok([]);
+
+  // Get provider token so we can call GitHub API to detect forks
+  const sessionRes = await sb.auth.getSession();
+  const token = sessionRes.data.session?.provider_token;
+
+  // Resolve each repo: if it's a fork, use the upstream (parent) as the issues source
+  const options = await Promise.all(
+    userRepos.map(async (repo): Promise<RepoOption> => {
+      if (!token) return { label: repo, value: repo };
+      try {
+        const res = await fetch(`https://api.github.com/repos/${repo}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        });
+        if (!res.ok) return { label: repo, value: repo };
+        const data = (await res.json()) as { fork?: boolean; parent?: { full_name: string } };
+        if (data.fork && data.parent?.full_name) {
+          return { label: repo, value: data.parent.full_name };
+        }
+        return { label: repo, value: repo };
+      } catch {
+        return { label: repo, value: repo };
+      }
+    }),
+  );
+
+  // Deduplicate by value (multiple forks of same upstream → one entry)
+  const seen = new Set<string>();
+  const deduped = options
+    .filter((opt) => {
+      if (seen.has(opt.value)) return false;
+      seen.add(opt.value);
+      return true;
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  return ok(deduped);
 }
 
 export async function getIssuesPage(filters: IssueFilter): Promise<Result<IssuesPageResult>> {

@@ -1,6 +1,6 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { getIssuesPage, getRepoOptions } from '@/app/actions/issues';
+import { getIssuesPage, getRepoOptions, type RepoOption } from '@/app/actions/issues';
 import { IssuesList } from './issues-list';
 
 export const dynamic = 'force-dynamic';
@@ -43,7 +43,7 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
     ? pageResult.data
     : { issues: [], total: 0, page: 1, pageSize: 10 };
 
-  const repoOptions = repoResult.ok ? repoResult.data : [];
+  const repoOptions: RepoOption[] = repoResult.ok ? repoResult.data : [];
 
   return (
     <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
