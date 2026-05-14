@@ -15,7 +15,7 @@ import {
 const STATIC_NAV = [
   { name: 'DASHBOARD', href: '/dashboard', icon: LayoutDashboard },
   { name: 'ISSUES', href: '/issues', icon: CheckCircle2 },
-  { name: 'MY PRS', href: '#', icon: GitPullRequest },
+  { name: 'MY PRS', href: '/my-prs', icon: GitPullRequest },
   { name: 'MENTORSHIP', href: '#', icon: Users },
   { name: 'COMMUNITY', href: '#', icon: MessageSquare },
 ];
