@@ -222,5 +222,12 @@ async function upsertReviewRow(payload: ReviewPayload): Promise<void> {
         mentor_review_at: payload.review.submitted_at,
       })
       .eq('id', prRow.id);
+
+    // Fire-and-forget the PR comment. Decoupled so a GitHub API failure
+    // here can't roll back the verified flag we just set.
+    await inngest.send({
+      name: 'mentor/post-comment',
+      data: { prId: prRow.id, reviewerId: reviewer.id },
+    });
   }
 }
