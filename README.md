@@ -94,7 +94,7 @@ The development environment is optimized to get you from clone to first PR in un
 
 We maintain a high engineering bar with strict TypeScript, zero lint warnings, and 80%+ test coverage.
 
-MergeShip is a project listed on Code for GovTech (C4GT). Please review our guidelines before contributing:
+Please review our guidelines before contributing:
 * [Contributing Guidelines](./CONTRIBUTING.md)
 * [AI Usage Policy](./docs/ai-usage-policy.md)
 * [Setup Guide](./docs/setup-guide.md)
