@@ -4,6 +4,7 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { NavItems } from './nav-items';
 import { LogoutButton } from './logout-button';
+import { isUserMaintainer } from '@/lib/maintainer/detect';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = getServerSupabase();
@@ -28,6 +29,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     level = profile?.level ?? 0;
   }
 
+  let isMaintainer = false;
+  try {
+    isMaintainer = await isUserMaintainer(user.id);
+  } catch {
+    // never break the layout
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-[#111318] font-mono text-white">
       {/* Sidebar */}
@@ -43,7 +51,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
 
           <nav className="flex flex-col gap-1 px-4">
-            <NavItems profileHref={`/@${handle}`} />
+            <NavItems profileHref={`/@${handle}`} level={level} isMaintainer={isMaintainer} />
           </nav>
         </div>
 

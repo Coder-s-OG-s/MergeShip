@@ -3,6 +3,7 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { SyncButton } from './sync-button';
 import { GitHubPRsPanel } from './github-prs-panel';
+import RecCards from './rec-cards';
 import { redirect } from 'next/navigation';
 import { isOk } from '@/lib/result';
 import { xpToNextLevel, xpForLevel } from '@/lib/xp/curve';
@@ -12,8 +13,6 @@ import { ArrowRight, TrendingUp, Box } from 'lucide-react';
 import type { GitHubPR } from '@/app/actions/github-sync';
 
 export const dynamic = 'force-dynamic';
-
-const DIFFICULTY_LABEL: Record<string, string> = { E: 'L1', M: 'L2', H: 'L3' };
 
 type DashboardCache = {
   merges: number | null;
@@ -245,82 +244,13 @@ export default async function DashboardPage() {
                 </Link>
               </div>
 
-              <div className="space-y-6">
-                {(claimedRecs ?? []).length > 0 ? (
-                  (claimedRecs ?? []).map((rec: any, i: number) => {
-                    const issue = Array.isArray(rec.issues) ? rec.issues[0] : rec.issues;
-                    return (
-                      <div
-                        key={rec.id || i}
-                        className="border-b border-[#2d333b] pb-6 last:border-0 last:pb-0"
-                      >
-                        <div className="mb-4 flex items-start justify-between">
-                          <div className="flex gap-3">
-                            <span className="border border-zinc-700 px-2 py-0.5 text-[10px] uppercase text-zinc-400">
-                              {issue?.repo_full_name?.split('/')[1] || 'REPO'}
-                            </span>
-                            <span className="bg-white px-2 py-0.5 text-[10px] font-bold text-black">
-                              {DIFFICULTY_LABEL[rec.difficulty] ?? rec.difficulty}
-                            </span>
-                          </div>
-                          <span className="text-[10px] uppercase tracking-widest text-zinc-500">
-                            CLAIMED
-                          </span>
-                        </div>
-                        <a
-                          href={issue?.url ?? '#'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mb-5 block font-serif text-2xl text-white hover:text-zinc-300"
-                        >
-                          {issue?.title || 'Untitled Issue'}
-                        </a>
-                        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-zinc-400">
-                          <div className="h-2 w-2 bg-white" />
-                          IN PROGRESS
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : recs.length > 0 ? (
-                  recs.map((rec, i) => (
-                    <div
-                      key={rec.id || i}
-                      className="border-b border-[#2d333b] pb-6 last:border-0 last:pb-0"
-                    >
-                      <div className="mb-4 flex items-start justify-between">
-                        <div className="flex gap-3">
-                          <span className="border border-zinc-700 px-2 py-0.5 text-[10px] uppercase text-zinc-400">
-                            {rec.repoFullName?.split('/')[1] || 'REPO'}
-                          </span>
-                          <span className="bg-white px-2 py-0.5 text-[10px] font-bold text-black">
-                            {DIFFICULTY_LABEL[rec.difficulty] ?? rec.difficulty}
-                          </span>
-                        </div>
-                        <span className="text-[10px] uppercase tracking-widest text-zinc-500">
-                          RECOMMENDED
-                        </span>
-                      </div>
-                      <a
-                        href={rec.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mb-5 block font-serif text-2xl text-white hover:text-zinc-300"
-                      >
-                        {rec.title}
-                      </a>
-                      <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-zinc-400">
-                        <div className="h-2 w-2 bg-white" />
-                        AVAILABLE FOR YOU
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="py-4 text-sm text-zinc-500">
-                    No active issues. Check recommendations to claim one.
-                  </div>
-                )}
-              </div>
+              {recs.length > 0 ? (
+                <RecCards recs={recs} />
+              ) : (
+                <div className="py-4 text-sm text-zinc-500">
+                  No recommendations yet. Check back soon.
+                </div>
+              )}
             </section>
 
             <section>

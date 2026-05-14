@@ -6,24 +6,33 @@ import {
   LayoutDashboard,
   CheckCircle2,
   GitPullRequest,
-  Users,
-  MessageSquare,
   User,
   Trophy,
+  Inbox,
+  Shield,
 } from 'lucide-react';
 
-const STATIC_NAV = [
+const CORE_NAV = [
   { name: 'DASHBOARD', href: '/dashboard', icon: LayoutDashboard },
   { name: 'ISSUES', href: '/issues', icon: CheckCircle2 },
   { name: 'MY PRS', href: '/my-prs', icon: GitPullRequest },
-  { name: 'MENTORSHIP', href: '#', icon: Users },
-  { name: 'COMMUNITY', href: '#', icon: MessageSquare },
 ];
 
-export function NavItems({ profileHref }: { profileHref: string }) {
+export function NavItems({
+  profileHref,
+  level,
+  isMaintainer,
+}: {
+  profileHref: string;
+  level: number;
+  isMaintainer: boolean;
+}) {
   const pathname = usePathname();
+
   const items = [
-    ...STATIC_NAV,
+    ...CORE_NAV,
+    ...(level >= 2 ? [{ name: 'HELP INBOX', href: '/help-inbox', icon: Inbox }] : []),
+    ...(isMaintainer ? [{ name: 'MAINTAINER', href: '/maintainer', icon: Shield }] : []),
     { name: 'PROFILE', href: profileHref, icon: User },
     { name: 'LEADERBOARD', href: '/leaderboard', icon: Trophy },
   ];
@@ -32,7 +41,7 @@ export function NavItems({ profileHref }: { profileHref: string }) {
     <>
       {items.map((item) => {
         const Icon = item.icon;
-        const isActive = item.href !== '#' && pathname.startsWith(item.href);
+        const isActive = pathname.startsWith(item.href);
         return (
           <Link
             key={item.name}
