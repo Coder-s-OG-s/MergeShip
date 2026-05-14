@@ -76,43 +76,64 @@ export default async function MyPRsPage() {
 
   const basePRs: EnrichedPR[] = prsCache.prs;
 
-  // Enrich PRs with mentor/review data from recommendations
+  // Enrich PRs with mentor/review data from the correct schema:
+  // - recommendations: status = open | claimed | completed | expired | reassigned, no mentor_id
+  //   linked_pr_url links a rec to a PR
+  // - help_requests: status = open | escalated | resolved | expired
+  //   pr_url links a help request to a PR; resolved_by = mentor's profile id
   const prUrls = basePRs.map((pr) => pr.pr_url).filter(Boolean);
   let enrichedPRs: EnrichedPR[] = basePRs;
 
   if (prUrls.length > 0) {
+    // Recommendations matched by linked_pr_url
     const { data: recData } = await service
       .from('recommendations')
-      .select('linked_pr_url, status, xp_reward, mentor_id')
+      .select('linked_pr_url, status, xp_reward')
       .eq('user_id', user.id)
       .in('linked_pr_url', prUrls);
 
-    // Get help request data for mentor info
+    // Help requests matched by pr_url (user's own help requests)
     const { data: helpData } = await service
       .from('help_requests')
       .select('pr_url, status, resolved_by')
       .eq('user_id', user.id)
       .in('pr_url', prUrls);
 
-    // Get mentor handles
-    const mentorIds = [
-      ...(recData?.map((r: any) => r.mentor_id).filter(Boolean) ?? []),
-      ...(helpData?.map((h: any) => h.resolved_by).filter(Boolean) ?? []),
-    ];
+    // Fetch reviewer handles from resolved_by IDs
+    const resolverIds = (helpData ?? []).map((h: any) => h.resolved_by).filter(Boolean) as string[];
 
-    let mentorProfiles: Record<string, string> = {};
-    if (mentorIds.length > 0) {
-      const { data: mentorData } = await service
+    let resolverHandles: Record<string, { handle: string; level: number }> = {};
+    if (resolverIds.length > 0) {
+      const { data: resolverData } = await service
         .from('profiles')
         .select('id, github_handle, level')
-        .in('id', mentorIds);
-      mentorProfiles = Object.fromEntries(
-        (mentorData ?? []).map((m: any) => [m.id, `${m.github_handle}:L${m.level}`]),
+        .in('id', resolverIds);
+      resolverHandles = Object.fromEntries(
+        (resolverData ?? []).map((m: any) => [m.id, { handle: m.github_handle, level: m.level }]),
       );
     }
 
-    const recByUrl = Object.fromEntries((recData ?? []).map((r: any) => [r.linked_pr_url, r]));
-    const helpByUrl = Object.fromEntries((helpData ?? []).map((h: any) => [h.pr_url, h]));
+    // Index by pr_url for O(1) lookup
+    const recByUrl: Record<string, any> = Object.fromEntries(
+      (recData ?? []).map((r: any) => [r.linked_pr_url, r]),
+    );
+    // Multiple help requests per PR possible — take the most relevant (open > escalated > resolved)
+    const helpByUrl: Record<string, any> = {};
+    const STATUS_PRIORITY: Record<string, number> = {
+      open: 0,
+      escalated: 1,
+      resolved: 2,
+      expired: 3,
+    };
+    for (const h of helpData ?? []) {
+      const existing = helpByUrl[h.pr_url];
+      if (
+        !existing ||
+        (STATUS_PRIORITY[h.status] ?? 99) < (STATUS_PRIORITY[existing.status] ?? 99)
+      ) {
+        helpByUrl[h.pr_url] = h;
+      }
+    }
 
     enrichedPRs = basePRs.map((pr) => {
       const rec = recByUrl[pr.pr_url];
@@ -124,43 +145,34 @@ export default async function MyPRsPage() {
       let xp_earned: number | null = null;
       let close_reason: string | null = null;
 
-      if (rec) {
-        if (rec.status === 'approved' || rec.status === 'merged') {
-          mentor_status = 'approved';
-          xp_earned = rec.xp_reward ?? null;
-          const recMentorEntry = rec.mentor_id ? mentorProfiles[rec.mentor_id] : undefined;
-          if (recMentorEntry) {
-            const parts = recMentorEntry.split(':');
-            reviewed_by = parts[0] ?? null;
-            mentor_level = parts[1] ?? null;
-          }
-        } else if (rec.status === 'claimed' || rec.status === 'review_pending') {
-          mentor_status = 'pending';
-          const recMentorEntry = rec.mentor_id ? mentorProfiles[rec.mentor_id] : undefined;
-          if (recMentorEntry) {
-            const parts = recMentorEntry.split(':');
-            reviewed_by = parts[0] ?? null;
-            mentor_level = parts[1] ?? null;
-          }
+      // MENTOR APPROVED: recommendation was completed (mentor signed off)
+      if (rec?.status === 'completed') {
+        mentor_status = 'approved';
+        xp_earned = rec.xp_reward ?? null;
+      }
+
+      // PENDING REVIEW: user has an active help request on this PR
+      if (!mentor_status && help && (help.status === 'open' || help.status === 'escalated')) {
+        mentor_status = 'pending';
+        // Reviewer: whoever resolved_by points to (may be assigned mentor)
+        if (help.resolved_by && resolverHandles[help.resolved_by]) {
+          const info = resolverHandles[help.resolved_by];
+          reviewed_by = info.handle;
+          mentor_level = `L${info.level}`;
         }
       }
 
-      if (help) {
-        if (!mentor_status && (help.status === 'open' || help.status === 'escalated')) {
-          mentor_status = 'pending';
-          const helpMentorEntry = help.resolved_by ? mentorProfiles[help.resolved_by] : undefined;
-          if (helpMentorEntry) {
-            const parts = helpMentorEntry.split(':');
-            reviewed_by = parts[0] ?? null;
-            mentor_level = parts[1] ?? null;
-          }
-        }
+      // Also mark pending if rec is 'claimed' and has an active help request
+      if (!mentor_status && rec?.status === 'claimed' && help?.status === 'open') {
+        mentor_status = 'pending';
       }
 
-      if (pr.state === 'closed' && !close_reason) {
+      // Close reason for closed PRs
+      if (pr.state === 'closed') {
         close_reason = 'Closed by maintainer';
       }
 
+      // XP for merged PRs
       if (pr.state === 'merged' && !xp_earned && rec?.xp_reward) {
         xp_earned = rec.xp_reward;
       }
