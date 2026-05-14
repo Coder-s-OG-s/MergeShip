@@ -71,7 +71,7 @@ export function calculateStreak(
 function prevDay(dateStr: string): string {
   const d = new Date(dateStr);
   d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().split('T')[0];
+  return d.toISOString().slice(0, 10);
 }
 
 async function fetchMergedCount(token: string, handle: string): Promise<number> {
@@ -139,7 +139,7 @@ async function fetchContributionStreak(token: string, login: string): Promise<nu
 
   const weeks = json.data?.user?.contributionsCollection?.contributionCalendar?.weeks ?? [];
   const days = weeks.flatMap((w) => w.contributionDays);
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toISOString().slice(0, 10);
   return calculateStreak(days, today);
 }
 
