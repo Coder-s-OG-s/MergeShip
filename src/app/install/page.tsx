@@ -66,6 +66,20 @@ export default async function InstallPage() {
           .from('github_installations')
           .update({ user_id: user.id })
           .eq('id', byHandle.id);
+
+        // Junction row for the back-linked user. Treat them as the install
+        // creator since their handle matches the install's account.
+        await service.from('github_installation_users').upsert(
+          {
+            installation_id: byHandle.id,
+            user_id: user.id,
+            permission_level: 'org_admin',
+            source: 'install_creator',
+            verified_at: new Date().toISOString(),
+          },
+          { onConflict: 'installation_id,user_id' },
+        );
+
         // Fire audit now that the link exists. Idempotent.
         const { inngest } = await import('@/inngest/client');
         await inngest.send({

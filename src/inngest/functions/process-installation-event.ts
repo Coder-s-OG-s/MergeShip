@@ -68,6 +68,22 @@ export const processInstallationEvent = inngest.createFunction(
           suspended_at: null,
         });
 
+        // Junction row for the install creator. permission_level=org_admin
+        // because the install creator necessarily had admin rights on the
+        // account (GitHub enforces this on the install page).
+        if (profile) {
+          await sb.from('github_installation_users').upsert(
+            {
+              installation_id: install.id,
+              user_id: profile.id,
+              permission_level: 'org_admin',
+              source: 'install_creator',
+              verified_at: new Date().toISOString(),
+            },
+            { onConflict: 'installation_id,user_id' },
+          );
+        }
+
         // GitHub only includes `repositories` in the payload when the user
         // picked "Selected repositories". For "All repositories" installs the
         // array is omitted — we have to ask the API. Either way, normalize to
@@ -140,6 +156,36 @@ export const processInstallationEvent = inngest.createFunction(
       if (payload.action === 'unsuspend') {
         await sb.from('github_installations').update({ suspended_at: null }).eq('id', install.id);
         return { ok: true, unsuspended: true };
+      }
+
+      if (payload.action === 'transferred') {
+        // Account login + type may have changed under the same install id.
+        await sb
+          .from('github_installations')
+          .update({
+            account_login: install.account.login,
+            account_type: install.account.type,
+          })
+          .eq('id', install.id);
+        // Re-run discovery for every linked user — their access status may
+        // have shifted with the org transfer.
+        const { data: linked } = await sb
+          .from('github_installation_users')
+          .select('user_id, profiles!inner(github_handle)')
+          .eq('installation_id', install.id);
+        for (const row of linked ?? []) {
+          const p = (row as unknown as { profiles: { github_handle: string } | null }).profiles;
+          if (!p) continue;
+          await inngest.send({
+            name: 'maintainer/discover',
+            data: {
+              userId: (row as { user_id: string }).user_id,
+              githubHandle: p.github_handle,
+              force: true,
+            },
+          });
+        }
+        return { ok: true, transferred: true };
       }
 
       return { skipped: true, action: payload.action };

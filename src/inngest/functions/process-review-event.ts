@@ -27,6 +27,8 @@ type ReviewPayload = {
   pull_request: {
     html_url: string;
     number: number;
+    draft?: boolean;
+    state?: 'open' | 'closed';
     user: { login: string };
     base: { repo: { full_name: string } };
   };
@@ -59,6 +61,18 @@ export const processReviewEvent = inngest.createFunction(
     if (payload.review.user.login.toLowerCase() === payload.pull_request.user.login.toLowerCase()) {
       return { skipped: true, reason: 'self_review' };
     }
+
+    // Maintainer-side mirror: record the review row and flip the mentor
+    // verification flag if the reviewer outranks the author. Wrapped so a
+    // failure here can never block the help-review XP step below.
+    await step.run('upsert-review-row', async () => {
+      try {
+        await upsertReviewRow(payload);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    });
 
     return await step.run('award-help-review', async () => {
       const sb = getServiceSupabase();
@@ -121,3 +135,74 @@ export const processReviewEvent = inngest.createFunction(
     });
   },
 );
+
+async function upsertReviewRow(payload: ReviewPayload): Promise<void> {
+  const sb = getServiceSupabase();
+  if (!sb) return;
+
+  const repo = payload.pull_request.base.repo.full_name;
+  const number = payload.pull_request.number;
+
+  // Find the PR row. Maintainer ingestion may not have caught up yet —
+  // skip silently if the PR isn't mirrored; we'll see the next review.
+  const { data: prRow } = await sb
+    .from('pull_requests')
+    .select('id, draft, state, mentor_reviewer_id')
+    .eq('repo_full_name', repo)
+    .eq('number', number)
+    .maybeSingle();
+  if (!prRow) return;
+
+  // Resolve reviewer + author profiles.
+  const { data: reviewer } = await sb
+    .from('profiles')
+    .select('id, level')
+    .eq('github_handle', payload.review.user.login)
+    .maybeSingle();
+  if (!reviewer) return; // reviewer not on MergeShip — no level → no flag
+
+  const { data: author } = await sb
+    .from('profiles')
+    .select('level')
+    .eq('github_handle', payload.pull_request.user.login)
+    .maybeSingle();
+  const authorLevel = author?.level ?? 0;
+
+  const substantive = isSubstantive(payload.review);
+  const isMentor = substantive && reviewer.level > authorLevel;
+
+  await sb.from('pull_request_reviews').upsert(
+    {
+      pr_id: prRow.id,
+      github_review_id: payload.review.id,
+      reviewer_login: payload.review.user.login,
+      reviewer_user_id: reviewer.id,
+      state: payload.review.state,
+      body_excerpt: (payload.review.body ?? '').slice(0, 500),
+      is_mentor: isMentor,
+      submitted_at: payload.review.submitted_at,
+    },
+    { onConflict: 'github_review_id' },
+  );
+
+  // Flag flip is conditional — never downgrade.
+  if (isMentor && prRow.state !== 'closed') {
+    // Pull current mentor row to compare levels.
+    if (prRow.mentor_reviewer_id) {
+      const { data: existing } = await sb
+        .from('profiles')
+        .select('level')
+        .eq('id', prRow.mentor_reviewer_id)
+        .maybeSingle();
+      if (existing && existing.level >= reviewer.level) return;
+    }
+    await sb
+      .from('pull_requests')
+      .update({
+        mentor_verified: true,
+        mentor_reviewer_id: reviewer.id,
+        mentor_review_at: payload.review.submitted_at,
+      })
+      .eq('id', prRow.id);
+  }
+}

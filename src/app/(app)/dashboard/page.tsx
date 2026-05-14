@@ -33,6 +33,7 @@ export default async function DashboardPage() {
   const { needed, next } = xpToNextLevel(xp);
 
   const recsResult = await getRecommendations();
+  const communityLinks = await loadCommunitiesForContributor(service, user.id);
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -87,9 +88,114 @@ export default async function DashboardPage() {
             <RecCards recs={recsResult.data} />
           ) : null}
         </section>
+
+        {communityLinks.length > 0 && (
+          <section className="mt-10">
+            <h2 className="mb-3 font-display text-lg font-semibold">Communities</h2>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {communityLinks.map((c) => (
+                <li
+                  key={`${c.installationId}-${c.kind}`}
+                  className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4"
+                >
+                  <div className="text-xs uppercase tracking-wide text-zinc-500">
+                    {c.kind} · {c.accountLogin}
+                  </div>
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block break-all text-sm text-purple-300 hover:underline"
+                  >
+                    {c.label ?? c.url}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </div>
   );
+}
+
+async function loadCommunitiesForContributor(
+  service: ReturnType<typeof getServiceSupabase>,
+  userId: string,
+): Promise<
+  Array<{
+    installationId: number;
+    accountLogin: string;
+    kind: string;
+    url: string;
+    label: string | null;
+  }>
+> {
+  if (!service) return [];
+  // Find installs the contributor has touched via recommendations.
+  const { data: recs } = await service
+    .from('recommendations')
+    .select('issue_id, issues!inner(repo_full_name)')
+    .eq('user_id', userId);
+
+  type RecRow = {
+    issue_id: number;
+    issues: { repo_full_name: string } | { repo_full_name: string }[] | null;
+  };
+  const repoNames = new Set<string>();
+  for (const r of (recs ?? []) as unknown as RecRow[]) {
+    const issue = Array.isArray(r.issues) ? r.issues[0] : r.issues;
+    if (issue?.repo_full_name) repoNames.add(issue.repo_full_name);
+  }
+  if (repoNames.size === 0) return [];
+
+  const { data: installRepos } = await service
+    .from('installation_repositories')
+    .select('installation_id, repo_full_name')
+    .in('repo_full_name', Array.from(repoNames));
+
+  const installIds = Array.from(
+    new Set((installRepos ?? []).map((r) => r.installation_id as number)),
+  );
+  if (installIds.length === 0) return [];
+
+  const { data: comms } = await service
+    .from('org_communities')
+    .select(
+      'installation_id, kind, url, label, github_installations!inner(account_login, uninstalled_at)',
+    )
+    .in('installation_id', installIds);
+
+  type CommRow = {
+    installation_id: number;
+    kind: string;
+    url: string;
+    label: string | null;
+    github_installations:
+      | { account_login: string; uninstalled_at: string | null }
+      | { account_login: string; uninstalled_at: string | null }[]
+      | null;
+  };
+
+  return ((comms ?? []) as unknown as CommRow[])
+    .filter((r) => {
+      const inst = Array.isArray(r.github_installations)
+        ? r.github_installations[0]
+        : r.github_installations;
+      return inst && inst.uninstalled_at === null;
+    })
+    .map((r) => {
+      const inst = Array.isArray(r.github_installations)
+        ? r.github_installations[0]
+        : r.github_installations;
+      return {
+        installationId: r.installation_id,
+        accountLogin: inst!.account_login,
+        kind: r.kind,
+        url: r.url,
+        label: r.label,
+      };
+    });
 }
 
 function levelProgressPct(xp: number, level: number): number {

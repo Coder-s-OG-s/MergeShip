@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { isUserMaintainer } from '@/lib/maintainer/detect';
 
 /**
  * App shell layout for authenticated routes. Hard-redirects to / if not
@@ -34,6 +35,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     level = profile?.level ?? 0;
   }
 
+  let isMaintainer = false;
+  try {
+    isMaintainer = await isUserMaintainer(user.id);
+  } catch {
+    // Detection failure should never break the nav render.
+  }
+
   return (
     <>
       <nav className="border-b border-zinc-900 bg-zinc-950 px-6 py-3 text-sm text-zinc-400">
@@ -47,6 +55,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Link href="/leaderboard" className="hover:text-white">
             Leaderboard
           </Link>
+          {isMaintainer && (
+            <Link href="/maintainer" className="hover:text-white">
+              Maintainer
+            </Link>
+          )}
           {level >= 2 && (
             <Link href="/help-inbox" className="hover:text-white">
               Help inbox

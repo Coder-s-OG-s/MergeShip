@@ -81,6 +81,15 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
     }
   }
 
+  // Fire-and-forget maintainer discovery so this user picks up admin
+  // permissions across every install (including orgs where they were
+  // added as admin after a different teammate created the install).
+  // Idempotent + Redis-deduped at 1h.
+  void inngest.send({
+    name: 'maintainer/discover',
+    data: { userId: profile.id, githubHandle: profile.github_handle },
+  });
+
   return ok({
     profileId: profile.id,
     githubHandle: profile.github_handle,
