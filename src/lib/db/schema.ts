@@ -310,3 +310,137 @@ export const activityLog = pgTable(
     createdAtIdx: index('activity_log_created_at_idx').on(t.createdAt),
   }),
 );
+
+// ========================================================================
+// Maintainer-side tables (migration 0005)
+// ========================================================================
+
+export const pullRequests = pgTable(
+  'pull_requests',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    githubPrId: bigint('github_pr_id', { mode: 'number' }).notNull().unique(),
+    repoFullName: text('repo_full_name').notNull(),
+    number: integer('number').notNull(),
+    title: text('title').notNull(),
+    bodyExcerpt: text('body_excerpt'),
+    authorLogin: text('author_login').notNull(),
+    authorUserId: uuid('author_user_id').references(() => profiles.id, { onDelete: 'set null' }),
+    state: text('state', { enum: ['open', 'closed', 'merged'] }).notNull(),
+    draft: boolean('draft').notNull().default(false),
+    url: text('url').notNull(),
+    githubCreatedAt: timestamp('github_created_at', { withTimezone: true }).notNull(),
+    githubUpdatedAt: timestamp('github_updated_at', { withTimezone: true }).notNull(),
+    mergedAt: timestamp('merged_at', { withTimezone: true }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    mentorVerified: boolean('mentor_verified').notNull().default(false),
+    mentorReviewerId: uuid('mentor_reviewer_id').references(() => profiles.id, {
+      onDelete: 'set null',
+    }),
+    mentorReviewAt: timestamp('mentor_review_at', { withTimezone: true }),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqRepoNumber: uniqueIndex('pull_requests_repo_number_unique').on(t.repoFullName, t.number),
+    repoStateIdx: index('pull_requests_repo_state_idx').on(
+      t.repoFullName,
+      t.state,
+      t.githubUpdatedAt,
+    ),
+    authorIdx: index('pull_requests_author_idx').on(t.authorUserId, t.state),
+  }),
+);
+
+export const pullRequestReviews = pgTable(
+  'pull_request_reviews',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    prId: bigint('pr_id', { mode: 'number' })
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    githubReviewId: bigint('github_review_id', { mode: 'number' }).notNull().unique(),
+    reviewerLogin: text('reviewer_login').notNull(),
+    reviewerUserId: uuid('reviewer_user_id').references(() => profiles.id, {
+      onDelete: 'set null',
+    }),
+    state: text('state', {
+      enum: ['approved', 'changes_requested', 'commented', 'dismissed', 'pending'],
+    }).notNull(),
+    bodyExcerpt: text('body_excerpt'),
+    isMentor: boolean('is_mentor').notNull().default(false),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    prMentorIdx: index('pull_request_reviews_pr_mentor_idx').on(t.prId, t.isMentor),
+    reviewerIdx: index('pull_request_reviews_reviewer_idx').on(t.reviewerUserId, t.submittedAt),
+  }),
+);
+
+export const githubInstallationUsers = pgTable(
+  'github_installation_users',
+  {
+    installationId: bigint('installation_id', { mode: 'number' })
+      .notNull()
+      .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    permissionLevel: text('permission_level', {
+      enum: ['org_admin', 'repo_admin', 'repo_maintain'],
+    }).notNull(),
+    source: text('source', {
+      enum: ['install_creator', 'membership_check', 'manual_invite'],
+    }).notNull(),
+    verifiedAt: timestamp('verified_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.installationId, t.userId] }),
+    userIdx: index('github_installation_users_user_idx').on(t.userId),
+  }),
+);
+
+export const installationUserRepos = pgTable(
+  'installation_user_repos',
+  {
+    installationId: bigint('installation_id', { mode: 'number' })
+      .notNull()
+      .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    repoFullName: text('repo_full_name').notNull(),
+    permissionLevel: text('permission_level', { enum: ['admin', 'maintain'] }).notNull(),
+    verifiedAt: timestamp('verified_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.installationId, t.userId, t.repoFullName] }),
+    userIdx: index('installation_user_repos_user_idx').on(t.userId),
+  }),
+);
+
+export const orgCommunities = pgTable(
+  'org_communities',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    installationId: bigint('installation_id', { mode: 'number' })
+      .notNull()
+      .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+    kind: text('kind', {
+      enum: ['discord', 'slack', 'forum', 'website', 'twitter', 'other'],
+    }).notNull(),
+    url: text('url').notNull(),
+    label: text('label'),
+    createdByUserId: uuid('created_by_user_id').references(() => profiles.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqInstallKind: uniqueIndex('org_communities_install_kind_unique').on(
+      t.installationId,
+      t.kind,
+    ),
+    installIdx: index('org_communities_install_idx').on(t.installationId),
+  }),
+);
