@@ -155,8 +155,8 @@ export default async function MyPRsPage() {
       if (!mentor_status && help && (help.status === 'open' || help.status === 'escalated')) {
         mentor_status = 'pending';
         // Reviewer: whoever resolved_by points to (may be assigned mentor)
-        if (help.resolved_by && resolverHandles[help.resolved_by]) {
-          const info = resolverHandles[help.resolved_by];
+        const info = help.resolved_by ? resolverHandles[help.resolved_by] : undefined;
+        if (info) {
           reviewed_by = info.handle;
           mentor_level = `L${info.level}`;
         }
