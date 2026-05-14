@@ -2,6 +2,7 @@ import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
 import { scoreDifficulty, repoHealth } from '@/lib/pipeline/score';
+import { fetchRepoHealthInput } from '@/lib/github/repo-meta';
 import { llmCall } from '@/lib/llm/router';
 import { DifficultySchema } from '@/lib/llm/schemas';
 
@@ -104,6 +105,11 @@ export const issuesSweep = inngest.createFunction(
           const [owner, name] = t.target.split('/');
           if (!owner || !name) continue;
 
+          // Real repo health signals (cached 24h) instead of the prior
+          // hardcoded { stars: 100, recentCommits30d: 5, ... } block.
+          const healthInput = await fetchRepoHealthInput(octokit, owner, name);
+          const healthScore = repoHealth(healthInput);
+
           let issues: Array<{
             number: number;
             title: string;
@@ -163,12 +169,7 @@ export const issuesSweep = inngest.createFunction(
                 labels: labels.filter((l): l is string => Boolean(l)),
                 state: 'open',
                 url: issue.html_url,
-                repo_health_score: repoHealth({
-                  stars: 100,
-                  recentCommits30d: 5,
-                  hasContributingMd: true,
-                  hasLicense: true,
-                }),
+                repo_health_score: healthScore,
                 scored_at: new Date().toISOString(),
               },
               { onConflict: 'repo_full_name,github_issue_number' },
