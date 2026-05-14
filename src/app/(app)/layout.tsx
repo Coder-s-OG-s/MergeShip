@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
-import { LogOut } from 'lucide-react';
 import { NavItems } from './nav-items';
+import { LogoutButton } from './logout-button';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = getServerSupabase();
@@ -63,10 +63,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </div>
             </div>
           </div>
-          <button className="flex w-full items-center gap-3 text-[13px] tracking-widest text-zinc-400 transition-colors hover:text-white">
-            <LogOut className="h-4 w-4" />
-            LOGOUT
-          </button>
+          <LogoutButton />
         </div>
       </aside>
 
