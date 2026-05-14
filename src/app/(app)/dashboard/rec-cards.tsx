@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { ExternalLink } from 'lucide-react';
 import {
   claimRecommendation,
   linkPrToRec,
@@ -9,11 +10,13 @@ import {
 } from '@/app/actions/recommendations';
 import { sendHelpRequest } from '@/app/actions/help';
 
-const TIER_LABEL: Record<'E' | 'M' | 'H', string> = { E: 'Easy', M: 'Medium', H: 'Hard' };
+const PR_URL_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
+
+const TIER_LABEL: Record<'E' | 'M' | 'H', string> = { E: 'L1', M: 'L2', H: 'L3' };
 const TIER_COLOR: Record<'E' | 'M' | 'H', string> = {
-  E: 'bg-emerald-900/40 text-emerald-300 ring-1 ring-emerald-700/40',
-  M: 'bg-amber-900/40 text-amber-300 ring-1 ring-amber-700/40',
-  H: 'bg-rose-900/40 text-rose-300 ring-1 ring-rose-700/40',
+  E: 'border-emerald-700 text-emerald-400',
+  M: 'border-yellow-700 text-yellow-400',
+  H: 'border-red-800 text-red-400',
 };
 
 export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
@@ -53,133 +56,160 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
     });
   }
 
+  if (recs.length === 0) {
+    return (
+      <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
+        No recommendations yet. Check back soon.
+      </div>
+    );
+  }
+
   return (
     <div>
       {error && (
-        <p className="mb-3 text-sm text-rose-400" role="alert">
+        <div
+          className="mb-4 border border-red-800 bg-red-900/20 px-4 py-3 text-[11px] uppercase tracking-widest text-red-400"
+          role="alert"
+        >
           {error}
-        </p>
+        </div>
       )}
-      <ul className="grid gap-3 sm:grid-cols-2">
-        {recs.map((rec) => (
-          <li
-            key={rec.id}
-            className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 transition hover:border-zinc-700"
-          >
-            <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="max-h-[520px] overflow-y-auto pr-1 [&::-webkit-scrollbar-thumb:hover]:bg-zinc-500 [&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-1">
+        <ul>
+          {recs.map((rec) => (
+            <li key={rec.id} className="border-b border-[#2d333b] py-6 last:border-0">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span
+                  className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${TIER_COLOR[rec.difficulty]}`}
+                >
+                  {TIER_LABEL[rec.difficulty]}
+                </span>
+                <span className="text-[10px] uppercase tracking-widest text-zinc-600">
+                  {rec.repoFullName} · #{rec.issueNumber}
+                </span>
+              </div>
+
               <a
                 href={rec.url}
                 target="_blank"
                 rel="noreferrer"
-                className="font-display text-base font-semibold text-white hover:underline"
+                className="mb-4 flex items-start gap-2 font-serif text-lg leading-snug text-white hover:text-zinc-300"
               >
                 {rec.title}
+                <ExternalLink className="mt-1 h-3 w-3 shrink-0 text-zinc-500" />
               </a>
-              <span
-                className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${TIER_COLOR[rec.difficulty]}`}
-              >
-                {TIER_LABEL[rec.difficulty]} · +{rec.xpReward} XP
-              </span>
-            </div>
-            <p className="text-xs text-zinc-500">
-              {rec.repoFullName} · #{rec.issueNumber}
-            </p>
 
-            <div className="mt-4 flex gap-2">
-              {rec.status === 'claimed' ? (
-                <ClaimedActions rec={rec} onError={setError} />
-              ) : (
-                <>
-                  <button
-                    onClick={() => handleClaim(rec)}
-                    disabled={pending && busyId === rec.id}
-                    className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-500 disabled:opacity-50"
-                  >
-                    {busyId === rec.id ? 'Claiming…' : 'Claim'}
-                  </button>
-                  <button
-                    onClick={() => handleSkip(rec)}
-                    disabled={pending && busyId === rec.id}
-                    className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-600 disabled:opacity-50"
-                  >
-                    Skip
-                  </button>
-                </>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
+              <div className="flex items-center justify-between">
+                {rec.status === 'claimed' ? (
+                  <ClaimedActions rec={rec} onError={setError} />
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleClaim(rec)}
+                      disabled={pending && busyId === rec.id}
+                      className="border border-zinc-600 px-4 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {busyId === rec.id ? 'CLAIMING...' : 'CLAIM'}
+                    </button>
+                    <button
+                      onClick={() => handleSkip(rec)}
+                      disabled={pending && busyId === rec.id}
+                      className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-400 disabled:opacity-40"
+                    >
+                      SKIP
+                    </button>
+                  </div>
+                )}
+                <span className="ml-auto text-[10px] uppercase tracking-widest text-emerald-600">
+                  +{rec.xpReward} XP
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
 
 function ClaimedActions({ rec, onError }: { rec: RecCard; onError: (msg: string | null) => void }) {
-  const [url, setUrl] = useState('');
+  const [input, setInput] = useState('');
   const [pending, startTransition] = useTransition();
   const [linked, setLinked] = useState(false);
   const [helpSent, setHelpSent] = useState(false);
 
+  const isValidPrUrl = PR_URL_RE.test(input.trim());
+
   function onLink() {
+    if (!isValidPrUrl) return;
     onError(null);
     startTransition(async () => {
-      const res = await linkPrToRec(rec.id, url);
+      const res = await linkPrToRec(rec.id, input.trim());
       if (res.ok) setLinked(true);
       else onError(`${rec.title}: ${res.error.message}`);
     });
   }
 
   function onHelp() {
-    if (!url) {
-      onError('Paste your PR URL first.');
+    if (!input.trim()) {
+      onError('Enter a PR URL or describe your issue first.');
       return;
     }
     onError(null);
     startTransition(async () => {
-      const res = await sendHelpRequest({ recId: rec.id, prUrl: url });
+      const res = await sendHelpRequest({ recId: rec.id, prUrl: input.trim() });
       if (res.ok) setHelpSent(true);
       else onError(`${rec.title}: ${res.error.message}`);
     });
   }
 
   return (
-    <div className="flex w-full flex-wrap items-center gap-2">
-      {linked ? (
-        <span className="rounded-lg bg-emerald-900/40 px-2 py-1 text-xs text-emerald-300 ring-1 ring-emerald-700/40">
-          PR linked
-        </span>
-      ) : (
-        <span className="text-xs text-zinc-400">Claimed.</span>
-      )}
-      <input
-        type="url"
-        placeholder="https://github.com/owner/repo/pull/123"
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-600"
-      />
+    <div className="w-full space-y-3">
+      <div className="flex items-center gap-3">
+        <span className="text-[10px] uppercase tracking-widest text-purple-400">CLAIMED</span>
+        {linked && (
+          <span className="border border-emerald-800 px-2 py-0.5 text-[10px] uppercase tracking-widest text-emerald-400">
+            PR LINKED
+          </span>
+        )}
+        {helpSent && (
+          <span className="border border-amber-800 px-2 py-0.5 text-[10px] uppercase tracking-widest text-amber-400">
+            HELP SENT
+          </span>
+        )}
+      </div>
+
       {!linked && (
-        <button
-          onClick={onLink}
-          disabled={pending || url.length === 0}
-          className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50"
-        >
-          {pending ? 'Linking…' : 'Link PR'}
-        </button>
-      )}
-      {helpSent ? (
-        <span className="rounded-lg bg-amber-900/40 px-2 py-1 text-xs text-amber-300 ring-1 ring-amber-700/40">
-          Help sent
-        </span>
-      ) : (
-        <button
-          onClick={onHelp}
-          disabled={pending || url.length === 0}
-          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-600 disabled:opacity-50"
-          title="Ping L2+ contributors to review your PR"
-        >
-          Help
-        </button>
+        <>
+          <input
+            type="text"
+            placeholder="PASTE PR URL OR DESCRIBE YOUR ISSUE"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            className="w-full border border-[#2d333b] bg-[#161b22] px-4 py-2 text-[11px] uppercase tracking-widest text-zinc-300 placeholder-zinc-600 outline-none focus:border-zinc-500"
+          />
+          <div className="flex items-center gap-3">
+            {isValidPrUrl && (
+              <button
+                onClick={onLink}
+                disabled={pending}
+                className="border border-zinc-600 px-4 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {pending ? 'LINKING...' : 'LINK PR'}
+              </button>
+            )}
+            {!helpSent && (
+              <button
+                onClick={onHelp}
+                disabled={pending || input.trim().length === 0}
+                className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-400 disabled:opacity-40"
+                title="Request review from L2+ contributors"
+              >
+                {pending ? 'SENDING...' : 'REQUEST HELP'}
+              </button>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
