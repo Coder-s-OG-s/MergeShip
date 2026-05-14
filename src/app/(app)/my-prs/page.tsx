@@ -128,15 +128,17 @@ export default async function MyPRsPage() {
         if (rec.status === 'approved' || rec.status === 'merged') {
           mentor_status = 'approved';
           xp_earned = rec.xp_reward ?? null;
-          if (rec.mentor_id && mentorProfiles[rec.mentor_id]) {
-            const parts = mentorProfiles[rec.mentor_id].split(':');
+          const recMentorEntry = rec.mentor_id ? mentorProfiles[rec.mentor_id] : undefined;
+          if (recMentorEntry) {
+            const parts = recMentorEntry.split(':');
             reviewed_by = parts[0] ?? null;
             mentor_level = parts[1] ?? null;
           }
         } else if (rec.status === 'claimed' || rec.status === 'review_pending') {
           mentor_status = 'pending';
-          if (rec.mentor_id && mentorProfiles[rec.mentor_id]) {
-            const parts = mentorProfiles[rec.mentor_id].split(':');
+          const recMentorEntry = rec.mentor_id ? mentorProfiles[rec.mentor_id] : undefined;
+          if (recMentorEntry) {
+            const parts = recMentorEntry.split(':');
             reviewed_by = parts[0] ?? null;
             mentor_level = parts[1] ?? null;
           }
@@ -146,8 +148,9 @@ export default async function MyPRsPage() {
       if (help) {
         if (!mentor_status && (help.status === 'open' || help.status === 'escalated')) {
           mentor_status = 'pending';
-          if (help.resolved_by && mentorProfiles[help.resolved_by]) {
-            const parts = mentorProfiles[help.resolved_by].split(':');
+          const helpMentorEntry = help.resolved_by ? mentorProfiles[help.resolved_by] : undefined;
+          if (helpMentorEntry) {
+            const parts = helpMentorEntry.split(':');
             reviewed_by = parts[0] ?? null;
             mentor_level = parts[1] ?? null;
           }
