@@ -27,8 +27,15 @@ const TABS: { key: PRTab; label: string }[] = [
 
 export function PRList({ prs }: Props) {
   const [activeTab, setActiveTab] = useState<PRTab>('all');
+  const [selectedRepo, setSelectedRepo] = useState<string>('');
 
-  const filtered = prs.filter((pr) => {
+  // Derive unique sorted repo list from all PRs
+  const repoOptions = Array.from(new Set(prs.map((pr) => pr.repo_full_name))).sort();
+
+  // Apply repo filter first, then tab filter
+  const repoFiltered = selectedRepo ? prs.filter((pr) => pr.repo_full_name === selectedRepo) : prs;
+
+  const tabFiltered = repoFiltered.filter((pr) => {
     if (activeTab === 'all') return true;
     if (activeTab === 'merged') return pr.state === 'merged';
     if (activeTab === 'closed') return pr.state === 'closed';
@@ -38,49 +45,105 @@ export function PRList({ prs }: Props) {
     return true;
   });
 
+  // Tab counts respect the active repo filter
   const counts: Record<PRTab, number> = {
-    all: prs.length,
-    pending_review: prs.filter((p) => p.state === 'open' && p.mentor_status === 'pending').length,
-    mentor_approved: prs.filter((p) => p.mentor_status === 'approved').length,
-    merged: prs.filter((p) => p.state === 'merged').length,
-    closed: prs.filter((p) => p.state === 'closed').length,
+    all: repoFiltered.length,
+    pending_review: repoFiltered.filter((p) => p.state === 'open' && p.mentor_status === 'pending')
+      .length,
+    mentor_approved: repoFiltered.filter((p) => p.mentor_status === 'approved').length,
+    merged: repoFiltered.filter((p) => p.state === 'merged').length,
+    closed: repoFiltered.filter((p) => p.state === 'closed').length,
   };
 
   return (
     <div>
-      {/* Tabs */}
-      <div className="flex gap-0 border-b border-[#2d333b]">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`relative px-5 py-3 text-[12px] font-bold uppercase tracking-widest transition-colors ${
-              activeTab === tab.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
-            }`}
-          >
-            {tab.label}
-            {counts[tab.key] > 0 && (
-              <span
-                className={`ml-1.5 text-[10px] ${activeTab === tab.key ? 'text-zinc-400' : 'text-zinc-600'}`}
+      {/* Tabs + Repo dropdown row */}
+      <div className="flex items-end justify-between gap-4 border-b border-[#2d333b]">
+        {/* Tabs */}
+        <div className="flex gap-0">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`relative px-5 py-3 text-[12px] font-bold uppercase tracking-widest transition-colors ${
+                activeTab === tab.key ? 'text-white' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {tab.label}
+              {counts[tab.key] > 0 && (
+                <span
+                  className={`ml-1.5 text-[10px] ${
+                    activeTab === tab.key ? 'text-zinc-400' : 'text-zinc-600'
+                  }`}
+                >
+                  {counts[tab.key]}
+                </span>
+              )}
+              {activeTab === tab.key && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#39d353]" />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Repo dropdown */}
+        {repoOptions.length > 0 && (
+          <div className="mb-2 flex items-center gap-2">
+            <svg
+              className="h-3 w-3 shrink-0 text-zinc-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 7h18M6 12h12M9 17h6"
+              />
+            </svg>
+            <select
+              value={selectedRepo}
+              onChange={(e) => {
+                setSelectedRepo(e.target.value);
+                setActiveTab('all');
+              }}
+              className="cursor-pointer border border-[#2d333b] bg-[#1c2128] px-3 py-1.5 text-[11px] uppercase tracking-widest text-zinc-300 outline-none transition-colors hover:border-zinc-600 focus:border-zinc-500"
+            >
+              <option value="">All Repos</option>
+              {repoOptions.map((repo) => (
+                <option key={repo} value={repo}>
+                  {repo}
+                </option>
+              ))}
+            </select>
+            {selectedRepo && (
+              <button
+                onClick={() => setSelectedRepo('')}
+                className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-300"
+                title="Clear filter"
               >
-                {counts[tab.key]}
-              </span>
+                ✕
+              </button>
             )}
-            {activeTab === tab.key && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#39d353]" />
-            )}
-          </button>
-        ))}
+          </div>
+        )}
+      </div>
+
+      {/* Result count */}
+      <div className="mb-3 mt-3 text-[11px] uppercase tracking-widest text-zinc-600">
+        {tabFiltered.length} pull request{tabFiltered.length !== 1 ? 's' : ''}
+        {selectedRepo && <span className="ml-2 text-[#39d353]/70">in {selectedRepo}</span>}
       </div>
 
       {/* PR Cards */}
-      <div className="mt-4 space-y-3">
-        {filtered.length === 0 ? (
+      <div className="space-y-3">
+        {tabFiltered.length === 0 ? (
           <div className="py-16 text-center text-[12px] uppercase tracking-widest text-zinc-600">
             No pull requests found
           </div>
         ) : (
-          filtered.map((pr) => <PRCard key={pr.id} pr={pr} />)
+          tabFiltered.map((pr) => <PRCard key={pr.id} pr={pr} />)
         )}
       </div>
     </div>
