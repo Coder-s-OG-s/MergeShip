@@ -1,0 +1,203 @@
+'use server';
+
+import { getServerSupabase } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/service';
+import { ok, err, type Result } from '@/lib/result';
+import { rateLimit } from '@/lib/rate-limit';
+import { cacheDel } from '@/lib/cache';
+
+const PAGE_SIZE = 10;
+
+export type IssueFilter = {
+  search?: string;
+  state?: 'open' | 'closed';
+  difficulty?: 'E' | 'M' | 'H';
+  showClaimed?: boolean;
+  page?: number;
+};
+
+export type IssueWithStatus = {
+  id: number;
+  repoFullName: string;
+  githubIssueNumber: number;
+  title: string;
+  difficulty: 'E' | 'M' | 'H' | null;
+  xpReward: number | null;
+  labels: string[] | null;
+  state: 'open' | 'closed';
+  url: string;
+  fetchedAt: string;
+  userRecId: number | null;
+  userRecStatus: 'open' | 'claimed' | 'completed' | 'expired' | 'reassigned' | null;
+};
+
+export type IssuesPageResult = {
+  issues: IssueWithStatus[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export async function getIssuesPage(filters: IssueFilter): Promise<Result<IssuesPageResult>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const page = Math.max(1, filters.page ?? 1);
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  let query = service
+    .from('issues')
+    .select(
+      'id, repo_full_name, github_issue_number, title, difficulty, xp_reward, labels, state, url, fetched_at',
+      { count: 'exact' },
+    )
+    .eq('state', filters.state ?? 'open')
+    .order('fetched_at', { ascending: false })
+    .range(from, to);
+
+  if (filters.search?.trim()) {
+    query = query.ilike('title', `%${filters.search.trim()}%`);
+  }
+  if (filters.difficulty) {
+    query = query.eq('difficulty', filters.difficulty);
+  }
+
+  const { data, count, error } = await query;
+  if (error) return err('db_error', error.message);
+
+  const rows = (data ?? []) as {
+    id: number;
+    repo_full_name: string;
+    github_issue_number: number;
+    title: string;
+    difficulty: string | null;
+    xp_reward: number | null;
+    labels: string[] | null;
+    state: string;
+    url: string;
+    fetched_at: string;
+  }[];
+
+  const issueIds = rows.map((i) => i.id);
+  let recMap = new Map<number, { id: number; status: string }>();
+  if (issueIds.length > 0) {
+    const { data: recsData } = await service
+      .from('recommendations')
+      .select('id, issue_id, status')
+      .eq('user_id', user.id)
+      .in('issue_id', issueIds);
+    for (const r of recsData ?? []) {
+      recMap.set(r.issue_id, { id: r.id, status: r.status });
+    }
+  }
+
+  let issues: IssueWithStatus[] = rows.map((i) => {
+    const rec = recMap.get(i.id) ?? null;
+    return {
+      id: i.id,
+      repoFullName: i.repo_full_name,
+      githubIssueNumber: i.github_issue_number,
+      title: i.title,
+      difficulty: i.difficulty as 'E' | 'M' | 'H' | null,
+      xpReward: i.xp_reward,
+      labels: i.labels,
+      state: i.state as 'open' | 'closed',
+      url: i.url,
+      fetchedAt: i.fetched_at,
+      userRecId: rec?.id ?? null,
+      userRecStatus: (rec?.status ?? null) as IssueWithStatus['userRecStatus'],
+    };
+  });
+
+  if (!filters.showClaimed) {
+    issues = issues.filter((i) => i.userRecStatus !== 'claimed');
+  }
+
+  return ok({ issues, total: count ?? 0, page, pageSize: PAGE_SIZE });
+}
+
+export async function claimIssue(issueId: number): Promise<Result<{ recId: number }>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const rateRes = await rateLimit({
+    namespace: 'issues:claim',
+    key: user.id,
+    limit: 20,
+    windowSec: 60,
+  });
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true);
+
+  const { data: issue } = await service
+    .from('issues')
+    .select('id, difficulty, xp_reward')
+    .eq('id', issueId)
+    .single();
+  if (!issue) return err('not_found', 'issue not found');
+
+  const { data: existing } = await service
+    .from('recommendations')
+    .select('id, status')
+    .eq('user_id', user.id)
+    .eq('issue_id', issueId)
+    .maybeSingle();
+
+  if (existing) {
+    if (existing.status === 'claimed') return ok({ recId: existing.id });
+    if (existing.status === 'open') {
+      const { data: updated } = await service
+        .from('recommendations')
+        .update({ status: 'claimed', claimed_at: new Date().toISOString() })
+        .eq('id', existing.id)
+        .select('id')
+        .single();
+      if (!updated) return err('persist_failed', 'claim failed');
+      await cacheDel(`recs:${user.id}`);
+      return ok({ recId: updated.id });
+    }
+    return err('not_claimable', `status is ${existing.status}`);
+  }
+
+  const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+  const now = new Date().toISOString();
+  const { data: inserted, error: insertErr } = await service
+    .from('recommendations')
+    .insert({
+      user_id: user.id,
+      issue_id: issueId,
+      difficulty: issue.difficulty ?? 'E',
+      xp_reward: issue.xp_reward ?? 50,
+      recommended_at: now,
+      expires_at: expiresAt,
+      claimed_at: now,
+      status: 'claimed',
+    })
+    .select('id')
+    .single();
+
+  if (insertErr) return err('persist_failed', insertErr.message);
+  if (!inserted) return err('persist_failed', 'insert returned no data');
+
+  await cacheDel(`recs:${user.id}`);
+  await service.from('activity_log').insert({
+    user_id: user.id,
+    kind: 'claim',
+    detail: { issueId } as never,
+  });
+
+  return ok({ recId: inserted.id });
+}
