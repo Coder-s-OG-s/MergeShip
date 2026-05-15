@@ -343,7 +343,7 @@ export default async function DashboardPage() {
 
         {/* Footer */}
         <footer className="mt-24 flex justify-between border-t border-[#2d333b] pt-8 text-[10px] uppercase tracking-widest text-zinc-600">
-          <span>©2024 ARCH_06 / SYSTEM_v1.0</span>
+          <span>©{new Date().getFullYear()} ARCH_06 / SYSTEM_v1.0</span>
           <div className="flex gap-6">
             <Link href="#" className="transition-colors hover:text-zinc-400">
               TERMS
