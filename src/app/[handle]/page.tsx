@@ -3,7 +3,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
-import { CopyProfileLinkButton } from './copy-profile-link-button';
+import { CopyProfileLinkButton } from '@/components/copy-profile-link-button';
 
 export const revalidate = 300;
 
@@ -287,7 +287,8 @@ export default async function PublicProfile({ params }: { params: { handle: stri
   const handle = decodeURIComponent(params.handle).replace(/^@/, '');
   const profile = await loadProfileData(handle);
   if (!profile) notFound();
-  const profileUrl = `https://mergeship.dev/@${profile.githubHandle}`;
+  const profileUrl = process.env.NEXT_PUBLIC_APP_URL ?? `https://mergeship.dev`;
+  const profileHandleUrl = `${profileUrl.replace(/\/$/, '')}/@${profile.githubHandle}`;
 
   return (
     <div className="min-h-screen bg-[#0d1117] font-mono text-white">
@@ -341,7 +342,7 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                 </div>
                 <div className="mb-3 flex items-center gap-2 text-[13px] text-zinc-500">
                   <span>@{profile.githubHandle}</span>
-                  <CopyProfileLinkButton profileUrl={profileUrl} />
+                  <CopyProfileLinkButton profileUrl={profileHandleUrl} />
                 </div>
                 <div className="flex flex-wrap items-center gap-4 text-[11px] uppercase tracking-widest text-zinc-400">
                   <span>
