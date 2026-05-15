@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useCallback } from 'react';
+import { useState, useTransition, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
@@ -225,6 +225,30 @@ export function IssuesList({
   const totalPages = Math.ceil(initialData.total / initialData.pageSize);
   const currentPage = initialData.page;
 
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const active = document.activeElement;
+      const isTyping =
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        (active as HTMLElement)?.isContentEditable;
+
+      if (e.key === '/' && active !== searchInputRef.current && !isTyping) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+
+      if (e.key === 'Escape' && active === searchInputRef.current) {
+        searchInputRef.current?.blur();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <div>
       {/* Filters */}
@@ -232,8 +256,9 @@ export function IssuesList({
         <div className="relative min-w-[180px] flex-1">
           <Search className="absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-500" />
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="SEARCH ISSUES"
+            placeholder="Press / to search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && navigate({ q: search, page: '1' })}
