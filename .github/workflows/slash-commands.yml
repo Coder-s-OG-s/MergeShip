@@ -73,7 +73,7 @@ jobs:
                   owner, repo,
                   pull_number: issueNumber,
                   event: 'APPROVE',
-                  body: `Approved via \`${body}\` by @${commenter}`,
+                  body: `Approved via \`${rawBody.trim()}\` by @${commenter}`,
                 });
                 await github.rest.issues.createComment({
                   owner, repo, issue_number: issueNumber,
