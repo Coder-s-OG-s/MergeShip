@@ -10,21 +10,23 @@ Works the same on **macOS**, **Linux**, and **Windows (WSL2)**. Native Windows i
 
 Install these once before starting:
 
-| Tool | Version | Notes |
-| --- | --- | --- |
-| Node.js | 20 LTS or newer | Use nvm or nodejs.org. Verify: `node -v` |
-| pnpm | latest | Package manager required for this project. Install via `npm install -g pnpm` |
-| Docker | latest | Docker Desktop on macOS/Windows, `docker.io` on Linux |
-| Supabase CLI | latest | Used for local database and auth testing |
-| Git | any modern | Verify: `git --version` |
+| Tool         | Version         | Notes                                                                        |
+| ------------ | --------------- | ---------------------------------------------------------------------------- |
+| Node.js      | 20 LTS or newer | Use nvm or nodejs.org. Verify: `node -v`                                     |
+| pnpm         | latest          | Package manager required for this project. Install via `npm install -g pnpm` |
+| Docker       | latest          | Docker Desktop on macOS/Windows, `docker.io` on Linux                        |
+| Supabase CLI | latest          | Used for local database and auth testing                                     |
+| Git          | any modern      | Verify: `git --version`                                                      |
 
 ### Platform-specific setup
 
 **macOS:**
+
 - Install Docker Desktop. On Apple Silicon (M1/M2/M3) it runs native arm64.
 - Make sure Docker Desktop is **running** before you start.
 
 **Windows:**
+
 - Install WSL2 (`wsl --install` in PowerShell, then reboot).
 - Install Docker Desktop and enable the WSL2 backend in Settings → General.
 - Run **all commands below from inside the WSL2 Ubuntu shell**.
@@ -143,7 +145,7 @@ git pull origin main
 
 # 2. Branch naming conventions
 # Use descriptive prefixes: fix/issue-name or feat/feature-name
-git checkout -b feat/short-name        
+git checkout -b feat/short-name
 
 # 3. Verify changes
 make test
@@ -152,8 +154,8 @@ make lint
 
 # 4. Commit format
 # Use conventional commits: fix: description or feat: description
-git add <specific files>               
-git commit                             
+git add <specific files>
+git commit
 
 # 5. Push + open PR
 git push -u origin feat/short-name
@@ -225,3 +227,4 @@ Generate and download the private key (.pem).
 Update .env.local with the generated App ID, Client ID, Client Secret, Webhook Secret, and the exact contents of the PEM file.
 
 
+```
