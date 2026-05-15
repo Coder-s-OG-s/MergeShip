@@ -46,7 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <>
       <nav className="border-b border-zinc-900 bg-zinc-950 px-6 py-3 text-sm text-zinc-400">
         <div className="mx-auto flex max-w-5xl items-center gap-5">
-          <Link href="/dashboard" className="font-display font-semibold text-white">
+          <Link href="/" className="font-display font-semibold text-white">
             MergeShip
           </Link>
           <Link href="/dashboard" className="hover:text-white">
