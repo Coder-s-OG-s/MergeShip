@@ -58,10 +58,20 @@ function IssueCard({
           {issue.difficulty && (
             <span
               className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${DIFFICULTY_COLOR[issue.difficulty] ?? 'border-zinc-700 text-zinc-400'}`}
+              title={
+                issue.difficulty === 'E'
+                  ? 'Easy — good for first-time contributors'
+                  : issue.difficulty === 'M'
+                  ? 'Medium — requires some codebase familiarity'
+                  : issue.difficulty === 'H'
+                  ? 'Hard — significant feature or architectural change'
+                  : ''
+              }
             >
               {DIFFICULTY_LABEL[issue.difficulty] ?? issue.difficulty}
             </span>
           )}
+
           {isClaimed && (
             <span className="bg-purple-900/50 px-2 py-0.5 text-[10px] uppercase text-purple-300">
               CLAIMED
