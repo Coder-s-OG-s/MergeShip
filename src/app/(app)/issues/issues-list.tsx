@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ExternalLink, ChevronLeft, ChevronRight, Copy, Check } from 'lucide-react';
 import {
   claimIssue,
   unclaimIssue,
@@ -43,6 +43,18 @@ function IssueCard({
   const isClaimed = issue.userRecStatus === 'claimed';
   const repoName = issue.repoFullName.split('/')[1] ?? issue.repoFullName;
   const org = issue.repoFullName.split('/')[0] ?? '';
+
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(issue.url);
+
+    setCopied(true);
+
+    setTimeout(() => {
+      setCopied(false);
+    }, 1500);
+  };
 
   return (
     <div className="border-b border-[#2d333b] py-6 last:border-0">
@@ -112,6 +124,7 @@ function IssueCard({
             <span className="text-[10px] uppercase tracking-widest text-purple-400">
               YOUR ISSUE
             </span>
+
             <a
               href={issue.url}
               target="_blank"
@@ -120,6 +133,22 @@ function IssueCard({
             >
               VIEW <ExternalLink className="h-3 w-3" />
             </a>
+
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 border border-zinc-700 px-3 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:bg-zinc-800"
+            >
+              {copied ? (
+                <>
+                  COPIED <Check className="h-3 w-3" />
+                </>
+              ) : (
+                <>
+                  COPY <Copy className="h-3 w-3" />
+                </>
+              )}
+            </button>
+
             <button
               onClick={() => issue.userRecId && onUnclaim(issue.userRecId)}
               disabled={actionPending || !issue.userRecId}
@@ -137,6 +166,7 @@ function IssueCard({
             >
               {actionPending ? 'CLAIMING...' : 'CLAIM ISSUE'}
             </button>
+
             <a
               href={issue.url}
               target="_blank"
@@ -145,8 +175,24 @@ function IssueCard({
             >
               VIEW <ExternalLink className="h-3 w-3" />
             </a>
+
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-300"
+            >
+              {copied ? (
+                <>
+                  COPIED <Check className="h-3 w-3" />
+                </>
+              ) : (
+                <>
+                  COPY <Copy className="h-3 w-3" />
+                </>
+              )}
+            </button>
           </>
         )}
+
         {issue.xpReward && (
           <span className="ml-auto text-[10px] uppercase tracking-widest text-emerald-600">
             +{issue.xpReward} XP
