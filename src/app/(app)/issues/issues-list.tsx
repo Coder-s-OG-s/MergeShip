@@ -11,6 +11,7 @@ import {
   type IssuesPageResult,
   type RepoOption,
 } from '@/app/actions/issues';
+import { emitToast } from '@/components/toast';
 
 const DIFFICULTY_LABEL: Record<string, string> = { E: 'L1', M: 'L2', H: 'L3' };
 const DIFFICULTY_COLOR: Record<string, string> = {
@@ -48,9 +49,7 @@ function IssueCard({
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(issue.url);
-
     setCopied(true);
-
     setTimeout(() => {
       setCopied(false);
     }, 1500);
@@ -96,7 +95,7 @@ function IssueCard({
         </span>
       </div>
 
-      <a
+      
         href={issue.url}
         target="_blank"
         rel="noopener noreferrer"
@@ -125,7 +124,7 @@ function IssueCard({
               YOUR ISSUE
             </span>
 
-            <a
+            
               href={issue.url}
               target="_blank"
               rel="noopener noreferrer"
@@ -167,7 +166,7 @@ function IssueCard({
               {actionPending ? 'CLAIMING...' : 'CLAIM ISSUE'}
             </button>
 
-            <a
+            
               href={issue.url}
               target="_blank"
               rel="noopener noreferrer"
@@ -263,6 +262,9 @@ export function IssuesList({
       setActionError(result.error.message);
       return;
     }
+    const issue = initialData.issues.find((i) => i.id === issueId);
+    const xp = issue?.xpReward ?? 150;
+    emitToast({ variant: 'xp', message: `+${xp} XP — Issue Claimed` });
     router.refresh();
   };
 
@@ -283,7 +285,6 @@ export function IssuesList({
 
   return (
     <div>
-      {/* Filters */}
       <div className="mb-10 flex flex-wrap items-center gap-3">
         <div className="relative min-w-[180px] flex-1">
           <Search className="absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-500" />
@@ -362,12 +363,10 @@ export function IssuesList({
         </div>
       )}
 
-      {/* Count */}
       <div className="mb-6 text-[11px] uppercase tracking-widest text-zinc-500">
         {isPending ? 'LOADING...' : `${initialData.total} ISSUES`}
       </div>
 
-      {/* List */}
       <div className={isPending ? 'opacity-50 transition-opacity' : ''}>
         {initialData.issues.length === 0 ? (
           <div className="py-12 text-center text-[11px] uppercase tracking-widest text-zinc-600">
@@ -386,7 +385,6 @@ export function IssuesList({
         )}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="mt-10 flex items-center justify-between border-t border-[#2d333b] pt-6">
           <button

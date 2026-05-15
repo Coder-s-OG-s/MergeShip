@@ -4,6 +4,7 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { NavItems } from './nav-items';
 import { LogoutButton } from './logout-button';
+import { ToastProvider } from "@/components/toast";
 import { isUserMaintainer } from '@/lib/maintainer/detect';
 import type { Metadata } from 'next';
 
@@ -16,8 +17,14 @@ export const metadata: Metadata = {
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = getServerSupabase();
   if (!sb) {
-    return <>{children}</>;
+    return (
+      <>
+        {children}
+        <ToastProvider />
+      </>
+    );
   }
+
   const {
     data: { user },
   } = await sb.auth.getUser();
@@ -39,13 +46,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   let isMaintainer = false;
   try {
     isMaintainer = await isUserMaintainer(user.id);
-  } catch {
-    // never break the layout
-  }
+  } catch {}
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#111318] font-mono text-white">
-      {/* Sidebar */}
       <aside className="flex w-64 shrink-0 flex-col justify-between border-r border-[#2d333b] bg-[#111318]">
         <div>
           <div className="p-8 pb-12">
@@ -56,12 +60,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               MERGESHIP
             </Link>
           </div>
-
           <nav className="flex flex-col gap-1 px-4">
             <NavItems profileHref={`/@${handle}`} level={level} isMaintainer={isMaintainer} />
           </nav>
         </div>
-
         <div className="border-t border-[#2d333b] p-6">
           <div className="mb-6 flex items-center gap-3">
             <div className="h-10 w-10 shrink-0 overflow-hidden rounded-sm bg-zinc-800">
@@ -81,9 +83,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <LogoutButton />
         </div>
       </aside>
-
-      {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto">{children}</main>
+      <ToastProvider />
     </div>
   );
 }
