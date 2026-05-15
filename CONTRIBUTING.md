@@ -160,6 +160,10 @@ Most contributor PRs only touch `src/app/`, `src/lib/`, or `src/app/actions/`.
 2. Comment "I'd like to work on this" before starting.
 3. Wait for an assignment to avoid duplicate work.
 
+**Claim limit: maximum 3 issues at a time.**
+
+If you already have 3 open issues assigned or 3 open PRs, you must get them merged or closed before picking up anything new. A bot will automatically unassign you and leave a comment if you go over the limit. This keeps issues available for others and prevents hoarding.
+
 ---
 
 ## 7. PR workflow
