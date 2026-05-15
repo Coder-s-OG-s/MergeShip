@@ -22,7 +22,6 @@ jobs:
             const assignee = context.payload.assignee.login;
             const issueNumber = context.payload.issue.number;
 
-            // Count open issues assigned to this user (excluding this one)
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -31,12 +30,10 @@ jobs:
               per_page: 100,
             });
 
-            // Filter out PRs (GitHub returns PRs in issues list)
             const openIssues = issues.filter(i => !i.pull_request);
             const count = openIssues.length;
 
             if (count > 3) {
-              // Unassign them
               await github.rest.issues.removeAssignees({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -44,23 +41,24 @@ jobs:
                 assignees: [assignee],
               });
 
+              const list = openIssues
+                .filter(i => i.number !== issueNumber)
+                .slice(0, 5)
+                .map(i => '- #' + i.number + ' - ' + i.title)
+                .join('\n');
+
+              const body = 'Hey @' + assignee + '\n\n'
+                + 'You currently have **' + (count - 1) + ' open issues** assigned to you. The limit is **3 at a time**.\n\n'
+                + 'Please close or get your existing work merged before picking up a new issue:\n\n'
+                + list + '\n\n'
+                + 'Once those are resolved, feel free to re-assign yourself here. '
+                + 'Questions? Drop them in [GitHub Discussions](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/discussions).';
+
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: `Hey @${assignee} 👋
-
-You currently have **${count - 1} open issues** assigned to you. The limit is **3 at a time**.
-
-Please close or get your existing work merged before picking up a new issue:
-
-${openIssues
-  .filter(i => i.number !== issueNumber)
-  .slice(0, 5)
-  .map(i => `- #${i.number} — ${i.title}`)
-  .join('\n')}
-
-Once those are resolved, feel free to re-assign yourself here. Questions? Drop them in [GitHub Discussions](https://github.com/${context.repo.owner}/${context.repo.repo}/discussions).`,
+                body,
               });
             }
 
@@ -72,7 +70,6 @@ Once those are resolved, feel free to re-assign yourself here. Questions? Drop t
             const author = context.payload.pull_request.user.login;
             const prNumber = context.payload.pull_request.number;
 
-            // Skip bots
             if (author.endsWith('[bot]') || author.endsWith('-bot')) return;
 
             const { data: prs } = await github.rest.pulls.list({
@@ -86,22 +83,23 @@ Once those are resolved, feel free to re-assign yourself here. Questions? Drop t
             const count = authorPrs.length;
 
             if (count > 3) {
+              const list = authorPrs
+                .filter(pr => pr.number !== prNumber)
+                .slice(0, 5)
+                .map(pr => '- #' + pr.number + ' - ' + pr.title)
+                .join('\n');
+
+              const body = 'Hey @' + author + '\n\n'
+                + 'You have **' + count + ' open PRs** right now. The limit is **3 at a time**.\n\n'
+                + 'Please get your existing PRs merged or closed before opening new ones:\n\n'
+                + list + '\n\n'
+                + 'This PR will remain open but won\'t be reviewed until you\'re under the limit. '
+                + 'See our [Contributing Guidelines](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/blob/main/CONTRIBUTING.md) for details.';
+
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prNumber,
-                body: `Hey @${author} 👋
-
-You have **${count} open PRs** right now. The limit is **3 at a time**.
-
-Please get your existing PRs merged or closed before opening new ones:
-
-${authorPrs
-  .filter(pr => pr.number !== prNumber)
-  .slice(0, 5)
-  .map(pr => `- #${pr.number} — ${pr.title}`)
-  .join('\n')}
-
-This PR will remain open but won't be reviewed until you're under the limit. See our [Contributing Guidelines](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/CONTRIBUTING.md) for details.`,
+                body,
               });
             }

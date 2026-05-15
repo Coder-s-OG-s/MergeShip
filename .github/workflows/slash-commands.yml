@@ -80,9 +80,10 @@ jobs:
                   body: `✅ @${commenter} approved this PR.`,
                 });
               } catch (e) {
+                const reason = e.message ?? 'unknown error';
                 await github.rest.issues.createComment({
                   owner, repo, issue_number: issueNumber,
-                  body: `@${commenter} Could not approve - you may be the PR author, or a review from you already exists.`,
+                  body: `@${commenter} Could not approve - ${reason}. If you already left a review, dismiss it first then use \`/lgtm\` again.`,
                 });
               }
               return;
