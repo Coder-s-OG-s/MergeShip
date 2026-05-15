@@ -162,7 +162,7 @@ export default async function DashboardPage() {
             <SyncButton lastSyncedAt={syncedAt} />
           </div>
         </header>
-{/* Stats Row */}
+        {/* Stats Row */}
         <Suspense fallback={<StatsSkeleton />}>
           <div className="mb-16 grid grid-cols-1 gap-12 md:grid-cols-4">
             {/* Level Progress */}
@@ -401,9 +401,7 @@ function StatsSkeleton() {
 
       {/* Total Merges Skeleton */}
       <div>
-        <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
-          TOTAL MERGES
-        </div>
+        <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">TOTAL MERGES</div>
         <div className="flex items-end gap-2">
           <div className="h-9 w-16 animate-pulse rounded bg-zinc-800" />
           <div className="mb-1 h-4 w-4 animate-pulse rounded bg-zinc-800" />
