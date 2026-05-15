@@ -3,6 +3,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_SOURCE, xpForMerge, refIds } from '@/lib/xp/sources';
 import { cacheDelByPrefix } from '@/lib/cache';
+import { buildPrRow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
 
 /**
  * Webhook handler for GitHub `pull_request` events.
@@ -114,9 +115,6 @@ async function upsertPrRow(
     .maybeSingle();
   if (!knownRepo) return;
 
-  const state = derivePrState(pr, action);
-  const draft = pr.draft === true;
-
   // Author lookup is a best-effort link to the MergeShip profile by handle.
   const { data: authorProfile } = await sb
     .from('profiles')
@@ -124,38 +122,11 @@ async function upsertPrRow(
     .eq('github_handle', pr.user.login)
     .maybeSingle();
 
-  await sb.from('pull_requests').upsert(
-    {
-      github_pr_id: pr.id,
-      repo_full_name: repo,
-      number: pr.number,
-      title: pr.title,
-      body_excerpt: (pr.body ?? '').slice(0, 500),
-      author_login: pr.user.login,
-      author_user_id: authorProfile?.id ?? null,
-      state,
-      draft,
-      url: pr.html_url,
-      github_created_at: pr.created_at,
-      github_updated_at: pr.updated_at,
-      merged_at: pr.merged_at,
-      closed_at: pr.closed_at,
-      fetched_at: new Date().toISOString(),
-    },
-    { onConflict: 'repo_full_name,number' },
-  );
-}
-
-function derivePrState(
-  pr: PrPayload['pull_request'],
-  action: string,
-): 'open' | 'closed' | 'merged' {
-  if (action === 'closed') {
-    return pr.merged === true ? 'merged' : 'closed';
-  }
-  if (pr.merged === true) return 'merged';
-  if (pr.state === 'closed') return pr.merged_at ? 'merged' : 'closed';
-  return 'open';
+  await sb
+    .from('pull_requests')
+    .upsert(buildPrRow(pr as IngestiblePr, authorProfile?.id ?? null, action), {
+      onConflict: 'repo_full_name,number',
+    });
 }
 
 async function linkPrToClaim(

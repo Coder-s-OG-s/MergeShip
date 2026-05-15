@@ -107,9 +107,19 @@ export const issues = pgTable(
       .default('open'),
     url: text('url').notNull(),
     repoHealthScore: integer('repo_health_score'),
+    repoLanguage: text('repo_language'),
     summary: text('summary'),
     scoredAt: timestamp('scored_at', { withTimezone: true }),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+    // Maintainer-side triage fields (populated by webhook ingestion).
+    githubIssueId: bigint('github_issue_id', { mode: 'number' }),
+    authorLogin: text('author_login'),
+    assigneeLogin: text('assignee_login'),
+    commentsCount: integer('comments_count').notNull().default(0),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    githubCreatedAt: timestamp('github_created_at', { withTimezone: true }),
+    githubUpdatedAt: timestamp('github_updated_at', { withTimezone: true }),
+    lastEventAt: timestamp('last_event_at', { withTimezone: true }),
   },
   (t) => ({
     repoIssueUnique: uniqueIndex('issues_repo_number_unique').on(
@@ -338,6 +348,7 @@ export const pullRequests = pgTable(
       onDelete: 'set null',
     }),
     mentorReviewAt: timestamp('mentor_review_at', { withTimezone: true }),
+    mentorCommentId: bigint('mentor_comment_id', { mode: 'number' }),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { Outfit, Inter, DM_Serif_Display, DM_Mono, DM_Sans } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 
 const outfit = Outfit({
@@ -39,10 +41,28 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'MergeShip — Open Source, Leveled Up',
+  title: 'MergeShip',
   description:
     'The platform that trains contributors to be ready before they submit, and gives maintainers a smart command center.',
   keywords: 'open source, contributors, maintainers, GitHub, issues, pull requests',
+  openGraph: {
+    title: 'MergeShip',
+    description:
+      'The platform that trains contributors to be ready before they submit, and gives maintainers a smart command center.',
+    siteName: 'MergeShip',
+    images: [
+      {
+        url: '/og-image.svg',
+        width: 1200,
+        height: 630,
+        alt: 'MergeShip — Open Source, Leveled Up',
+      },
+    ],
+    type: 'website',
+  },
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
@@ -55,7 +75,11 @@ export default function RootLayout({
       lang="en"
       className={`dark ${outfit.variable} ${inter.variable} ${dmSerifDisplay.variable} ${dmMono.variable} ${dmSans.variable}`}
     >
-      <body className="bg-dark-900 text-white antialiased">{children}</body>
+      <body className="bg-dark-900 text-white antialiased">
+        {children}
+        <Analytics />
+        <SpeedInsights />
+      </body>
     </html>
   );
 }

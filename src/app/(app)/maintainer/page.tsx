@@ -128,8 +128,14 @@ export default async function MaintainerPage({
             active={!searchParams.verified}
           />
           <Link
-            href={`/maintainer/community?install=${activeInstallId}`}
+            href={`/maintainer/issues?install=${activeInstallId}`}
             className="ml-auto rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
+          >
+            Issue triage →
+          </Link>
+          <Link
+            href={`/maintainer/community?install=${activeInstallId}`}
+            className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
           >
             Community links →
           </Link>

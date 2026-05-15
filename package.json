@@ -17,11 +17,11 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx scripts/seed.ts",
-    "db:reset": "supabase db reset && pnpm db:seed",
+    "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "db:reset": "supabase db reset && npm run db:seed",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
-    "sim:webhook": "tsx scripts/sim-webhook.ts",
+    "sim:webhook": "tsx --env-file=.env.local scripts/sim-webhook.ts",
     "prepare": "husky"
   },
   "dependencies": {
@@ -32,6 +32,8 @@
     "@supabase/supabase-js": "^2.46.0",
     "@types/three": "^0.184.1",
     "@upstash/redis": "^1.34.3",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.36.4",

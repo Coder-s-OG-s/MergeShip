@@ -112,6 +112,16 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 
+  // Enforce 3-claim limit: count currently claimed recs before allowing a new one.
+  const { count: claimedCount } = await service
+    .from('recommendations')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .eq('status', 'claimed');
+  if ((claimedCount ?? 0) >= 3) {
+    return err('claim_limit', 'you already have 3 active claims - merge or close them first');
+  }
+
   // Atomic claim: UPDATE ... WHERE status='open' AND user_id=auth.uid()
   // Zero rows affected = already claimed or doesn't exist.
   const { data, error: updateErr } = await service
@@ -283,6 +293,59 @@ async function pickReplacement(args: {
     };
   }
   return null;
+}
+
+export async function unlinkPrFromRec(recId: number): Promise<Result<{ id: number }>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const { data, error: updateErr } = await service
+    .from('recommendations')
+    .update({ linked_pr_url: null })
+    .eq('id', recId)
+    .eq('user_id', user.id)
+    .select('id')
+    .maybeSingle();
+
+  if (updateErr) return err('persist_failed', updateErr.message);
+  if (!data) return err('not_found', 'recommendation not found');
+
+  await cacheDel(`recs:${user.id}`);
+  return ok({ id: data.id });
+}
+
+export async function unclaimRecommendation(recId: number): Promise<Result<{ id: number }>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const { data, error: updateErr } = await service
+    .from('recommendations')
+    .update({ status: 'open', claimed_at: null, linked_pr_url: null })
+    .eq('id', recId)
+    .eq('user_id', user.id)
+    .eq('status', 'claimed')
+    .select('id')
+    .maybeSingle();
+
+  if (updateErr) return err('persist_failed', updateErr.message);
+  if (!data) return err('not_claimable', 'recommendation is not claimed');
+
+  await cacheDel(`recs:${user.id}`);
+  return ok({ id: data.id });
 }
 
 // Used by tests + the unused-export linter — keeps the type alive even if not
