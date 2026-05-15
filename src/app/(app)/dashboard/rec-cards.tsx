@@ -79,20 +79,20 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
           {recs.map((rec) => (
             <li key={rec.id} className="border-b border-[#2d333b] py-6 last:border-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span
-                className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${TIER_COLOR[rec.difficulty]}`}
-                title={
-                  rec.difficulty === 'E'
-                    ? 'Easy — good for first-time contributors'
-                    : rec.difficulty === 'M'
-                    ? 'Medium — requires some codebase familiarity'
-                    : rec.difficulty === 'H'
-                    ? 'Hard — significant feature or architectural change'
-                    : ''
-                }
-              >
-                {TIER_LABEL[rec.difficulty]}
-              </span>
+                <span
+                  className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${TIER_COLOR[rec.difficulty]}`}
+                  title={
+                    rec.difficulty === 'E'
+                      ? 'Easy — good for first-time contributors'
+                      : rec.difficulty === 'M'
+                        ? 'Medium — requires some codebase familiarity'
+                        : rec.difficulty === 'H'
+                          ? 'Hard — significant feature or architectural change'
+                          : ''
+                  }
+                >
+                  {TIER_LABEL[rec.difficulty]}
+                </span>
               </div>
 
               <a

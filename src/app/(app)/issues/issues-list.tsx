@@ -62,10 +62,10 @@ function IssueCard({
                 issue.difficulty === 'E'
                   ? 'Easy — good for first-time contributors'
                   : issue.difficulty === 'M'
-                  ? 'Medium — requires some codebase familiarity'
-                  : issue.difficulty === 'H'
-                  ? 'Hard — significant feature or architectural change'
-                  : ''
+                    ? 'Medium — requires some codebase familiarity'
+                    : issue.difficulty === 'H'
+                      ? 'Hard — significant feature or architectural change'
+                      : ''
               }
             >
               {DIFFICULTY_LABEL[issue.difficulty] ?? issue.difficulty}
