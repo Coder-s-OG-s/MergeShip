@@ -35,7 +35,7 @@ Install these once before starting:
 
 ## 2. Local setup (Step-by-step)
 
-```bash
+````bash
 git clone [https://github.com/Coder-s-OG-s/MergeShip.git](https://github.com/Coder-s-OG-s/MergeShip.git)
 cd MergeShip
 pnpm install
@@ -227,4 +227,4 @@ Generate and download the private key (.pem).
 Update .env.local with the generated App ID, Client ID, Client Secret, Webhook Secret, and the exact contents of the PEM file.
 
 
-```
+````
