@@ -32,18 +32,32 @@ export function NavItems({
 
   const items = [
     ...CORE_NAV,
-    ...(level >= 2 ? [{ name: 'HELP INBOX', href: '/help-inbox', icon: Inbox }] : []),
-    ...(isMaintainer ? [{ name: 'MAINTAINER', href: '/maintainer', icon: Shield }] : []),
+    ...(level >= 2
+      ? [{ name: 'HELP INBOX', href: '/help-inbox', icon: Inbox }]
+      : []),
+    ...(isMaintainer
+      ? [{ name: 'MAINTAINER', href: '/maintainer', icon: Shield }]
+      : []),
     { name: 'PROFILE', href: profileHref, icon: User },
     { name: 'LEADERBOARD', href: '/leaderboard', icon: Trophy },
     { name: 'USAGE', href: '/settings/usage', icon: Activity },
   ];
 
+  const isActiveRoute = (href: string) => {
+    if (href === '/') {
+      return pathname === '/';
+    }
+
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
+
   return (
     <>
       {items.map((item) => {
         const Icon = item.icon;
-        const isActive = pathname.startsWith(item.href);
+        const isActive = isActiveRoute(item.href);
+        
+
         return (
           <Link
             key={item.name}
