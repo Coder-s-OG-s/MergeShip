@@ -11,6 +11,7 @@ type EnrichedPR = GitHubPR & {
   mentor_level?: string | null;
   close_reason?: string | null;
   xp_earned?: number | null;
+  draft?: boolean | null;
 };
 
 type Props = {
@@ -48,8 +49,9 @@ export function PRList({ prs }: Props) {
   // Tab counts respect the active repo filter
   const counts: Record<PRTab, number> = {
     all: repoFiltered.length,
-    pending_review: repoFiltered.filter((p) => p.state === 'open' && p.mentor_status === 'pending')
-      .length,
+    pending_review: repoFiltered.filter(
+      (p) => p.state === 'open' && p.mentor_status === 'pending'
+    ).length,
     mentor_approved: repoFiltered.filter((p) => p.mentor_status === 'approved').length,
     merged: repoFiltered.filter((p) => p.state === 'merged').length,
     closed: repoFiltered.filter((p) => p.state === 'closed').length,
@@ -102,6 +104,7 @@ export function PRList({ prs }: Props) {
                 d="M3 7h18M6 12h12M9 17h6"
               />
             </svg>
+
             <select
               value={selectedRepo}
               onChange={(e) => {
@@ -111,12 +114,14 @@ export function PRList({ prs }: Props) {
               className="cursor-pointer border border-[#2d333b] bg-[#1c2128] px-3 py-1.5 text-[11px] uppercase tracking-widest text-zinc-300 outline-none transition-colors hover:border-zinc-600 focus:border-zinc-500"
             >
               <option value="">All Repos</option>
+
               {repoOptions.map((repo) => (
                 <option key={repo} value={repo}>
                   {repo}
                 </option>
               ))}
             </select>
+
             {selectedRepo && (
               <button
                 onClick={() => setSelectedRepo('')}
@@ -164,9 +169,11 @@ function PRCard({ pr }: { pr: EnrichedPR }) {
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
             </svg>
           </div>
+
           <span className="text-[12px] font-bold uppercase tracking-wider text-zinc-400">
             {pr.repo_full_name}
           </span>
+
           <StatusBadge pr={pr} statusInfo={statusInfo} />
         </div>
 
@@ -193,43 +200,59 @@ function PRCard({ pr }: { pr: EnrichedPR }) {
 }
 
 type StatusInfo = {
-  type: 'pending_review' | 'submitted' | 'merged' | 'closed' | 'open';
+  type: 'draft' | 'pending_review' | 'submitted' | 'merged' | 'closed' | 'open';
 };
 
 function getPRStatusInfo(pr: EnrichedPR): StatusInfo {
   if (pr.state === 'merged') return { type: 'merged' };
   if (pr.state === 'closed') return { type: 'closed' };
+
+  // Draft check added
+  if (pr.draft) return { type: 'draft' };
+
   if (pr.mentor_status === 'approved') return { type: 'submitted' };
   if (pr.mentor_status === 'pending') return { type: 'pending_review' };
+
   return { type: 'open' };
 }
 
 function StatusBadge({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusInfo }) {
   switch (statusInfo.type) {
+    case 'draft':
+      return (
+        <span className="rounded-sm border border-zinc-600/60 bg-zinc-800/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+          Draft
+        </span>
+      );
+
     case 'pending_review':
       return (
         <span className="rounded-sm border border-amber-600/60 bg-amber-900/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">
           Mentor Review Pending
         </span>
       );
+
     case 'submitted':
       return (
         <span className="rounded-sm border border-[#39d353]/50 bg-[#39d353]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#39d353]">
           Submitted to Maintainer
         </span>
       );
+
     case 'merged':
       return (
         <span className="rounded-sm border border-[#8957e5]/60 bg-[#8957e5]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#a855f7]">
           Merged
         </span>
       );
+
     case 'closed':
       return (
         <span className="rounded-sm border border-zinc-600/60 bg-zinc-800/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
           Closed by Maintainer
         </span>
       );
+
     default:
       return (
         <span className="rounded-sm border border-blue-600/60 bg-blue-900/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-400">
@@ -237,7 +260,8 @@ function StatusBadge({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusInf
         </span>
       );
   }
-  pr; // used for type narrowing
+
+  pr;
 }
 
 function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusInfo }) {
@@ -245,6 +269,18 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
     'shrink-0 rounded-sm border px-4 py-2 text-[11px] font-bold uppercase tracking-widest transition-all';
 
   switch (statusInfo.type) {
+    case 'draft':
+      return (
+        <a
+          href={pr.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`${base} border-zinc-600/60 bg-zinc-800/30 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800`}
+        >
+          View Draft
+        </a>
+      );
+
     case 'pending_review':
       return (
         <a
@@ -256,6 +292,7 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
           View Draft
         </a>
       );
+
     case 'submitted':
       return (
         <a
@@ -267,6 +304,7 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
           Track on GitHub
         </a>
       );
+
     case 'merged':
       return (
         <a
@@ -278,6 +316,7 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
           View PR
         </a>
       );
+
     case 'closed':
       return (
         <a
@@ -289,6 +328,7 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
           View Feedback
         </a>
       );
+
     default:
       return (
         <a
@@ -319,13 +359,12 @@ function PRMeta({ pr }: { pr: EnrichedPR }) {
           <circle cx="12" cy="12" r="10" strokeWidth="2" />
           <path strokeWidth="2" strokeLinecap="round" d="M12 6v6l4 2" />
         </svg>
+
         {pr.reviewed_by ? (
-          <>
-            <span className="text-zinc-500">
-              Sent to @{pr.reviewed_by}
-              {pr.mentor_level ? ` (${pr.mentor_level})` : ''}
-            </span>
-          </>
+          <span className="text-zinc-500">
+            Sent to @{pr.reviewed_by}
+            {pr.mentor_level ? ` (${pr.mentor_level})` : ''}
+          </span>
         ) : pr.close_reason ? (
           <span className="text-zinc-500">Reason: {pr.close_reason}</span>
         ) : pr.xp_earned ? (
@@ -345,6 +384,7 @@ function PRMeta({ pr }: { pr: EnrichedPR }) {
           <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 16 16">
             <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm0 2a6 6 0 110 12A6 6 0 018 2zm0 1a5 5 0 100 10A5 5 0 008 3zm.5 2.5v2h2a.5.5 0 010 1h-2v2a.5.5 0 01-1 0v-2h-2a.5.5 0 010-1h2v-2a.5.5 0 011 0z" />
           </svg>
+
           +{pr.xp_earned} XP earned
         </span>
       )}
@@ -354,9 +394,12 @@ function PRMeta({ pr }: { pr: EnrichedPR }) {
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
+
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
+
   if (hours < 1) return 'just now';
   if (hours < 24) return `${hours}h ago`;
+
   return `${days}d ago`;
 }
