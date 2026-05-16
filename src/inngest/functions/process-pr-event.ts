@@ -64,36 +64,47 @@ export function extractIssueNumbers(text: string | null | undefined): number[] {
 export const processPrEvent = inngest.createFunction(
   {
     id: 'process-pr-event',
-    concurrency: { key: 'event.data.payload.pull_request.html_url', limit: 1 },
+    retries: 3,
+    concurrency: {
+      key: 'event.data.payload.pull_request.html_url',
+      limit: 1,
+    },
   },
   { event: 'github/pull_request' },
-  async ({ event, step }) => {
+  async ({ event, step, attempt }) => {
     const data = event.data as { payload: PrPayload };
     const pr = data.payload.pull_request;
     const action = data.payload.action;
     const repo = pr.base.repo.full_name;
     const prUrl = pr.html_url;
-
-    // Maintainer-side mirror. Wrapped + swallowing so a failure here can
-    // never block the existing contributor XP / claim-linking paths below.
-    await step.run('upsert-pr-row', async () => {
-      try {
+    try {
+      await step.run('upsert-pr-row', async () => {
         await upsertPrRow(repo, pr, action);
         return { ok: true };
-      } catch (e) {
-        return { ok: false, error: (e as Error).message };
+      });
+      if (action === 'opened') {
+        return await step.run('link-pr-to-claim', async () => linkPrToClaim(prUrl, repo, pr));
       }
-    });
+      if (action === 'closed' && pr.merged === true) {
+        return await step.run('handle-merge', async () => handleMerge(prUrl, repo, pr));
+      }
+      return { skipped: true, action };
+    } catch (err) {
+      const sb = getServiceSupabase();
 
-    if (action === 'opened') {
-      return await step.run('link-pr-to-claim', async () => linkPrToClaim(prUrl, repo, pr));
+      if (sb) {
+        await sb.from('failed_webhook_events').insert({
+          deliveryId: event.data.deliveryId,
+          eventType: 'github/pull_request',
+          source: 'inngest',
+          payload: event.data,
+          error: (err as Error).message,
+          retryCount: attempt,
+        });
+      }
+
+      throw err; // IMPORTANT → keeps Inngest retry working
     }
-
-    if (action === 'closed' && pr.merged === true) {
-      return await step.run('handle-merge', async () => handleMerge(prUrl, repo, pr));
-    }
-
-    return { skipped: true, action };
   },
 );
 
@@ -236,6 +247,15 @@ async function awardRecommendedMerge(
   pr: PrPayload['pull_request'],
 ): Promise<{ xpAwarded: boolean; recId: number }> {
   const difficulty = rec.difficulty as 'E' | 'M' | 'H';
+  const existing = await sb
+    .from('xp_events')
+    .select('id')
+    .eq('user_id', rec.user_id)
+    .eq('ref_id', refIds.pr(repo, pr.number))
+    .maybeSingle();
+  if (existing?.data) {
+    return { xpAwarded: false, recId: rec.id };
+  }
   const inserted = await insertXpEvent({
     userId: rec.user_id,
     source: XP_SOURCE.RECOMMENDED_MERGE,
