@@ -121,7 +121,7 @@ export function ProfileForm({ initialData }: ProfileFormProps) {
         />
         <div className="mt-1 flex justify-between">
           <p className="text-xs text-gray-500">
-            Share your interests, experience, or what you're working on
+            Share your interests, experience, or what you are working on
           </p>
           <p className={`text-xs ${bioLength > bioMaxLength ? 'text-red-600' : 'text-gray-500'}`}>
             {bioLength}/{bioMaxLength}
