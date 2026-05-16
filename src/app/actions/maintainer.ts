@@ -43,6 +43,26 @@ export type MaintainerIssueRow = {
   triage: IssueTriageBucket;
 };
 
+export type RepoHealthRow = {
+  repoFullName: string;
+  repoHealthScore: number;
+  updatedAt: string | null;
+};
+
+export type StaleIssueRow = {
+  id: number;
+  title: string;
+  repoFullName: string;
+  daysStale: number;
+  claimed: boolean;
+};
+
+export type ContributorRow = {
+  githubHandle: string;
+  xp: number;
+  level: number;
+};
+
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
   'needs-triage',
   'in-progress',
@@ -497,3 +517,89 @@ export async function deleteCommunityLink(linkId: number): Promise<Result<{ ok: 
 // (COMMUNITY_KINDS is imported directly from '@/lib/maintainer/community'
 // in client / page code — re-exporting it here would violate Next.js's
 // 'use server' rule that only async functions may be exported.)
+export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> {
+  const service = getServiceSupabase();
+
+  if (!service) {
+    return err('not_configured', 'service role missing');
+  }
+
+  const { data: repos, error } = await service
+    .from('tracked_repositories')
+    .select('full_name, repo_health_score, updated_at')
+    .order('repo_health_score', { ascending: false });
+
+  if (error) {
+    return err('query_failed', error.message);
+  }
+
+  return ok(
+    (repos ?? []).map((repo) => ({
+      repoFullName: repo.full_name,
+      repoHealthScore: repo.repo_health_score ?? 0,
+      updatedAt: repo.updated_at,
+    })),
+  );
+}
+
+export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
+  const service = getServiceSupabase();
+
+  if (!service) {
+    return err('not_configured', 'service role missing');
+  }
+
+  const fourteenDaysAgo = new Date();
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+  const { data: issues, error } = await service
+    .from('issues')
+    .select('id, title, repo_full_name, github_created_at, assignee_login')
+    .eq('state', 'open')
+    .lt('github_created_at', fourteenDaysAgo.toISOString());
+
+  if (error) {
+    return err('query_failed', error.message);
+  }
+
+  return ok(
+    (issues ?? []).map((issue) => {
+      const created = new Date(issue.github_created_at ?? Date.now());
+      const diffMs = Date.now() - created.getTime();
+
+      return {
+        id: issue.id,
+        title: issue.title,
+        repoFullName: issue.repo_full_name,
+        daysStale: Math.floor(diffMs / (1000 * 60 * 60 * 24)),
+        claimed: Boolean(issue.assignee_login),
+      };
+    }),
+  );
+}
+
+export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
+  const service = getServiceSupabase();
+
+  if (!service) {
+    return err('not_configured', 'service role missing');
+  }
+
+  const { data: contributors, error } = await service
+    .from('profiles')
+    .select('github_handle, xp, level')
+    .order('xp', { ascending: false })
+    .limit(5);
+
+  if (error) {
+    return err('query_failed', error.message);
+  }
+
+  return ok(
+    (contributors ?? []).map((c) => ({
+      githubHandle: c.github_handle ?? 'unknown',
+      xp: c.xp ?? 0,
+      level: c.level ?? 0,
+    })),
+  );
+}
