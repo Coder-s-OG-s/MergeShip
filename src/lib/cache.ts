@@ -80,9 +80,9 @@ class IoRedisBackend implements CacheBackend {
   constructor(private redis: Redis) {}
 
   async get<T>(key: string): Promise<T | null> {
-    const v = await this.redis.get(key);
-    if (!v) return null;
     try {
+      const v = await this.redis.get(key);
+      if (!v) return null;
       return JSON.parse(v) as T;
     } catch {
       return null;
@@ -91,21 +91,33 @@ class IoRedisBackend implements CacheBackend {
 
   async set(key: string, value: unknown, ttlSeconds: number): Promise<void> {
     if (ttlSeconds <= 0) return;
-    await this.redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+    try {
+      await this.redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+    } catch {
+      // ignore
+    }
   }
 
   async del(key: string): Promise<void> {
-    await this.redis.del(key);
+    try {
+      await this.redis.del(key);
+    } catch {
+      // ignore
+    }
   }
 
   async scanDel(prefix: string): Promise<void> {
     let cursor = '0';
-    while (true) {
-      const result = await this.redis.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 100);
-      cursor = result[0];
-      const keys = result[1];
-      if (keys.length > 0) await this.redis.del(...keys);
-      if (cursor === '0') break;
+    try {
+      while (true) {
+        const result = await this.redis.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 100);
+        cursor = result[0];
+        const keys = result[1];
+        if (keys.length > 0) await this.redis.del(...keys);
+        if (cursor === '0') break;
+      }
+    } catch {
+      // ignore
     }
   }
 }
