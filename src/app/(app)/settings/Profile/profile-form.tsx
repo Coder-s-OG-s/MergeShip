@@ -1,11 +1,8 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import {
-  updateProfile,
-  type ProfileUpdateData,
-  type UpdateProfileResult,
-} from '@/app/actions/profile';
+import { updateProfile, type ProfileUpdateData } from '@/app/actions/profile';
+import type { Result } from '@/lib/result';
 import { X } from 'lucide-react';
 
 type ProfileFormProps = {
@@ -27,7 +24,7 @@ export function ProfileForm({ initialData }: ProfileFormProps) {
 
   // UI state
   const [isPending, startTransition] = useTransition();
-  const [result, setResult] = useState<UpdateProfileResult | null>(null);
+  const [result, setResult] = useState<Result<{ message: string }> | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
   // Character count for bio
@@ -75,10 +72,6 @@ export function ProfileForm({ initialData }: ProfileFormProps) {
     startTransition(async () => {
       const result = await updateProfile(formData);
       setResult(result);
-
-      if (result.errors) {
-        setFieldErrors(result.errors);
-      }
     });
   };
 
@@ -96,12 +89,12 @@ export function ProfileForm({ initialData }: ProfileFormProps) {
       {result && (
         <div
           className={`rounded-lg border p-4 ${
-            result.success
+            result.ok
               ? 'border-green-200 bg-green-50 text-green-800'
               : 'border-red-200 bg-red-50 text-red-800'
           }`}
         >
-          <p className="font-medium">{result.message}</p>
+          <p className="font-medium">{result.ok ? result.data.message : result.error.message}</p>
         </div>
       )}
 

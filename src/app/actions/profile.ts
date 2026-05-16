@@ -6,6 +6,7 @@ import { inngest } from '@/inngest/client';
 import { ok, err, type Result } from '@/lib/result';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { rateLimit } from '@/lib/rate-limit';
 
 type BootstrapOutput = {
   profileId: string;
@@ -126,22 +127,13 @@ const profileUpdateSchema = z.object({
 
 export type ProfileUpdateData = z.infer<typeof profileUpdateSchema>;
 
-export type UpdateProfileResult = {
-  success: boolean;
-  message: string;
-  errors?: Record<string, string[]>;
-};
-
 /**
  * Update user profile information (bio, skills, social links)
  */
-export async function updateProfile(data: ProfileUpdateData): Promise<UpdateProfileResult> {
+export async function updateProfile(data: ProfileUpdateData): Promise<Result<{ message: string }>> {
   const sb = getServerSupabase();
   if (!sb) {
-    return {
-      success: false,
-      message: 'Authentication not configured',
-    };
+    return err('not_configured', 'Authentication not configured');
   }
 
   const {
@@ -150,21 +142,26 @@ export async function updateProfile(data: ProfileUpdateData): Promise<UpdateProf
   } = await sb.auth.getUser();
 
   if (authError || !user) {
-    return {
-      success: false,
-      message: 'You must be logged in to update your profile',
-    };
+    return err('not_authenticated', 'You must be logged in to update your profile');
+  }
+
+  // Rate limit: 10 updates per 60 seconds per user
+  const rateLimitResult = await rateLimit({
+    namespace: 'profile:update',
+    key: user.id,
+    limit: 10,
+    windowSec: 60,
+  });
+
+  if (!rateLimitResult.ok) {
+    return err('rate_limited', 'Too many profile updates. Please try again later.');
   }
 
   // Validate the input data
   const validation = profileUpdateSchema.safeParse(data);
 
   if (!validation.success) {
-    return {
-      success: false,
-      message: 'Validation failed',
-      errors: validation.error.flatten().fieldErrors,
-    };
+    return err('validation_failed', 'Please check your input and try again');
   }
 
   const validatedData = validation.data;
@@ -181,15 +178,11 @@ export async function updateProfile(data: ProfileUpdateData): Promise<UpdateProf
   const { error: updateError } = await sb.from('profiles').update(cleanData).eq('id', user.id);
 
   if (updateError) {
-    console.error('Profile update error:', updateError);
-    return {
-      success: false,
-      message: 'Failed to update profile. Please try again.',
-    };
+    return err('update_failed', updateError.message || 'Failed to update profile');
   }
 
   // Revalidate relevant pages so changes show immediately
-  revalidatePath('/settings');
+  revalidatePath('/settings/profile');
 
   // Get the user's GitHub handle for profile path revalidation
   const { data: profile } = await sb
@@ -202,8 +195,5 @@ export async function updateProfile(data: ProfileUpdateData): Promise<UpdateProf
     revalidatePath(`/@${profile.github_handle}`);
   }
 
-  return {
-    success: true,
-    message: 'Profile updated successfully!',
-  };
+  return ok({ message: 'Profile updated successfully!' });
 }
