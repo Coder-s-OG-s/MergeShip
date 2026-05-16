@@ -288,6 +288,7 @@ export function IssuesList({
 
   return (
     <div>
+      {/* Filters */}
       <div className="mb-10 flex flex-wrap items-center gap-3">
         <div className="relative min-w-[180px] flex-1">
           <Search className="absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-500" />
@@ -366,12 +367,12 @@ export function IssuesList({
         </div>
       )}
 
-      
+      {/* Count */}
       <div className="mb-6 text-[11px] uppercase tracking-widest text-zinc-500">
         {isPending ? 'LOADING...' : `${initialData.total} ISSUES`}
       </div>
 
-      
+      {/* List */}
       <div className={isPending ? 'opacity-50 transition-opacity' : ''}>
         {initialData.issues.length === 0 ? (
           <div className="py-12 text-center text-[11px] uppercase tracking-widest text-zinc-600">
@@ -390,7 +391,7 @@ export function IssuesList({
         )}
       </div>
 
-      
+      {/* Pagination */}
       {totalPages > 1 && (
         <div className="mt-10 flex items-center justify-between border-t border-[#2d333b] pt-6">
           <button

@@ -9,6 +9,10 @@ import {
   useState,
 } from 'react';
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 export type ToastVariant = 'success' | 'level-up';
 
 interface ToastItem {
@@ -22,6 +26,10 @@ interface ToastContextValue {
   addToast: (message: string, variant?: ToastVariant) => void;
 }
 
+// ---------------------------------------------------------------------------
+// Context
+// ---------------------------------------------------------------------------
+
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 export function useToast(): ToastContextValue {
@@ -30,6 +38,9 @@ export function useToast(): ToastContextValue {
   return ctx;
 }
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
 const DURATION: Record<ToastVariant, number> = {
   success: 4000,
@@ -38,19 +49,26 @@ const DURATION: Record<ToastVariant, number> = {
 
 const EXIT_MS = 320;
 
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
+  // Cleanup all timers on unmount
   useEffect(() => {
     const t = timers.current;
     return () => t.forEach((id) => clearTimeout(id));
   }, []);
 
   const removeToast = useCallback((id: string) => {
+    // 1. Trigger the exit animation
     setToasts((prev) =>
       prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)),
     );
+    // 2. Remove from DOM after the animation completes
     const timer = setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
       timers.current.delete(id);
@@ -65,7 +83,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
       setToasts((prev) => [...prev, { id, message, variant, exiting: false }]);
 
-      
+      // Auto-dismiss
       const timer = setTimeout(() => removeToast(id), duration);
       timers.current.set(id, timer);
     },
@@ -76,7 +94,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={{ addToast }}>
       {children}
 
-      
+      {/* Fixed container — bottom-right, toasts stack upward */}
       <div
         aria-live="polite"
         aria-label="Notifications"
@@ -95,6 +113,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Individual Toast
+// ---------------------------------------------------------------------------
+
 function Toast({
   toast,
   onDismiss,
@@ -102,11 +124,13 @@ function Toast({
   toast: ToastItem;
   onDismiss: () => void;
 }) {
-  
+  // Two-phase mount so the enter animation actually plays:
+  // Phase 0 (initial render): invisible / translated off-screen
+  // Phase 1 (after first paint): slide in
   const [entered, setEntered] = useState(false);
 
   useEffect(() => {
-    
+    // Double rAF guarantees the browser has painted the initial state
     const raf1 = requestAnimationFrame(() => {
       const raf2 = requestAnimationFrame(() => setEntered(true));
       return () => cancelAnimationFrame(raf2);
@@ -117,8 +141,8 @@ function Toast({
   const isLevelUp = toast.variant === 'level-up';
   const visible = entered && !toast.exiting;
 
-  const enterEasing = 'cubic-bezier(0.34, 1.26, 0.64, 1)'; 
-  const exitEasing = 'cubic-bezier(0.4, 0, 1, 1)';          
+  const enterEasing = 'cubic-bezier(0.34, 1.26, 0.64, 1)'; // spring-like
+  const exitEasing = 'cubic-bezier(0.4, 0, 1, 1)';          // sharp ease-in
 
   return (
     <div
@@ -132,11 +156,12 @@ function Toast({
         transform: visible ? 'translateX(0)' : 'translateX(calc(100% + 1.5rem))',
       }}
       className={[
-       
+        // Base
         'pointer-events-auto flex min-w-[280px] max-w-[380px] items-start',
         'justify-between gap-4 border font-mono',
-        
+        // Spacing
         isLevelUp ? 'px-5 py-4' : 'px-4 py-3',
+        // Variant colours
         isLevelUp
           ? [
               'border-emerald-500/50 bg-[#081410]',
@@ -148,6 +173,7 @@ function Toast({
             ].join(' '),
       ].join(' ')}
     >
+      {/* Icon + message */}
       <div className="flex items-start gap-3">
         {isLevelUp ? (
           <span
@@ -177,6 +203,7 @@ function Toast({
         </span>
       </div>
 
+      {/* Dismiss button */}
       <button
         onClick={onDismiss}
         aria-label="Dismiss notification"
