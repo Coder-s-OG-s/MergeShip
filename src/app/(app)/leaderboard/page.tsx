@@ -43,7 +43,9 @@ export default async function LeaderboardPage({
 
         <ul className="mt-6 divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900">
           {isOk(result) && result.data.length === 0 ? (
-            <li className="p-6 text-zinc-400">No entries yet.</li>
+            <li className="p-6 text-[11px] uppercase tracking-widest text-zinc-500">
+              BE THE FIRST ON THE BOARD — MERGE A PR TO EARN XP{' '}
+            </li>
           ) : isOk(result) ? (
             result.data.map((entry) => (
               <li key={entry.userId} className="flex items-center gap-4 p-4">

@@ -335,7 +335,7 @@ export default async function DashboardPage() {
                   })
                 ) : (
                   <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
-                    Leaderboard is empty.
+                    BE THE FIRST ON THE BOARD — MERGE A PR TO EARN XP
                   </div>
                 )}
               </div>
