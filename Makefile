@@ -1,4 +1,4 @@
-.PHONY: help dev install supabase-start supabase-stop redis-start redis-stop db-reset db-seed db-studio test test-watch test-coverage lint typecheck format build clean sim-webhook
+.PHONY: help dev install supabase-start supabase-stop redis-start redis-stop db-reset db-studio test test-watch test-coverage lint typecheck format build clean sim-webhook
 
 help:
 	@echo "MergeShip — common tasks"
@@ -10,7 +10,6 @@ help:
 	@echo "  make redis-start     Start local Redis (Docker)"
 	@echo "  make redis-stop      Stop local Redis"
 	@echo "  make db-reset        Drop, migrate, re-seed local DB"
-	@echo "  make db-seed         Run seed script only"
 	@echo "  make db-studio       Open Drizzle Studio (DB GUI)"
 	@echo "  make test            Run all tests once"
 	@echo "  make test-watch      Run tests in watch mode (TDD)"
@@ -41,8 +40,6 @@ dev: supabase-start
 	@echo "✅ Supabase running. Starting Next.js dev server..."
 	npm run dev
 
-db-seed:
-	npm run db:seed
 
 db-reset:
 	npx supabase db reset
