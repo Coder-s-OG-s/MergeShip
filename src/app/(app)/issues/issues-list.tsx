@@ -245,7 +245,6 @@ export function IssuesList({
           <select
             value={repo}
             onChange={(e) => {
-              setRepo(e.target.value);
               navigate({ repo: e.target.value, page: '1' });
             }}
             className="border border-[#2d333b] bg-[#161b22] px-3 py-2 text-[11px] uppercase tracking-widest text-zinc-300 outline-none focus:border-zinc-500"
@@ -262,7 +261,6 @@ export function IssuesList({
         <select
           value={difficulty}
           onChange={(e) => {
-            setDifficulty(e.target.value);
             navigate({ difficulty: e.target.value, page: '1' });
           }}
           className="border border-[#2d333b] bg-[#161b22] px-3 py-2 text-[11px] uppercase tracking-widest text-zinc-300 outline-none focus:border-zinc-500"
@@ -277,7 +275,6 @@ export function IssuesList({
           value={state}
           onChange={(e) => {
             const v = e.target.value as 'open' | 'closed';
-            setState(v);
             navigate({ state: v, page: '1' });
           }}
           className="border border-[#2d333b] bg-[#161b22] px-3 py-2 text-[11px] uppercase tracking-widest text-zinc-300 outline-none focus:border-zinc-500"
