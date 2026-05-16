@@ -18,6 +18,7 @@ src/app/landing.css
 
 # Pre-existing partner files we won't reformat
 .github/ISSUE_TEMPLATE
+.github/workflows
 docs
 next.config.js
 tailwind.config.js
