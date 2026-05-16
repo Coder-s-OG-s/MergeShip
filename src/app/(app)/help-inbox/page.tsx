@@ -141,14 +141,16 @@ export default async function HelpInboxPage() {
                     {row.pr_url}
                   </a>
                 </div>
-                <a
-                  href={row.pr_url}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  onClick={() => {
+                    if (row.pr_url) {
+                      window.open(row.pr_url, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
                   className="shrink-0 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-500"
                 >
                   Review on GitHub →
-                </a>
+                </button>
               </li>
             ))}
           </ul>
