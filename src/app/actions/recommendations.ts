@@ -112,6 +112,16 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 
+  // Enforce 3-claim limit: count currently claimed recs before allowing a new one.
+  const { count: claimedCount } = await service
+    .from('recommendations')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .eq('status', 'claimed');
+  if ((claimedCount ?? 0) >= 3) {
+    return err('claim_limit', 'you already have 3 active claims - merge or close them first');
+  }
+
   // Atomic claim: UPDATE ... WHERE status='open' AND user_id=auth.uid()
   // Zero rows affected = already claimed or doesn't exist.
   const { data, error: updateErr } = await service

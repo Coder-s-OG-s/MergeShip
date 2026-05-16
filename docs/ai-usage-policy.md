@@ -24,11 +24,20 @@ MergeShip supports the use of AI tools (like GitHub Copilot, ChatGPT, or Claude)
 
 ---
 
-##  Consequences of Policy Violation
-Failure to disclose AI usage or submitting low-quality AI-generated "code-spam" may lead to:
-1. Rejection of the Pull Request.
-2. Formal warning from the maintainers.
-3. Temporary or permanent ban from contributing to MergeShip.
+## Consequences of Policy Violation
+
+Failure to disclose AI usage or submitting low-quality AI-generated code carries a **3-strike system**:
+
+| Strike | What happens |
+|--------|-------------|
+| **1st warning** | PR is closed - maintainer leaves a comment explaining the violation |
+| **2nd warning** | PR is closed - formal warning issued, contributor is flagged |
+| **3rd warning** | Permanent ban from contributing to MergeShip |
+
+- Warnings are tracked per GitHub handle across all PRs
+- A warning is issued for: undisclosed AI usage, submitting code you cannot explain, copy-pasted AI output with no review or testing
+- There is no expiry - warnings do not reset after time
+- Appeals can be raised in [GitHub Discussions](https://github.com/Coder-s-OG-s/MergeShip/discussions) under the `Appeals` category
 
 ---
 [← Back to Contributing Guidelines](../CONTRIBUTING.md)

@@ -1,0 +1,23 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#0f0f13"/>
+  <defs>
+    <pattern id="g" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M60 0L0 0 0 60" fill="none" stroke="#6366f1" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#g)" opacity="0.07"/>
+  <circle cx="600" cy="280" r="280" fill="#6366f1" opacity="0.05"/>
+  <g transform="translate(536, 148) scale(5.3)" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <circle cx="12" cy="4" r="1.8"/>
+    <line x1="12" y1="5.8" x2="12" y2="14"/>
+    <path d="M7 14 Q12 19 17 14"/>
+    <line x1="9" y1="11" x2="6" y2="11"/>
+    <circle cx="5" cy="11" r="1.2"/>
+    <line x1="15" y1="11" x2="18" y2="11"/>
+    <circle cx="19" cy="11" r="1.2"/>
+  </g>
+  <text x="600" y="430" font-family="system-ui,-apple-system,sans-serif" font-size="90" font-weight="700" fill="#ffffff" text-anchor="middle" letter-spacing="-1">MergeShip</text>
+  <text x="600" y="490" font-family="system-ui,-apple-system,sans-serif" font-size="30" font-weight="400" fill="#a5b4fc" text-anchor="middle">Open Source, Leveled Up</text>
+  <line x1="500" y1="520" x2="700" y2="520" stroke="#6366f1" stroke-width="1" opacity="0.4"/>
+  <text x="600" y="558" font-family="system-ui,-apple-system,sans-serif" font-size="20" font-weight="400" fill="#6366f1" text-anchor="middle">Train contributors. Empower maintainers.</text>
+</svg>

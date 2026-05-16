@@ -1,7 +1,6 @@
 'use client';
-import { useSearchParams } from 'next/navigation';
-import { useState, useTransition, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useTransition, useCallback, useEffect, useRef } from 'react';
 import { Search, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   claimIssue,
