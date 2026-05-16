@@ -9,6 +9,7 @@ import {
   type RecCard,
 } from '@/app/actions/recommendations';
 import { sendHelpRequest } from '@/app/actions/help';
+import { emitToast } from '@/components/toast';
 
 const PR_URL_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
 
@@ -32,6 +33,7 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
       const res = await claimRecommendation(rec.id);
       if (res.ok) {
         setRecs((prev) => prev.map((r) => (r.id === rec.id ? { ...r, status: 'claimed' } : r)));
+        emitToast({ variant: 'xp', message: `+${rec.xpReward} XP — Issue Claimed` });
       } else {
         setError(`${rec.title}: ${res.error.message}`);
       }
@@ -95,7 +97,7 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
                 </span>
               </div>
 
-              <a
+              
                 href={rec.url}
                 target="_blank"
                 rel="noreferrer"
