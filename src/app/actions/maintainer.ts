@@ -518,44 +518,143 @@ export async function deleteCommunityLink(linkId: number): Promise<Result<{ ok: 
 // in client / page code — re-exporting it here would violate Next.js's
 // 'use server' rule that only async functions may be exported.)
 export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> {
+  const sb = getServerSupabase();
+
+  if (!sb) {
+    return err('not_configured', 'auth not configured');
+  }
+
   const service = getServiceSupabase();
 
   if (!service) {
     return err('not_configured', 'service role missing');
   }
 
-  const { data: repos, error } = await service
-    .from('tracked_repositories')
-    .select('full_name, repo_health_score, updated_at')
-    .order('repo_health_score', { ascending: false });
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+
+  if (!user) {
+    return err('not_authenticated', 'sign in first');
+  }
+
+  await rateLimit(user.id);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const installs = await listMaintainerInstalls(user.id);
+
+  const installationIds = installs.map((i) => i.installationId);
+
+  if (installationIds.length === 0) {
+    return ok([]);
+  }
+
+  const installationId = installationIds[0];
+
+  if (!installationId) {
+    return ok([]);
+  }
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+
+  const repoNames = repos.map((r) => r.fullName);
+
+  const { data: issues, error } = await service
+    .from('issues')
+    .select('repo_full_name, repo_health_score')
+    .in('repo_full_name', repoNames);
 
   if (error) {
     return err('query_failed', error.message);
   }
 
+  const healthMap = new Map<string, number[]>();
+
+  for (const issue of issues ?? []) {
+    const repo = issue.repo_full_name;
+
+    if (!healthMap.has(repo)) {
+      healthMap.set(repo, []);
+    }
+
+    healthMap.get(repo)?.push(issue.repo_health_score ?? 0);
+  }
+
   return ok(
-    (repos ?? []).map((repo) => ({
-      repoFullName: repo.full_name,
-      repoHealthScore: repo.repo_health_score ?? 0,
-      updatedAt: repo.updated_at,
-    })),
+    repoNames.map((repo) => {
+      const scores = healthMap.get(repo) ?? [];
+
+      const average =
+        scores.length > 0
+          ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length)
+          : 0;
+
+      return {
+        repoFullName: repo,
+        repoHealthScore: average,
+        updatedAt: new Date().toISOString(),
+      };
+    }),
   );
 }
 
 export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
+  const sb = getServerSupabase();
+
+  if (!sb) {
+    return err('not_configured', 'auth not configured');
+  }
+
   const service = getServiceSupabase();
 
   if (!service) {
     return err('not_configured', 'service role missing');
   }
 
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+
+  if (!user) {
+    return err('not_authenticated', 'sign in first');
+  }
+
+  await rateLimit(user.id);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const installs = await listMaintainerInstalls(user.id);
+
+  const installationIds = installs.map((i) => i.installationId);
+
+  if (installationIds.length === 0) {
+    return ok([]);
+  }
+
+  const installationId = installationIds[0];
+
+  if (!installationId) {
+    return ok([]);
+  }
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+
+  const repoNames = repos.map((r) => r.fullName);
+
   const fourteenDaysAgo = new Date();
+
   fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
   const { data: issues, error } = await service
     .from('issues')
     .select('id, title, repo_full_name, github_created_at, assignee_login')
     .eq('state', 'open')
+    .in('repo_full_name', repoNames)
     .lt('github_created_at', fourteenDaysAgo.toISOString());
 
   if (error) {
@@ -565,6 +664,7 @@ export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
   return ok(
     (issues ?? []).map((issue) => {
       const created = new Date(issue.github_created_at ?? Date.now());
+
       const diffMs = Date.now() - created.getTime();
 
       return {
@@ -579,10 +679,30 @@ export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
 }
 
 export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
+  const sb = getServerSupabase();
+
+  if (!sb) {
+    return err('not_configured', 'auth not configured');
+  }
+
   const service = getServiceSupabase();
 
   if (!service) {
     return err('not_configured', 'service role missing');
+  }
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+
+  if (!user) {
+    return err('not_authenticated', 'sign in first');
+  }
+
+  await rateLimit(user.id);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
   }
 
   const { data: contributors, error } = await service
