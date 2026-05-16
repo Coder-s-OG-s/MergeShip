@@ -1,5 +1,5 @@
 'use client';
-
+import { useSearchParams } from 'next/navigation';
 import { useState, useTransition, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -157,6 +157,7 @@ export function IssuesList({
   repoOptions: RepoOption[];
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [actionIssueId, setActionIssueId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -178,7 +179,7 @@ export function IssuesList({
         page: string;
       }>,
     ) => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(searchParams.toString());
       const q = overrides.q ?? search;
       const st = overrides.state ?? state;
       const diff = overrides.difficulty ?? difficulty;
@@ -189,7 +190,11 @@ export function IssuesList({
       if (st !== 'open') params.set('state', st);
       if (diff) params.set('difficulty', diff);
       if (r) params.set('repo', r);
-      if (sc === 'true') params.set('claimed', 'true');
+      if (sc === 'true') {
+        params.set('claimed', 'true');
+      } else {
+        params.delete('claimed');
+      }
       if (pg !== '1') params.set('page', pg);
       startTransition(() => {
         router.push(`/issues${params.size > 0 ? `?${params.toString()}` : ''}`);
@@ -245,6 +250,7 @@ export function IssuesList({
           <select
             value={repo}
             onChange={(e) => {
+              setRepo(e.target.value);
               navigate({ repo: e.target.value, page: '1' });
             }}
             className="border border-[#2d333b] bg-[#161b22] px-3 py-2 text-[11px] uppercase tracking-widest text-zinc-300 outline-none focus:border-zinc-500"
@@ -261,6 +267,7 @@ export function IssuesList({
         <select
           value={difficulty}
           onChange={(e) => {
+            setDifficulty(e.target.value);
             navigate({ difficulty: e.target.value, page: '1' });
           }}
           className="border border-[#2d333b] bg-[#161b22] px-3 py-2 text-[11px] uppercase tracking-widest text-zinc-300 outline-none focus:border-zinc-500"
@@ -275,6 +282,7 @@ export function IssuesList({
           value={state}
           onChange={(e) => {
             const v = e.target.value as 'open' | 'closed';
+            setState(v);
             navigate({ state: v, page: '1' });
           }}
           className="border border-[#2d333b] bg-[#161b22] px-3 py-2 text-[11px] uppercase tracking-widest text-zinc-300 outline-none focus:border-zinc-500"
