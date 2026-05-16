@@ -120,6 +120,7 @@ export function PRList({ prs }: Props) {
             {selectedRepo && (
               <button
                 onClick={() => setSelectedRepo('')}
+                aria-label="Clear repo filter"
                 className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-300"
                 title="Clear filter"
               >
