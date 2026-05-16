@@ -4,6 +4,8 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { inngest } from '@/inngest/client';
 import { ok, err, type Result } from '@/lib/result';
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 
 type BootstrapOutput = {
   profileId: string;
@@ -103,4 +105,105 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
     githubId,
     auditQueued,
   });
+}
+
+// ============================================================================
+// Profile Update Action
+// ============================================================================
+
+// Validation schema for profile updates
+const profileUpdateSchema = z.object({
+  bio: z.string().max(280, 'Bio must be 280 characters or less').optional().nullable(),
+  skills: z.array(z.string()).max(10, 'Maximum 10 skills allowed').optional().nullable(),
+  website_url: z.string().url('Please enter a valid URL').optional().nullable().or(z.literal('')),
+  twitter_handle: z
+    .string()
+    .regex(/^[A-Za-z0-9_]{1,15}$/, 'Invalid Twitter handle (no @ symbol, max 15 chars)')
+    .optional()
+    .nullable()
+    .or(z.literal('')),
+});
+
+export type ProfileUpdateData = z.infer<typeof profileUpdateSchema>;
+
+export type UpdateProfileResult = {
+  success: boolean;
+  message: string;
+  errors?: Record<string, string[]>;
+};
+
+/**
+ * Update user profile information (bio, skills, social links)
+ */
+export async function updateProfile(data: ProfileUpdateData): Promise<UpdateProfileResult> {
+  const sb = getServerSupabase();
+  if (!sb) {
+    return {
+      success: false,
+      message: 'Authentication not configured',
+    };
+  }
+
+  const {
+    data: { user },
+    error: authError,
+  } = await sb.auth.getUser();
+
+  if (authError || !user) {
+    return {
+      success: false,
+      message: 'You must be logged in to update your profile',
+    };
+  }
+
+  // Validate the input data
+  const validation = profileUpdateSchema.safeParse(data);
+
+  if (!validation.success) {
+    return {
+      success: false,
+      message: 'Validation failed',
+      errors: validation.error.flatten().fieldErrors,
+    };
+  }
+
+  const validatedData = validation.data;
+
+  // Clean up the data (convert empty strings to null)
+  const cleanData = {
+    bio: validatedData.bio || null,
+    skills: validatedData.skills || [],
+    website_url: validatedData.website_url || null,
+    twitter_handle: validatedData.twitter_handle || null,
+  };
+
+  // Update the profile in the database
+  const { error: updateError } = await sb.from('profiles').update(cleanData).eq('id', user.id);
+
+  if (updateError) {
+    console.error('Profile update error:', updateError);
+    return {
+      success: false,
+      message: 'Failed to update profile. Please try again.',
+    };
+  }
+
+  // Revalidate relevant pages so changes show immediately
+  revalidatePath('/settings');
+
+  // Get the user's GitHub handle for profile path revalidation
+  const { data: profile } = await sb
+    .from('profiles')
+    .select('github_handle')
+    .eq('id', user.id)
+    .single();
+
+  if (profile?.github_handle) {
+    revalidatePath(`/@${profile.github_handle}`);
+  }
+
+  return {
+    success: true,
+    message: 'Profile updated successfully!',
+  };
 }
