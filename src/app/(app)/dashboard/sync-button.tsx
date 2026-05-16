@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { RefreshCw } from 'lucide-react';
 import { syncGitHubStats } from '@/app/actions/github-sync';
+import { useToast } from '@/components/toast';
 
 type Props = {
   lastSyncedAt: string | null;
@@ -15,6 +16,7 @@ export function SyncButton({ lastSyncedAt }: Props) {
   const [cooldown, setCooldown] = useState(false);
   const [localSyncedAt, setLocalSyncedAt] = useState(lastSyncedAt);
   const router = useRouter();
+  const { addToast } = useToast();
 
   const handleSync = useCallback(async () => {
     if (syncing || cooldown) return;
@@ -28,11 +30,21 @@ export function SyncButton({ lastSyncedAt }: Props) {
       setLocalSyncedAt(new Date().toISOString());
       setCooldown(true);
       setTimeout(() => setCooldown(false), 60_000);
+
+      // Show sync-complete toast
+      const { merges, streak } = result.data;
+      addToast(
+        merges > 0
+          ? `GITHUB SYNCED — ${merges} MERGE${merges !== 1 ? 'S' : ''} · ${streak}D STREAK`
+          : 'GITHUB SYNCED',
+        'success',
+      );
+
       router.refresh();
     } else {
       setError(result.error.message);
     }
-  }, [syncing, cooldown, router]);
+  }, [syncing, cooldown, router, addToast]);
 
   return (
     <div className="flex flex-col items-end gap-1">
