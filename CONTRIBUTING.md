@@ -3,10 +3,9 @@
 Welcome. This guide gets you from `git clone` to a running local app, then walks you through opening your first PR. Should take 15-20 minutes the first time.
 
 Works the same on **macOS**, **Linux**, and **Windows (WSL2)**. Native Windows isn't supported — Supabase CLI has known issues outside WSL2.
+**Got a question before you start? Join the conversation on [GitHub Discussions](https://github.com/Coder-s-OG-s/MergeShip/discussions) - introductions, setup help, feature ideas, anything.**
 
 ---
-
-**Got a question before you start? Join the conversation on [GitHub Discussions](https://github.com/Coder-s-OG-s/MergeShip/discussions) - introductions, setup help, feature ideas, anything.**
 
 ## 1. Prerequisites
 
@@ -159,6 +158,9 @@ Most contributor PRs only touch `src/app/`, `src/lib/`, or `src/app/actions/`.
 1. Browse [issues labeled `good-first-issue`](https://github.com/Coder-s-OG-s/MergeShip/issues?q=is%3Aissue+is%3Aopen+label%3Agood-first-issue) or `gssoc`.
 2. Comment "I'd like to work on this" before starting.
 3. Wait for an assignment to avoid duplicate work.
+
+**Claim limit: maximum 3 issues at a time.**
+If you already have 3 open issues assigned or 3 open PRs, you must get them merged or closed before picking up anything new. A bot will automatically unassign you and leave a comment if you go over the limit. This keeps issues available for others and prevents hoarding.
 
 ---
 
