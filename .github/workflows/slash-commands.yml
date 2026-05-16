@@ -1,0 +1,147 @@
+name: Slash Commands
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  slash-command:
+    # Only run on PR comments, not plain issue comments
+    if: github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Handle slash command
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const rawBody = context.payload.comment.body ?? '';
+            const commenter = context.payload.comment.user.login;
+            const issueNumber = context.payload.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Check each line so multi-line comments like "/lgtm\n/approve\nsome text" still work
+            const lines = rawBody.split('\n').map(l => l.trim().toLowerCase());
+            const isApprove = lines.some(l => l === '/lgtm' || l === '/approve');
+            const isMerge = lines.some(l => l === '/merge');
+
+            if (!isApprove && !isMerge) return;
+
+            // Check commenter has at least write permission (maintainers + mentors added as collaborators)
+            let permission = 'none';
+            try {
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner, repo, username: commenter,
+              });
+              permission = data.permission; // admin, maintain, write, read, none
+            } catch {
+              // user is not a collaborator
+            }
+
+            const canAct = ['admin', 'maintain', 'write'].includes(permission);
+
+            if (!canAct) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issueNumber,
+                body: `@${commenter} Only maintainers and mentors with write access can use slash commands.`,
+              });
+              return;
+            }
+
+            // Fetch the PR details
+            const { data: pr } = await github.rest.pulls.get({
+              owner, repo, pull_number: issueNumber,
+            });
+
+            if (pr.state !== 'open') {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issueNumber,
+                body: `@${commenter} This PR is already ${pr.state}.`,
+              });
+              return;
+            }
+
+            // /lgtm or /approve — submit an approving review
+            if (isApprove) {
+              try {
+                await github.rest.pulls.createReview({
+                  owner, repo,
+                  pull_number: issueNumber,
+                  event: 'APPROVE',
+                  body: `Approved via \`${rawBody.trim()}\` by @${commenter}`,
+                });
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issueNumber,
+                  body: `✅ @${commenter} approved this PR.`,
+                });
+              } catch (e) {
+                const reason = e.message ?? 'unknown error';
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issueNumber,
+                  body: `@${commenter} Could not approve - ${reason}. If you already left a review, dismiss it first then use \`/lgtm\` again.`,
+                });
+              }
+              return;
+            }
+
+            // /merge — squash merge, but only if at least 1 approval exists
+            if (isMerge) {
+              const { data: reviews } = await github.rest.pulls.listReviews({
+                owner, repo, pull_number: issueNumber,
+              });
+
+              // Get the latest review state per user
+              const latestByUser = new Map();
+              for (const r of reviews) {
+                latestByUser.set(r.user.login, r.state);
+              }
+              const approvals = [...latestByUser.values()].filter(s => s === 'APPROVED').length;
+
+              if (approvals === 0) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issueNumber,
+                  body: `@${commenter} This PR needs at least 1 approval before merging. Use \`/lgtm\` to approve it first.`,
+                });
+                return;
+              }
+
+              // Check CI status on head commit
+              const { data: checks } = await github.rest.checks.listForRef({
+                owner, repo, ref: pr.head.sha,
+              });
+              const failed = checks.check_runs.filter(
+                c => c.conclusion === 'failure' || c.conclusion === 'timed_out'
+              );
+              if (failed.length > 0) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issueNumber,
+                  body: `@${commenter} Cannot merge - ${failed.length} check(s) are failing:\n${failed.map(c => `- ${c.name}`).join('\n')}`,
+                });
+                return;
+              }
+
+              try {
+                const commitTitle = `${pr.title} (#${issueNumber})`;
+                await github.rest.pulls.merge({
+                  owner, repo,
+                  pull_number: issueNumber,
+                  merge_method: 'squash',
+                  commit_title: commitTitle,
+                  commit_message: `Squash merged by @${commenter} via /merge`,
+                });
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issueNumber,
+                  body: `🚀 Squash merged by @${commenter}.`,
+                });
+              } catch (e) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issueNumber,
+                  body: `@${commenter} Merge failed - ${e.message}. Check branch protection rules or conflicts.`,
+                });
+              }
+            }

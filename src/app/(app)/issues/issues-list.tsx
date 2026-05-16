@@ -1,7 +1,6 @@
 'use client';
-
-import { useState, useTransition, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useTransition, useCallback, useEffect, useRef } from 'react';
 import { Search, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   claimIssue,
@@ -58,6 +57,15 @@ function IssueCard({
           {issue.difficulty && (
             <span
               className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${DIFFICULTY_COLOR[issue.difficulty] ?? 'border-zinc-700 text-zinc-400'}`}
+              title={
+                issue.difficulty === 'E'
+                  ? 'Easy — good for first contributions, lower XP'
+                  : issue.difficulty === 'M'
+                    ? 'Medium — requires some codebase knowledge'
+                    : issue.difficulty === 'H'
+                      ? 'Hard — significant complexity, higher XP'
+                      : ''
+              }
             >
               {DIFFICULTY_LABEL[issue.difficulty] ?? issue.difficulty}
             </span>
@@ -157,6 +165,7 @@ export function IssuesList({
   repoOptions: RepoOption[];
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [actionIssueId, setActionIssueId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -178,7 +187,7 @@ export function IssuesList({
         page: string;
       }>,
     ) => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(searchParams.toString());
       const q = overrides.q ?? search;
       const st = overrides.state ?? state;
       const diff = overrides.difficulty ?? difficulty;
@@ -189,7 +198,11 @@ export function IssuesList({
       if (st !== 'open') params.set('state', st);
       if (diff) params.set('difficulty', diff);
       if (r) params.set('repo', r);
-      if (sc === 'true') params.set('claimed', 'true');
+      if (sc === 'true') {
+        params.set('claimed', 'true');
+      } else {
+        params.delete('claimed');
+      }
       if (pg !== '1') params.set('page', pg);
       startTransition(() => {
         router.push(`/issues${params.size > 0 ? `?${params.toString()}` : ''}`);

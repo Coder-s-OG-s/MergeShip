@@ -4,7 +4,7 @@ An Open Source Ecosystem and Organisation Management Platform
 
 Helping contributors learn the right way and helping maintainers stay sane.
 
-[About](#about-the-project) • [Features](#core-features) • [Tech Stack](#tech-stack) • [Architecture](#architecture-overview) • [Quick Start](#quick-start-local-setup) • [Contributing](#contributing)
+[About](#about-the-project) • [Features](#core-features) • [Tech Stack](#tech-stack) • [Architecture](#architecture-overview) • [Quick Start](#quick-start-local-setup) • [Community](#community) • [Contributing](#contributing)
 
 ---
 
@@ -73,6 +73,17 @@ npm run dev                # http://localhost:3001
 Open `http://localhost:3001/dev/login` and click any persona to sign in. No GitHub OAuth or external accounts required for local work.
 
 For prerequisites, troubleshooting, and the full contributor workflow, read [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Community
+
+Have a question, idea, or want to introduce yourself? **[GitHub Discussions](https://github.com/Coder-s-OG-s/MergeShip/discussions)** is the place.
+
+- **General** - questions, introductions, anything that doesn't fit elsewhere
+- **Ideas** - feature suggestions before opening an issue
+- **Help** - stuck on setup or a PR? ask here first
+- **Show and tell** - share what you built or contributed
+
+Issues are for confirmed bugs and accepted feature work. Everything else goes in Discussions.
 
 ## Contributing
 
