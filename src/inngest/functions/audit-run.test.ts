@@ -42,11 +42,9 @@ const gh = () => ({
   },
   search: { issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { total_count: 10 } }) },
   repos: {
-    listForUser: vi
-      .fn()
-      .mockResolvedValue({
-        data: [{ language: 'TypeScript' }, { language: 'Python' }, { language: null }],
-      }),
+    listForUser: vi.fn().mockResolvedValue({
+      data: [{ language: 'TypeScript' }, { language: 'Python' }, { language: null }],
+    }),
   },
 });
 
