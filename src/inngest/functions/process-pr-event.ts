@@ -71,7 +71,7 @@ export const processPrEvent = inngest.createFunction(
     },
   },
   { event: 'github/pull_request' },
-  async ({ event, step }) => {
+  async ({ event, step, attempt }) => {
     const data = event.data as { payload: PrPayload };
     const pr = data.payload.pull_request;
     const action = data.payload.action;
@@ -99,7 +99,7 @@ export const processPrEvent = inngest.createFunction(
           source: 'inngest',
           payload: event.data,
           error: (err as Error).message,
-          retryCount: 3,
+          retryCount: attempt,
         });
       }
 
