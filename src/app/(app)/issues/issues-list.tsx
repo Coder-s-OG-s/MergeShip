@@ -72,11 +72,11 @@ function IssueCard({
               className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${DIFFICULTY_COLOR[issue.difficulty] ?? 'border-zinc-700 text-zinc-400'}`}
               title={
                 issue.difficulty === 'E'
-                  ? 'Easy — good for first-time contributors'
+                  ? 'Easy — good for first contributions, lower XP'
                   : issue.difficulty === 'M'
-                    ? 'Medium — requires some codebase familiarity'
+                    ? 'Medium — requires some codebase knowledge'
                     : issue.difficulty === 'H'
-                      ? 'Hard — significant feature or architectural change'
+                      ? 'Hard — significant complexity, higher XP'
                       : ''
               }
             >
