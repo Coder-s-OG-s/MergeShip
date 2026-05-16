@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { getRecommendations } from '@/app/actions/recommendations';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
@@ -161,73 +162,74 @@ export default async function DashboardPage() {
             <SyncButton lastSyncedAt={syncedAt} />
           </div>
         </header>
-
         {/* Stats Row */}
-        <div className="mb-16 grid grid-cols-1 gap-12 md:grid-cols-4">
-          {/* Level Progress */}
-          <div>
-            <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
-              LEVEL PROGRESS
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="border border-zinc-700 px-3 py-2 font-serif text-xl text-zinc-300">
-                L{level}
+        <Suspense fallback={<StatsSkeleton />}>
+          <div className="mb-16 grid grid-cols-1 gap-12 md:grid-cols-4">
+            {/* Level Progress */}
+            <div>
+              <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+                LEVEL PROGRESS
               </div>
-              <div className="flex-1">
-                <div className="mb-2 h-1.5 w-full overflow-hidden bg-[#1c2128]">
-                  <div
-                    className="h-full bg-[#10b981]"
-                    style={{ width: `${levelProgressPct(xp, level)}%` }}
-                  />
+              <div className="flex items-center gap-4">
+                <div className="border border-zinc-700 px-3 py-2 font-serif text-xl text-zinc-300">
+                  L{level}
                 </div>
-                <div className="text-[10px] uppercase tracking-widest text-zinc-500">
-                  {xp.toLocaleString()} / {(xp + needed).toLocaleString()} XP TO L{nextLevel}
+                <div className="flex-1">
+                  <div className="mb-2 h-1.5 w-full overflow-hidden bg-[#1c2128]">
+                    <div
+                      className="h-full bg-[#10b981]"
+                      style={{ width: `${levelProgressPct(xp, level)}%` }}
+                    />
+                  </div>
+                  <div className="text-[10px] uppercase tracking-widest text-zinc-500">
+                    {xp.toLocaleString()} / {(xp + needed).toLocaleString()} XP TO L{nextLevel}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Total Merges */}
-          <div>
-            <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
-              TOTAL MERGES
+            {/* Total Merges */}
+            <div>
+              <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+                TOTAL MERGES
+              </div>
+              <div className="flex items-end gap-2">
+                <span className="font-serif text-4xl leading-none">
+                  {(merges ?? 0).toString().padStart(2, '0')}
+                </span>
+                <TrendingUp className="mb-1 h-4 w-4 text-[#10b981]" />
+              </div>
             </div>
-            <div className="flex items-end gap-2">
-              <span className="font-serif text-4xl leading-none">
-                {(merges ?? 0).toString().padStart(2, '0')}
-              </span>
-              <TrendingUp className="mb-1 h-4 w-4 text-[#10b981]" />
-            </div>
-          </div>
 
-          {/* Mentor Points */}
-          <div>
-            <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
-              MENTOR POINTS
+            {/* Mentor Points */}
+            <div>
+              <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+                MENTOR POINTS
+              </div>
+              <div className="flex items-end gap-2">
+                <span className="font-serif text-4xl leading-none">
+                  {mentorPoints.toLocaleString()}
+                </span>
+                <Box className="mb-1 h-5 w-5 text-zinc-400" />
+              </div>
             </div>
-            <div className="flex items-end gap-2">
-              <span className="font-serif text-4xl leading-none">
-                {mentorPoints.toLocaleString()}
-              </span>
-              <Box className="mb-1 h-5 w-5 text-zinc-400" />
-            </div>
-          </div>
 
-          {/* Current Streak */}
-          <div>
-            <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
-              CURRENT STREAK
-            </div>
-            <div className="flex items-end gap-2">
-              <span className="font-serif text-4xl leading-none">
-                {(streak ?? 0).toString().padStart(2, '0')}
-              </span>
-              <span className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
-                DAYS 🔥
-              </span>
+            {/* Current Streak */}
+            <div>
+              <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+                CURRENT STREAK
+              </div>
+              <div className="flex items-end gap-2">
+                <span className="font-serif text-4xl leading-none">
+                  {(streak ?? 0).toString().padStart(2, '0')}
+                </span>
+                <span className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
+                  DAYS 🔥
+                </span>
+              </div>
             </div>
           </div>
-        </div>
+        </Suspense>
 
         {/* Main Columns */}
         <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
@@ -343,7 +345,7 @@ export default async function DashboardPage() {
 
         {/* Footer */}
         <footer className="mt-24 flex justify-between border-t border-[#2d333b] pt-8 text-[10px] uppercase tracking-widest text-zinc-600">
-          <span>©2024 ARCH_06 / SYSTEM_v1.0</span>
+          <span>©{new Date().getFullYear()} ARCH_06 / SYSTEM_v1.0</span>
           <div className="flex gap-6">
             <Link href="#" className="transition-colors hover:text-zinc-400">
               TERMS
@@ -375,6 +377,57 @@ function NotConfigured() {
       <div className="mx-auto max-w-xl">
         <h1 className="mb-4 font-serif text-3xl font-bold">Dashboard not configured</h1>
         <p className="text-gray-400">Auth isn&apos;t wired on this deployment yet.</p>
+      </div>
+    </div>
+  );
+}
+
+function StatsSkeleton() {
+  return (
+    <div className="mb-16 grid grid-cols-1 gap-12 md:grid-cols-4">
+      {/* Level Progress Skeleton */}
+      <div>
+        <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+          LEVEL PROGRESS
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="h-11 w-12 animate-pulse border border-zinc-700 bg-zinc-800" />
+          <div className="flex-1">
+            <div className="mb-2 h-1.5 w-full animate-pulse bg-zinc-800" />
+            <div className="h-3 w-3/4 animate-pulse bg-zinc-800" />
+          </div>
+        </div>
+      </div>
+
+      {/* Total Merges Skeleton */}
+      <div>
+        <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">TOTAL MERGES</div>
+        <div className="flex items-end gap-2">
+          <div className="h-9 w-16 animate-pulse rounded bg-zinc-800" />
+          <div className="mb-1 h-4 w-4 animate-pulse rounded bg-zinc-800" />
+        </div>
+      </div>
+
+      {/* Mentor Points Skeleton */}
+      <div>
+        <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+          MENTOR POINTS
+        </div>
+        <div className="flex items-end gap-2">
+          <div className="h-9 w-24 animate-pulse rounded bg-zinc-800" />
+          <div className="mb-1 h-5 w-5 animate-pulse rounded bg-zinc-800" />
+        </div>
+      </div>
+
+      {/* Current Streak Skeleton */}
+      <div>
+        <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+          CURRENT STREAK
+        </div>
+        <div className="flex items-end gap-2">
+          <div className="h-9 w-16 animate-pulse rounded bg-zinc-800" />
+          <div className="mb-1 h-4 w-12 animate-pulse rounded bg-zinc-800" />
+        </div>
       </div>
     </div>
   );
