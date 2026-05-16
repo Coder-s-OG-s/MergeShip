@@ -1,4 +1,4 @@
-.PHONY: help dev install supabase-start supabase-stop db-reset db-seed db-studio test test-watch test-coverage lint typecheck format build clean sim-webhook
+.PHONY: help dev install supabase-start supabase-stop redis-start redis-stop db-reset db-seed db-studio test test-watch test-coverage lint typecheck format build clean sim-webhook
 
 help:
 	@echo "MergeShip — common tasks"
@@ -7,6 +7,8 @@ help:
 	@echo "  make install         npm install"
 	@echo "  make supabase-start  Start local Supabase (Postgres, Auth, Studio in Docker)"
 	@echo "  make supabase-stop   Stop local Supabase"
+	@echo "  make redis-start     Start local Redis (Docker)"
+	@echo "  make redis-stop      Stop local Redis"
 	@echo "  make db-reset        Drop, migrate, re-seed local DB"
 	@echo "  make db-seed         Run seed script only"
 	@echo "  make db-studio       Open Drizzle Studio (DB GUI)"
@@ -29,6 +31,12 @@ supabase-start:
 supabase-stop:
 	npx supabase stop
 
+redis-start:
+	docker compose up -d redis
+
+redis-stop:
+	docker compose stop redis
+
 dev: supabase-start
 	@echo "✅ Supabase running. Starting Next.js dev server..."
 	npm run dev
@@ -38,7 +46,6 @@ db-seed:
 
 db-reset:
 	npx supabase db reset
-	npm run db:seed
 
 db-studio:
 	npm run db:studio
