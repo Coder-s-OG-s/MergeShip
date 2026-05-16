@@ -79,8 +79,8 @@ const mockDbSelect = vi.fn(() => ({ from: mockDbFrom }));
 
 const mockDb = { select: mockDbSelect };
 
-const createMockChain = (chainResult: any, singleResult: any = null) => {
-  const chain: any = {
+const createMockChain = (chainResult: unknown, singleResult: unknown = null) => {
+  const chain: Record<string, unknown> = {
     select: vi.fn().mockReturnThis(),
     insert: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),
@@ -91,7 +91,7 @@ const createMockChain = (chainResult: any, singleResult: any = null) => {
     limit: vi.fn().mockReturnThis(),
     single: vi.fn(() => Promise.resolve(singleResult)),
     maybeSingle: vi.fn(() => Promise.resolve(singleResult)),
-    then: function (resolve: any, reject: any) {
+    then: function (resolve: (value: unknown) => void, reject: (reason?: unknown) => void) {
       if (chainResult instanceof Error) {
         return Promise.reject(chainResult).catch(reject);
       }
@@ -145,7 +145,7 @@ describe('Recommendations Server Actions', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data).toHaveLength(1);
-        expect(result.data[0].title).toBe('Fix issue');
+        expect(result.data[0]?.title).toBe('Fix issue');
       }
       expect(mocks.mockCacheSet).toHaveBeenCalledWith(
         'recs:test-user-id',
