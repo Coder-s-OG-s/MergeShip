@@ -121,7 +121,16 @@ function pickDefaultBackend(): CacheBackend {
 
   const redisUrl = process.env.REDIS_URL;
   if (redisUrl) {
-    return new IoRedisBackend(new Redis(redisUrl));
+    const client = new Redis(redisUrl, {
+      maxRetriesPerRequest: 1,
+      retryStrategy: () => null, // Do not keep retrying connection
+    });
+    client.on('error', (err) => {
+      console.warn(`[cache] Local Redis error: ${err.message}. Falling back to memory.`);
+      backend = new MemoryBackend();
+      client.disconnect();
+    });
+    return new IoRedisBackend(client);
   }
 
   return new MemoryBackend();

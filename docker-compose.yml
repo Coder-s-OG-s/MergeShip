@@ -1,5 +1,3 @@
-version: '3.8'
-
 # MergeShip local dev services.
 # Supabase (Postgres + Auth + Studio) is managed by the Supabase CLI separately.
 # This file only adds Redis for contributors who don't have an Upstash account.

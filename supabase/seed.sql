@@ -116,6 +116,4 @@ INSERT INTO pull_requests (github_pr_id, repo_full_name, number, title, body_exc
   (9002140, 'demo/notebook-rs', 2140, 'Migrate sync IO to tokio', 'closes #214', 'eve', '00000000-0000-0000-0000-000000000005', 'merged', false, 'https://github.com/demo/notebook-rs/pull/2140', now() - interval '19 days', now() - interval '18 days', now() - interval '18 days', false)
 ON CONFLICT (github_pr_id) DO NOTHING;
 
--- Map pull_requests id (assume autoincrement starts at 1, but lets just reference them if possible)
--- We will just insert them and hope it matches or skip reviews.
--- Instead, let's omit pull_request_reviews and help_requests to keep the file short, the acceptance criteria only asks for "A few pull_requests rows"
+-- Note: pull_request_reviews and help_requests have been omitted for brevity.
