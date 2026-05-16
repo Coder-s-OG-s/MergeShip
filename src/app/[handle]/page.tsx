@@ -522,6 +522,7 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                           href={task.url}
                           target="_blank"
                           rel="noopener noreferrer"
+                          aria-label={`Open ${task.repoFullName} #${task.issueNumber} on GitHub`}
                           className="text-zinc-500 hover:text-zinc-300"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
