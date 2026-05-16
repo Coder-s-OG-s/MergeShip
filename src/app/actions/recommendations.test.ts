@@ -115,7 +115,7 @@ describe('Recommendations Server Actions', () => {
       mocks.mockCacheGet.mockResolvedValueOnce(cached);
 
       const result = await getRecommendations();
-      
+
       expect(result).toEqual({ ok: true, data: cached });
       expect(mocks.mockCacheGet).toHaveBeenCalledWith('recs:test-user-id');
       expect(mocks.mockTryGetDb).not.toHaveBeenCalled();
@@ -124,7 +124,7 @@ describe('Recommendations Server Actions', () => {
     it('queries DB and caches when cache is cold', async () => {
       mocks.mockCacheGet.mockResolvedValueOnce(null);
       mocks.mockTryGetDb.mockReturnValueOnce(mockDb);
-      
+
       const dbRows = [
         {
           id: 1,
@@ -141,7 +141,7 @@ describe('Recommendations Server Actions', () => {
       mockDbLimit.mockResolvedValueOnce(dbRows);
 
       const result = await getRecommendations();
-      
+
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data).toHaveLength(1);
@@ -150,7 +150,7 @@ describe('Recommendations Server Actions', () => {
       expect(mocks.mockCacheSet).toHaveBeenCalledWith(
         'recs:test-user-id',
         expect.any(Array),
-        60 * 60
+        60 * 60,
       );
     });
 
@@ -159,7 +159,7 @@ describe('Recommendations Server Actions', () => {
       mocks.mockTryGetDb.mockReturnValueOnce(null);
 
       const result = await getRecommendations();
-      
+
       expect(result).toEqual({ ok: true, data: [] });
     });
   });
@@ -172,7 +172,7 @@ describe('Recommendations Server Actions', () => {
         .mockReturnValueOnce(createMockChain({})); // insert activity_log
 
       const result = await claimRecommendation(1);
-      
+
       expect(result).toEqual({ ok: true, data: { id: 1 } });
       expect(mocks.mockCacheDel).toHaveBeenCalledWith('recs:test-user-id');
     });
@@ -183,18 +183,18 @@ describe('Recommendations Server Actions', () => {
         .mockReturnValueOnce(createMockChain(null, { data: null, error: null })); // update returns null row
 
       const result = await claimRecommendation(1);
-      
+
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe('already_claimed');
       }
     });
-    
+
     it('returns claim_limit error if user has 3 or more claims', async () => {
       mocks.mockServiceFrom.mockReturnValueOnce(createMockChain({ count: 3 })); // count claims
 
       const result = await claimRecommendation(1);
-      
+
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe('claim_limit');
@@ -205,15 +205,29 @@ describe('Recommendations Server Actions', () => {
   describe('skipRecommendation', () => {
     it('sets status to reassigned and returns a replacement rec', async () => {
       mocks.mockServiceFrom
-        .mockReturnValueOnce(createMockChain(null, { data: { id: 1, difficulty: 'E', issue_id: 10 }, error: null })) // update rec
+        .mockReturnValueOnce(
+          createMockChain(null, { data: { id: 1, difficulty: 'E', issue_id: 10 }, error: null }),
+        ) // update rec
         .mockReturnValueOnce(createMockChain({ data: [{ issue_id: 10 }] })) // select seen
-        .mockReturnValueOnce(createMockChain({ 
-          data: [{ id: 11, difficulty: 'E', xp_reward: 100, repo_full_name: 'a/b', github_issue_number: 2, title: 'T', url: 'http' }] 
-        })) // select pool
+        .mockReturnValueOnce(
+          createMockChain({
+            data: [
+              {
+                id: 11,
+                difficulty: 'E',
+                xp_reward: 100,
+                repo_full_name: 'a/b',
+                github_issue_number: 2,
+                title: 'T',
+                url: 'http',
+              },
+            ],
+          }),
+        ) // select pool
         .mockReturnValueOnce(createMockChain(null, { data: { id: 2 }, error: null })); // insert replacement
 
       const result = await skipRecommendation(1);
-      
+
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data.id).toBe(1);
@@ -224,13 +238,15 @@ describe('Recommendations Server Actions', () => {
 
     it('returns null replacement when pool is exhausted', async () => {
       mocks.mockServiceFrom
-        .mockReturnValueOnce(createMockChain(null, { data: { id: 1, difficulty: 'E', issue_id: 10 }, error: null })) // update rec
+        .mockReturnValueOnce(
+          createMockChain(null, { data: { id: 1, difficulty: 'E', issue_id: 10 }, error: null }),
+        ) // update rec
         .mockReturnValueOnce(createMockChain({ data: [{ issue_id: 10 }] })) // select seen
         .mockReturnValueOnce(createMockChain({ data: [] })) // select pool E
         .mockReturnValueOnce(createMockChain({ data: [] })); // select pool Any
 
       const result = await skipRecommendation(1);
-      
+
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data.id).toBe(1);
@@ -242,7 +258,7 @@ describe('Recommendations Server Actions', () => {
       mocks.mockServiceFrom.mockReturnValueOnce(createMockChain(null, { data: null, error: null })); // update returns null row
 
       const result = await skipRecommendation(1);
-      
+
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe('not_skippable');
@@ -252,17 +268,19 @@ describe('Recommendations Server Actions', () => {
 
   describe('linkPrToRec', () => {
     it('updates linked_pr_url when URL is valid', async () => {
-      mocks.mockServiceFrom.mockReturnValueOnce(createMockChain(null, { data: { id: 1 }, error: null }));
+      mocks.mockServiceFrom.mockReturnValueOnce(
+        createMockChain(null, { data: { id: 1 }, error: null }),
+      );
 
       const result = await linkPrToRec(1, 'https://github.com/owner/repo/pull/123');
-      
+
       expect(result).toEqual({ ok: true, data: { id: 1 } });
       expect(mocks.mockCacheDel).toHaveBeenCalledWith('recs:test-user-id');
     });
 
     it('returns invalid_url for non-GitHub URLs', async () => {
       const result = await linkPrToRec(1, 'https://gitlab.com/owner/repo/pull/123');
-      
+
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe('invalid_url');
@@ -273,7 +291,7 @@ describe('Recommendations Server Actions', () => {
       mocks.mockServiceFrom.mockReturnValueOnce(createMockChain(null, { data: null, error: null }));
 
       const result = await linkPrToRec(1, 'https://github.com/owner/repo/pull/123');
-      
+
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe('not_linkable');
@@ -283,10 +301,12 @@ describe('Recommendations Server Actions', () => {
 
   describe('unlinkPrFromRec', () => {
     it('clears linked_pr_url', async () => {
-      mocks.mockServiceFrom.mockReturnValueOnce(createMockChain(null, { data: { id: 1 }, error: null }));
+      mocks.mockServiceFrom.mockReturnValueOnce(
+        createMockChain(null, { data: { id: 1 }, error: null }),
+      );
 
       const result = await unlinkPrFromRec(1);
-      
+
       expect(result).toEqual({ ok: true, data: { id: 1 } });
       expect(mocks.mockCacheDel).toHaveBeenCalledWith('recs:test-user-id');
     });
@@ -294,10 +314,12 @@ describe('Recommendations Server Actions', () => {
 
   describe('unclaimRecommendation', () => {
     it('resets status to open and clears claimed_at and linked_pr_url', async () => {
-      mocks.mockServiceFrom.mockReturnValueOnce(createMockChain(null, { data: { id: 1 }, error: null }));
+      mocks.mockServiceFrom.mockReturnValueOnce(
+        createMockChain(null, { data: { id: 1 }, error: null }),
+      );
 
       const result = await unclaimRecommendation(1);
-      
+
       expect(result).toEqual({ ok: true, data: { id: 1 } });
       expect(mocks.mockCacheDel).toHaveBeenCalledWith('recs:test-user-id');
     });
@@ -306,7 +328,7 @@ describe('Recommendations Server Actions', () => {
       mocks.mockServiceFrom.mockReturnValueOnce(createMockChain(null, { data: null, error: null }));
 
       const result = await unclaimRecommendation(1);
-      
+
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe('not_claimable');
