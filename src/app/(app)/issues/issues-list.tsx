@@ -11,6 +11,7 @@ import {
   type IssuesPageResult,
   type RepoOption,
 } from '@/app/actions/issues';
+import { useToast } from '@/components/toast';
 
 const DIFFICULTY_LABEL: Record<string, string> = { E: 'L1', M: 'L2', H: 'L3' };
 const DIFFICULTY_COLOR: Record<string, string> = {
@@ -36,7 +37,7 @@ function IssueCard({
   actionPending,
 }: {
   issue: IssueWithStatus;
-  onClaim: (id: number) => void;
+  onClaim: (id: number, xpReward: number | null) => void;
   onUnclaim: (recId: number) => void;
   actionPending: boolean;
 }) {
@@ -48,12 +49,8 @@ function IssueCard({
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(issue.url);
-
     setCopied(true);
-
-    setTimeout(() => {
-      setCopied(false);
-    }, 1500);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
@@ -160,7 +157,7 @@ function IssueCard({
         ) : (
           <>
             <button
-              onClick={() => onClaim(issue.id)}
+              onClick={() => onClaim(issue.id, issue.xpReward)}
               disabled={actionPending}
               className="border border-zinc-600 px-4 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -216,6 +213,7 @@ export function IssuesList({
   const [isPending, startTransition] = useTransition();
   const [actionIssueId, setActionIssueId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const { addToast } = useToast();
 
   const [search, setSearch] = useState(initialFilters.search ?? '');
   const [state, setState] = useState<'open' | 'closed'>(initialFilters.state ?? 'open');
@@ -254,15 +252,22 @@ export function IssuesList({
     [router, search, state, difficulty, repo, showClaimed],
   );
 
-  const handleClaim = async (issueId: number) => {
+  const handleClaim = async (issueId: number, xpReward: number | null) => {
     setActionIssueId(issueId);
     setActionError(null);
+
     const result = await claimIssue(issueId);
     setActionIssueId(null);
+
     if (!result.ok) {
       setActionError(result.error.message);
       return;
     }
+
+    // 🎉 XP toast
+    const xpMsg = xpReward ? `+${xpReward} XP` : '+XP';
+    addToast(`${xpMsg} — ISSUE CLAIMED`, 'success');
+
     router.refresh();
   };
 

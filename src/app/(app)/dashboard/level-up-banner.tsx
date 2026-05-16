@@ -6,34 +6,46 @@ import {
   acknowledgeLevelUp,
   type LevelUpRow,
 } from '@/app/actions/level-ups';
+import { useToast } from '@/components/toast';
 
-/**
- * Reads any unacknowledged level-up rows on mount and shows a dismissable
- * banner. Acknowledges optimistically so a refresh-spam can't re-trigger
- * the same celebration.
- */
+
 export default function LevelUpBanner() {
   const [rows, setRows] = useState<LevelUpRow[]>([]);
   const [, startTransition] = useTransition();
+  const { addToast } = useToast();
 
   useEffect(() => {
     let live = true;
     (async () => {
       const res = await getUnacknowledgedLevelUps();
-      if (live && res.ok) setRows(res.data);
+      if (!live || !res.ok) return;
+
+      const levelUps = res.data;
+      setRows(levelUps);
+
+      
+      levelUps.forEach((row, i) => {
+        setTimeout(() => {
+          addToast(`⬆ LEVEL UP — YOU ARE NOW L${row.toLevel}`, 'level-up');
+        }, i * 400);
+      });
     })();
     return () => {
       live = false;
     };
+  
   }, []);
+  
 
   if (rows.length === 0) return null;
   const top = rows[0]!;
 
   function dismiss(id: number) {
     setRows((prev) => prev.filter((r) => r.id !== id));
-    startTransition(async () => {
-      await acknowledgeLevelUp(id);
+    startTransition(() => {
+      void (async () => {
+        await acknowledgeLevelUp(id);
+      })();
     });
   }
 
