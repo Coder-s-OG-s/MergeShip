@@ -158,7 +158,7 @@ export default async function DashboardPage() {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            <SyncButton lastSyncedAt={syncedAt} />
+            <SyncButton lastSyncedAt={syncedAt} userId={user.id} />
           </div>
         </header>
 
