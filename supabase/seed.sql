@@ -42,12 +42,16 @@ VALUES
 ON CONFLICT (installation_id, user_id) DO NOTHING;
 
 -- 4. Set XP events
-INSERT INTO xp_events (user_id, source, ref_id, xp_delta, metadata) VALUES
-  ('00000000-0000-0000-0000-000000000002', 'github_audit', 'audit:seed:bob', 200, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000003', 'github_audit', 'audit:seed:carol', 600, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000004', 'github_audit', 'audit:seed:dave', 1400, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000005', 'github_audit', 'audit:seed:eve', 2300, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000006', 'github_audit', 'audit:seed:frank-mtnr', 1800, '{"synthetic":true}')
+INSERT INTO xp_events (user_id, source, ref_type, ref_id, repo, difficulty, xp_delta, metadata) VALUES
+  ('00000000-0000-0000-0000-000000000002', 'github_audit', 'audit', 'audit:seed:bob', null, null, 200, '{"synthetic":true}'),
+  ('00000000-0000-0000-0000-000000000003', 'github_audit', 'audit', 'audit:seed:carol', null, null, 600, '{"synthetic":true}'),
+  ('00000000-0000-0000-0000-000000000004', 'github_audit', 'audit', 'audit:seed:dave', null, null, 1400, '{"synthetic":true}'),
+  ('00000000-0000-0000-0000-000000000005', 'github_audit', 'audit', 'audit:seed:eve', null, null, 2300, '{"synthetic":true}'),
+  ('00000000-0000-0000-0000-000000000006', 'github_audit', 'audit', 'audit:seed:frank-mtnr', null, null, 1800, '{"synthetic":true}'),
+  ('00000000-0000-0000-0000-000000000002', 'recommended_merge', 'pr', 'pr:demo/eclipse-cli:1020', 'demo/eclipse-cli', 'E', 50, '{"synthetic":true}'),
+  ('00000000-0000-0000-0000-000000000003', 'recommended_merge', 'pr', 'pr:demo/notebook-rs:2130', 'demo/notebook-rs', 'M', 150, '{"synthetic":true}'),
+  ('00000000-0000-0000-0000-000000000004', 'recommended_merge', 'pr', 'pr:demo/eclipse-cli:1040', 'demo/eclipse-cli', 'H', 400, '{"synthetic":true}'),
+  ('00000000-0000-0000-0000-000000000005', 'recommended_merge', 'pr', 'pr:demo/notebook-rs:2140', 'demo/notebook-rs', 'H', 400, '{"synthetic":true}')
 ON CONFLICT (user_id, source, ref_id) DO NOTHING;
 
 -- 5. Seed issues (20+ issues across different repos and difficulties)
@@ -93,17 +97,17 @@ INSERT INTO installation_user_repos (installation_id, user_id, repo_full_name, p
 ON CONFLICT (installation_id, user_id, repo_full_name) DO NOTHING;
 
 -- 7. Seed Recommendations
-INSERT INTO recommendations (user_id, issue_id, difficulty, xp_reward, recommended_at, expires_at, status) VALUES
-  ('00000000-0000-0000-0000-000000000001', 1, 'E', 50, now() - interval '1 day', now() + interval '6 days', 'open'),
-  ('00000000-0000-0000-0000-000000000001', 12, 'E', 50, now() - interval '1 day', now() + interval '6 days', 'open'),
-  ('00000000-0000-0000-0000-000000000002', 6, 'E', 50, now() - interval '3 days', now() + interval '4 days', 'claimed'),
-  ('00000000-0000-0000-0000-000000000002', 2, 'E', 50, now() - interval '6 days', now() + interval '1 day', 'completed'),
-  ('00000000-0000-0000-0000-000000000002', 9, 'E', 50, now() - interval '1 day', now() + interval '6 days', 'open'),
-  ('00000000-0000-0000-0000-000000000003', 13, 'M', 150, now() - interval '2 days', now() + interval '5 days', 'claimed'),
-  ('00000000-0000-0000-0000-000000000003', 7, 'M', 150, now() - interval '10 days', now() - interval '3 days', 'completed'),
-  ('00000000-0000-0000-0000-000000000003', 18, 'H', 400, now() - interval '1 day', now() + interval '6 days', 'open'),
-  ('00000000-0000-0000-0000-000000000004', 4, 'H', 400, now() - interval '13 days', now() - interval '6 days', 'completed'),
-  ('00000000-0000-0000-0000-000000000005', 8, 'H', 400, now() - interval '19 days', now() - interval '12 days', 'completed')
+INSERT INTO recommendations (user_id, issue_id, difficulty, xp_reward, recommended_at, expires_at, status, linked_pr_url, completed_at) VALUES
+  ('00000000-0000-0000-0000-000000000001', 1, 'E', 50, now() - interval '1 day', now() + interval '6 days', 'open', null, null),
+  ('00000000-0000-0000-0000-000000000001', 12, 'E', 50, now() - interval '1 day', now() + interval '6 days', 'open', null, null),
+  ('00000000-0000-0000-0000-000000000002', 6, 'E', 50, now() - interval '3 days', now() + interval '4 days', 'claimed', null, null),
+  ('00000000-0000-0000-0000-000000000002', 2, 'E', 50, now() - interval '6 days', now() + interval '1 day', 'completed', 'https://github.com/demo/eclipse-cli/pull/1020', now() - interval '5 days'),
+  ('00000000-0000-0000-0000-000000000002', 9, 'E', 50, now() - interval '1 day', now() + interval '6 days', 'open', null, null),
+  ('00000000-0000-0000-0000-000000000003', 13, 'M', 150, now() - interval '2 days', now() + interval '5 days', 'claimed', null, null),
+  ('00000000-0000-0000-0000-000000000003', 7, 'M', 150, now() - interval '10 days', now() - interval '3 days', 'completed', 'https://github.com/demo/notebook-rs/pull/2130', now() - interval '9 days'),
+  ('00000000-0000-0000-0000-000000000003', 18, 'H', 400, now() - interval '1 day', now() + interval '6 days', 'open', null, null),
+  ('00000000-0000-0000-0000-000000000004', 4, 'H', 400, now() - interval '13 days', now() - interval '6 days', 'completed', 'https://github.com/demo/eclipse-cli/pull/1040', now() - interval '12 days'),
+  ('00000000-0000-0000-0000-000000000005', 8, 'H', 400, now() - interval '19 days', now() - interval '12 days', 'completed', 'https://github.com/demo/notebook-rs/pull/2140', now() - interval '18 days')
 ON CONFLICT (user_id, issue_id) DO NOTHING;
 
 -- 8. Seed pull_requests
@@ -117,3 +121,7 @@ INSERT INTO pull_requests (github_pr_id, repo_full_name, number, title, body_exc
 ON CONFLICT (github_pr_id) DO NOTHING;
 
 -- Note: pull_request_reviews and help_requests have been omitted for brevity.
+
+-- 9. Fix key sequence values for auto-incrementing serial columns
+SELECT setval('issues_id_seq', (SELECT max(id) FROM issues));
+

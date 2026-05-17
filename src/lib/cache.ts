@@ -43,40 +43,56 @@ class MemoryBackend implements CacheBackend {
   }
 }
 
-class UpstashBackend implements CacheBackend {
+export class UpstashBackend implements CacheBackend {
   constructor(private redis: UpstashRedis) {}
 
   async get<T>(key: string): Promise<T | null> {
-    const v = await this.redis.get<T>(key);
-    return v ?? null;
+    try {
+      const v = await this.redis.get<T>(key);
+      return v ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async set(key: string, value: unknown, ttlSeconds: number): Promise<void> {
     if (ttlSeconds <= 0) return;
-    await this.redis.set(key, value, { ex: ttlSeconds });
+    try {
+      await this.redis.set(key, value, { ex: ttlSeconds });
+    } catch {
+      // ignore
+    }
   }
 
   async del(key: string): Promise<void> {
-    await this.redis.del(key);
+    try {
+      await this.redis.del(key);
+    } catch {
+      // ignore
+    }
   }
 
   async scanDel(prefix: string): Promise<void> {
     let cursor: string | number = 0;
-    while (true) {
-      const result: [string | number, string[]] = await this.redis.scan(cursor, {
-        match: `${prefix}*`,
-        count: 100,
-      });
-      const nextCursor = result[0];
-      const keys = result[1];
-      if (keys.length > 0) await this.redis.del(...keys);
-      if (nextCursor === 0 || nextCursor === '0') break;
-      cursor = nextCursor;
+    try {
+      while (true) {
+        const result: [string | number, string[]] = await this.redis.scan(cursor, {
+          match: `${prefix}*`,
+          count: 100,
+        });
+        const nextCursor = result[0];
+        const keys = result[1];
+        if (keys.length > 0) await this.redis.del(...keys);
+        if (nextCursor === 0 || nextCursor === '0') break;
+        cursor = nextCursor;
+      }
+    } catch {
+      // ignore
     }
   }
 }
 
-class IoRedisBackend implements CacheBackend {
+export class IoRedisBackend implements CacheBackend {
   constructor(private redis: Redis) {}
 
   async get<T>(key: string): Promise<T | null> {
