@@ -14,6 +14,36 @@ type Row = {
   profile: { github_handle: string; avatar_url: string | null; level: number } | null;
 };
 
+type RecommendationRow = {
+  id: number;
+  issue_id: number;
+};
+
+type IssueRow = {
+  id: number;
+  repo_full_name: string;
+  title: string;
+};
+
+function formatReason(
+  reason: string | null,
+  recommendationById: Map<number, RecommendationRow>,
+  issueById: Map<number, IssueRow>,
+): string | null {
+  if (!reason) return null;
+
+  const recMatch = reason.match(/^rec:(\d+)$/);
+  if (!recMatch) return reason;
+
+  const recId = Number(recMatch[1]);
+  const recommendation = recommendationById.get(recId);
+  const issue = recommendation ? issueById.get(recommendation.issue_id) : null;
+
+  if (!issue) return 'Recommended issue';
+
+  return `${issue.repo_full_name} · ${issue.title}`;
+}
+
 /**
  * Mentor inbox. Lists open help_requests dispatched to the signed-in user.
  *
@@ -67,6 +97,9 @@ export default async function HelpInboxPage() {
   );
 
   let rows: Row[] = [];
+  let recommendationById = new Map<number, RecommendationRow>();
+  let issueById = new Map<number, IssueRow>();
+
   if (helpIds.length > 0) {
     const { data: helps } = await service
       .from('help_requests')
@@ -80,6 +113,38 @@ export default async function HelpInboxPage() {
       .from('profiles')
       .select('id, github_handle, avatar_url, level')
       .in('id', userIds);
+
+    const recIds = Array.from(
+      new Set(
+        (helps ?? [])
+          .map((help) => help.reason?.match(/^rec:(\d+)$/)?.[1])
+          .filter((value): value is string => typeof value === 'string')
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value)),
+      ),
+    );
+
+    if (recIds.length > 0) {
+      const { data: recs } = await service
+        .from('recommendations')
+        .select('id, issue_id')
+        .in('id', recIds);
+
+      recommendationById = new Map((recs ?? []).map((rec) => [rec.id, rec]));
+
+      const issueIds = Array.from(
+        new Set((recs ?? []).map((rec) => rec.issue_id).filter((id) => typeof id === 'number')),
+      );
+
+      if (issueIds.length > 0) {
+        const { data: issues } = await service
+          .from('issues')
+          .select('id, repo_full_name, title')
+          .in('id', issueIds);
+
+        issueById = new Map((issues ?? []).map((issue) => [issue.id, issue]));
+      }
+    }
 
     const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
     rows = (helps ?? []).map((h) => ({
@@ -129,8 +194,10 @@ export default async function HelpInboxPage() {
                       {new Date(row.created_at).toLocaleString()}
                     </span>
                   </div>
-                  {row.reason && (
-                    <p className="mt-1 truncate text-sm text-zinc-400">{row.reason}</p>
+                  {formatReason(row.reason, recommendationById, issueById) && (
+                    <p className="mt-1 truncate text-sm text-zinc-400">
+                      {formatReason(row.reason, recommendationById, issueById)}
+                    </p>
                   )}
                   <a
                     href={row.pr_url}
