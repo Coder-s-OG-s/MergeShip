@@ -107,7 +107,7 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
 }
 
 /**
- * Updates or clears the user's mute preferences (Issue #91).
+ * Updates or clears the user's mute preferences.
  * Pass empty arrays to clear preferences.
  */
 export async function updateMutePreferences(

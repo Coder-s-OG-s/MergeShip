@@ -62,8 +62,7 @@ export const recommendationsBuild = inngest.createFunction(
       };
       const userList = (users ?? []) as unknown as UserRow[];
 
-      // Build bulk skip-history lookup map (Issue #91)
-      // Avoids N+1 queries by fetching all skips in the trailing window at once.
+      // Fetch skip history in bulk to avoid N+1 queries inside the user loop.
       const cutoffDate = new Date(
         Date.now() - SKIP_HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000,
       ).toISOString();

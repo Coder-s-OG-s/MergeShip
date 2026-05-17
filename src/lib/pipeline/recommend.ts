@@ -54,8 +54,7 @@ function rankScore(issue: ScoredIssue, opts: RecommendOptions): number {
 
   let penalty = 0;
 
-  // Apply soft penalty for frequently skipped repositories (Issue #91).
-  // Keeps the repo surfaceable but pushes it down the candidate list.
+  // Apply soft penalties for frequently skipped repositories and languages.
   if (opts.skipCounts) {
     const repoSkips = opts.skipCounts.byRepo[issue.repoFullName] ?? 0;
     if (repoSkips >= RECOMMENDATION_PENALTIES.REPO_SKIP_THRESHOLD) {
@@ -70,7 +69,7 @@ function rankScore(issue: ScoredIssue, opts: RecommendOptions): number {
     }
   }
 
-  // Mute-preference penalties (explicit user preference).
+  // Mute-preference penalties.
   if (opts.mutedRepos?.includes(issue.repoFullName)) {
     penalty += RECOMMENDATION_PENALTIES.MUTED_REPO_PENALTY;
   }

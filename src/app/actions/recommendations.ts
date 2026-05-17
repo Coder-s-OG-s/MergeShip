@@ -205,7 +205,7 @@ export async function skipRecommendation(
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 
   // Atomic skip with the issue id so we know what tier to refill from.
-  // Persist the optional skip_reason alongside the status change (Issue #91).
+  // Persist the optional skip_reason alongside the status change.
   const updatePayload: Record<string, unknown> = { status: 'reassigned' };
   if (skipReason?.trim()) {
     updatePayload.skip_reason = skipReason.trim().slice(0, 500);
