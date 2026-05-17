@@ -821,3 +821,174 @@ export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
     })),
   );
 }
+
+export async function exportPrQueueCsv(
+  installationId: number,
+  filters?: Partial<QueueFilters>,
+): Promise<Result<string>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const limited = await rateLimit({
+    namespace: 'maint:csv',
+    key: user.id,
+    limit: 10,
+    windowSec: 60,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return ok('');
+  }
+
+  const validFilters = validateFilters(filters ?? {});
+
+  const scopedRepos =
+    validFilters.repos.length > 0 ? repos.filter((r) => validFilters.repos.includes(r)) : repos;
+  if (scopedRepos.length === 0) {
+    return ok('');
+  }
+
+  let q = service
+    .from('pull_requests')
+    .select(
+      'id, repo_full_name, number, title, url, state, draft, author_login, ' +
+        'author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at',
+    )
+    .in('repo_full_name', scopedRepos);
+
+  if (validFilters.state.length > 0) q = q.in('state', validFilters.state);
+  if (validFilters.mentorVerified === 'yes') q = q.eq('mentor_verified', true);
+  else if (validFilters.mentorVerified === 'no') q = q.eq('mentor_verified', false);
+
+  type RawPr = {
+    id: number;
+    repo_full_name: string;
+    number: number;
+    title: string;
+    url: string;
+    state: 'open' | 'closed' | 'merged';
+    draft: boolean;
+    author_login: string;
+    author_user_id: string | null;
+    mentor_verified: boolean;
+    mentor_reviewer_id: string | null;
+    github_updated_at: string;
+  };
+
+  const { data: prs } = await q.order('github_updated_at', { ascending: false }).limit(1000);
+
+  const prRows = (prs ?? []) as unknown as RawPr[];
+
+  const authorIds = Array.from(
+    new Set(prRows.map((r) => r.author_user_id).filter((id): id is string => !!id)),
+  );
+  const mentorIds = Array.from(
+    new Set(prRows.map((r) => r.mentor_reviewer_id).filter((id): id is string => !!id)),
+  );
+
+  const profilesById = new Map<
+    string,
+    { handle: string; level: number; xp: number; mergedPrs: number }
+  >();
+
+  const ids = Array.from(new Set([...authorIds, ...mentorIds]));
+  if (ids.length > 0) {
+    const { data: profileRows } = await service
+      .from('profiles')
+      .select('id, github_handle, level, xp')
+      .in('id', ids);
+    const merged = await service
+      .from('xp_events')
+      .select('user_id')
+      .in('user_id', ids)
+      .eq('source', 'recommended_merge');
+    const mergedCount = new Map<string, number>();
+    for (const row of merged.data ?? []) {
+      mergedCount.set(row.user_id, (mergedCount.get(row.user_id) ?? 0) + 1);
+    }
+    for (const p of profileRows ?? []) {
+      profilesById.set(p.id, {
+        handle: p.github_handle,
+        level: p.level ?? 0,
+        xp: p.xp ?? 0,
+        mergedPrs: mergedCount.get(p.id) ?? 0,
+      });
+    }
+  }
+
+  let rows: MaintainerPrRow[] = prRows.map((r) => {
+    const author = r.author_user_id ? (profilesById.get(r.author_user_id) ?? null) : null;
+    const mentor = r.mentor_reviewer_id ? (profilesById.get(r.mentor_reviewer_id) ?? null) : null;
+    return {
+      id: r.id,
+      repoFullName: r.repo_full_name,
+      number: r.number,
+      title: r.title,
+      url: r.url,
+      state: r.state as 'open' | 'closed' | 'merged',
+      draft: r.draft,
+      authorLogin: r.author_login,
+      authorLevel: author?.level ?? null,
+      authorXp: author?.xp ?? null,
+      authorMergedPrs: author?.mergedPrs ?? null,
+      mentorVerified: r.mentor_verified,
+      mentorReviewerHandle: mentor?.handle ?? null,
+      mentorReviewerLevel: mentor?.level ?? null,
+      githubUpdatedAt: r.github_updated_at,
+    };
+  });
+
+  if (validFilters.authorLevel.length > 0) {
+    rows = rows.filter((row) => validFilters.authorLevel.includes(row.authorLevel ?? 0));
+  }
+
+  rows.sort(comparePrRows);
+
+  const escapeCsv = (str: string) => `"${str.replace(/"/g, '""')}"`;
+
+  const header = [
+    'PR #',
+    'Title',
+    'Author',
+    'Author Level',
+    'Verified',
+    'Repo',
+    'Age (days)',
+    'URL',
+  ];
+  const csvLines = [header.join(',')];
+
+  const now = Date.now();
+
+  for (const r of rows) {
+    const ageDays = Math.floor(
+      (now - new Date(r.githubUpdatedAt).getTime()) / (1000 * 60 * 60 * 24),
+    );
+    const line = [
+      r.number.toString(),
+      escapeCsv(r.title),
+      r.authorLogin,
+      r.authorLevel !== null ? r.authorLevel.toString() : '',
+      r.mentorVerified ? 'Yes' : 'No',
+      r.repoFullName,
+      ageDays.toString(),
+      r.url,
+    ];
+    csvLines.push(line.join(','));
+  }
+
+  return ok(csvLines.join('\n'));
+}
