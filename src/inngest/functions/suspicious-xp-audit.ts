@@ -7,6 +7,31 @@ import {
 } from '@/lib/xp/suspicious-flags';
 
 const LOOKBACK_DAYS = 8;
+const AUDIT_PAGE_SIZE = 1000;
+
+type SupabasePage<T> = {
+  data: T[] | null;
+  error: { message: string } | null;
+};
+
+async function fetchAllAuditRows<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<SupabasePage<T>>,
+): Promise<T[]> {
+  const rows: T[] = [];
+
+  for (let from = 0; ; from += AUDIT_PAGE_SIZE) {
+    const to = from + AUDIT_PAGE_SIZE - 1;
+    const { data, error } = await buildQuery(from, to);
+    if (error) throw new Error(error.message);
+
+    const page = data ?? [];
+    rows.push(...page);
+
+    if (page.length < AUDIT_PAGE_SIZE) {
+      return rows;
+    }
+  }
+}
 
 export const suspiciousXpAudit = inngest.createFunction(
   { id: 'suspicious-xp-audit' },
@@ -18,24 +43,31 @@ export const suspiciousXpAudit = inngest.createFunction(
 
       const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-      const [xpRes, reviewsRes] = await Promise.all([
-        sb
-          .from('xp_events')
-          .select('id, user_id, source, ref_id, repo, xp_delta, created_at')
-          .gte('created_at', since),
-        sb
-          .from('pull_request_reviews')
-          .select(
-            'id, pr_id, reviewer_user_id, state, submitted_at, ' +
-              'pull_requests!inner(author_user_id, repo_full_name, number)',
-          )
-          .gte('submitted_at', since),
+      const [xpRows, reviewRows] = await Promise.all([
+        fetchAllAuditRows((from, to) =>
+          sb
+            .from('xp_events')
+            .select('id, user_id, source, ref_id, repo, xp_delta, created_at')
+            .gte('created_at', since)
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to),
+        ),
+        fetchAllAuditRows((from, to) =>
+          sb
+            .from('pull_request_reviews')
+            .select(
+              'id, pr_id, reviewer_user_id, state, submitted_at, ' +
+                'pull_requests!inner(author_user_id, repo_full_name, number)',
+            )
+            .gte('submitted_at', since)
+            .order('submitted_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to),
+        ),
       ]);
 
-      if (xpRes.error) throw new Error(xpRes.error.message);
-      if (reviewsRes.error) throw new Error(reviewsRes.error.message);
-
-      const xpEvents: XpAuditEvent[] = (xpRes.data ?? []).map((row) => ({
+      const xpEvents: XpAuditEvent[] = xpRows.map((row) => ({
         id: row.id,
         userId: row.user_id,
         source: row.source,
@@ -45,7 +77,7 @@ export const suspiciousXpAudit = inngest.createFunction(
         createdAt: row.created_at,
       }));
 
-      const reviewEvents: ReviewAuditEvent[] = (reviewsRes.data ?? []).map((row) => {
+      const reviewEvents: ReviewAuditEvent[] = reviewRows.map((row) => {
         const pr = Array.isArray(row.pull_requests)
           ? row.pull_requests[0]
           : row.pull_requests;
