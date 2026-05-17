@@ -11,6 +11,7 @@ import {
   Inbox,
   Shield,
   Activity,
+  Settings,
 } from 'lucide-react';
 
 const CORE_NAV = [
@@ -36,6 +37,7 @@ export function NavItems({
     ...(isMaintainer ? [{ name: 'MAINTAINER', href: '/maintainer', icon: Shield }] : []),
     { name: 'PROFILE', href: profileHref, icon: User },
     { name: 'LEADERBOARD', href: '/leaderboard', icon: Trophy },
+    { name: 'SETTINGS', href: '/settings/profile', icon: Settings },
     { name: 'USAGE', href: '/settings/usage', icon: Activity },
   ];
 
