@@ -44,6 +44,29 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
+    <>
+      <nav className="border-b border-zinc-900 bg-zinc-950 px-6 py-3 text-sm text-zinc-400">
+        <div className="mx-auto flex max-w-5xl items-center gap-5">
+          <Link href="/" className="font-display font-semibold text-white">
+            MergeShip
+          </Link>
+          <Link href="/dashboard" className="hover:text-white">
+            Dashboard
+          </Link>
+          <Link href="/leaderboard" className="hover:text-white">
+            Leaderboard
+          </Link>
+          {isMaintainer && (
+            <Link href="/maintainer" className="hover:text-white">
+              Maintainer
+            </Link>
+          )}
+          {level >= 2 && (
+            <Link href="/help-inbox" className="hover:text-white">
+              Help inbox
+            </Link>
+          )}
+          {handle && (
     <div className="flex h-screen overflow-hidden bg-[#111318] font-mono text-white">
       {/* Sidebar */}
       <aside className="flex w-64 shrink-0 flex-col justify-between border-r border-[#2d333b] bg-[#111318]">
