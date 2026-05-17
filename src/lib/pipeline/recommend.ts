@@ -1,9 +1,16 @@
 import type { Difficulty } from './score';
+import { RECOMMENDATION_PENALTIES } from './constants';
 
 /**
  * Recommendation pipeline — pure ranking + filtering logic.
  * The async fetch + persist orchestration lives in the server action
  * (src/app/actions/recommendations.ts).
+ *
+ * Penalty design (Issue #91):
+ *   Penalties are SUBTRACTIVE and applied AFTER baseline ranking.
+ *   No candidate is ever hard-excluded by a penalty — muted/skipped repos
+ *   simply sink to the bottom so they can resurface when the pool is thin.
+ *   See src/lib/pipeline/constants.ts for tunable values.
  */
 
 export type ScoredIssue = {
@@ -16,12 +23,30 @@ export type ScoredIssue = {
   repoHealthScore: number;
   freshnessHours: number; // hours since issue was opened/updated
   languageMatch: boolean;
+  /** Primary language of the issue's repo (used for language-based penalties). */
+  repoLanguage: string | null;
+};
+
+/**
+ * Skip counts aggregated per repo and per language over the
+ * SKIP_HISTORY_WINDOW_DAYS window. Built in the Inngest build step
+ * so the ranking function stays pure and synchronous.
+ */
+export type SkipCounts = {
+  byRepo: Record<string, number>;
+  byLanguage: Record<string, number>;
 };
 
 export type RecommendOptions = {
   level: number;
   excludeIssueIds: Set<number>;
   allowFallback?: boolean;
+  /** Repos the user explicitly muted (full names). */
+  mutedRepos?: readonly string[];
+  /** Languages the user explicitly muted. */
+  mutedLanguages?: readonly string[];
+  /** Aggregated skip history for this user (last 30 days). */
+  skipCounts?: SkipCounts;
 };
 
 export type LevelMix = { E: number; M: number; H: number };
@@ -36,13 +61,59 @@ export function mixForLevel(level: number): LevelMix {
   return { E: 0, M: 1, H: 4 };
 }
 
-function rankScore(issue: ScoredIssue): number {
-  // higher = better. repo health weighted heaviest; language match is a tiebreaker.
-  return (
+/**
+ * Compute the rank score for a candidate issue.
+ *
+ * Scoring is two-phase:
+ *   1. **Baseline** — repo health, language match, freshness (unchanged).
+ *   2. **Penalty** — skip-history and mute penalties subtracted from baseline.
+ *
+ * Higher = better. Penalties can drive the score negative which is fine —
+ * it just means the candidate sinks below un-penalised alternatives.
+ */
+function rankScore(issue: ScoredIssue, opts: RecommendOptions): number {
+  // ── Phase 1: baseline (existing logic, untouched) ──────────────
+  const baseline =
     issue.repoHealthScore * 1 +
     (issue.languageMatch ? 20 : 0) +
-    Math.max(0, 30 - issue.freshnessHours / 24)
-  );
+    Math.max(0, 30 - issue.freshnessHours / 24);
+
+  // ── Phase 2: penalties (Issue #91) ─────────────────────────────
+  let penalty = 0;
+
+  const {
+    REPO_SKIP_THRESHOLD,
+    REPO_SKIP_PENALTY,
+    LANGUAGE_SKIP_THRESHOLD,
+    LANGUAGE_SKIP_PENALTY,
+    MUTED_REPO_PENALTY,
+    MUTED_LANGUAGE_PENALTY,
+  } = RECOMMENDATION_PENALTIES;
+
+  // Skip-history penalties (from aggregated counts).
+  if (opts.skipCounts) {
+    const repoSkips = opts.skipCounts.byRepo[issue.repoFullName] ?? 0;
+    if (repoSkips >= REPO_SKIP_THRESHOLD) {
+      penalty += REPO_SKIP_PENALTY;
+    }
+
+    if (issue.repoLanguage) {
+      const langSkips = opts.skipCounts.byLanguage[issue.repoLanguage] ?? 0;
+      if (langSkips >= LANGUAGE_SKIP_THRESHOLD) {
+        penalty += LANGUAGE_SKIP_PENALTY;
+      }
+    }
+  }
+
+  // Mute-preference penalties (explicit user preference).
+  if (opts.mutedRepos?.includes(issue.repoFullName)) {
+    penalty += MUTED_REPO_PENALTY;
+  }
+  if (issue.repoLanguage && opts.mutedLanguages?.includes(issue.repoLanguage)) {
+    penalty += MUTED_LANGUAGE_PENALTY;
+  }
+
+  return baseline - penalty;
 }
 
 export function filterAndRank(pool: readonly ScoredIssue[], opts: RecommendOptions): ScoredIssue[] {
@@ -58,7 +129,7 @@ export function filterAndRank(pool: readonly ScoredIssue[], opts: RecommendOptio
     if (want === 0) continue;
     const sorted = eligible
       .filter((i) => i.difficulty === tier)
-      .sort((a, b) => rankScore(b) - rankScore(a));
+      .sort((a, b) => rankScore(b, opts) - rankScore(a, opts));
     result.push(...sorted.slice(0, want));
   }
 
@@ -67,7 +138,7 @@ export function filterAndRank(pool: readonly ScoredIssue[], opts: RecommendOptio
     const seen = new Set(result.map((r) => r.id));
     const extras = eligible
       .filter((i) => !seen.has(i.id))
-      .sort((a, b) => rankScore(b) - rankScore(a));
+      .sort((a, b) => rankScore(b, opts) - rankScore(a, opts));
     const needed = totalDesired(mix) - result.length;
     result.push(...extras.slice(0, needed));
   }

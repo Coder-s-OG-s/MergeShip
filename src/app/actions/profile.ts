@@ -3,6 +3,7 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { inngest } from '@/inngest/client';
+import { rateLimit } from '@/lib/rate-limit';
 import { ok, err, type Result } from '@/lib/result';
 
 type BootstrapOutput = {

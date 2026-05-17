@@ -43,6 +43,11 @@ export const profiles = pgTable(
     level: integer('level').notNull().default(0),
     auditCompleted: boolean('audit_completed').notNull().default(false),
     timezone: text('timezone'),
+    // Contributor mute preferences (Issue #91). Arrays of repo full names
+    // and language strings the user has marked "not interested in".
+    // Fully reversible — cleared by passing an empty array.
+    mutedRepos: text('muted_repos').array().default([]).notNull(),
+    mutedLanguages: text('muted_languages').array().default([]).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -145,6 +150,9 @@ export const recommendations = pgTable(
     difficulty: text('difficulty', { enum: ['E', 'M', 'H'] }).notNull(),
     xpReward: integer('xp_reward').notNull(),
     linkedPrUrl: text('linked_pr_url'),
+    // Optional free-text reason captured when a user skips a recommendation
+    // (Issue #91). Never required — omitting preserves existing skip behavior.
+    skipReason: text('skip_reason'),
     recommendedAt: timestamp('recommended_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     claimedAt: timestamp('claimed_at', { withTimezone: true }),
