@@ -4,8 +4,10 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
+  getMaintainerFlags,
   getMaintainerPrQueue,
   type MaintainerInstall,
+  type MaintainerFlagRow,
   type MaintainerPrRow,
 } from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
@@ -67,6 +69,8 @@ export default async function MaintainerPage({
     filters,
   });
   const rows: MaintainerPrRow[] = isOk(queueRes) ? queueRes.data.rows : [];
+  const flagsRes = await getMaintainerFlags(8);
+  const flags: MaintainerFlagRow[] = isOk(flagsRes) ? flagsRes.data : [];
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -145,6 +149,8 @@ export default async function MaintainerPage({
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
 
+        <FlaggedAccountsPanel flags={flags} />
+
         {rows.length === 0 ? (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-zinc-400">
             No PRs match your filters. Try widening state or running a refresh.
@@ -205,6 +211,55 @@ export default async function MaintainerPage({
   );
 }
 
+function FlaggedAccountsPanel({ flags }: { flags: MaintainerFlagRow[] }) {
+  return (
+    <section className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <div>
+          <h2 className="font-display text-lg font-semibold">XP audit flags</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            Detection only. Review the evidence before taking any action.
+          </p>
+        </div>
+        <span className="rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs text-zinc-400">
+          {flags.length} open
+        </span>
+      </div>
+
+      {flags.length === 0 ? (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-500">
+          No suspicious XP patterns flagged.
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {flags.map((flag) => (
+            <li
+              key={flag.id}
+              className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs ${severityColor(flag.severity)}`}
+                >
+                  {flag.severity}
+                </span>
+                <span className="font-medium text-zinc-200">{reasonLabel(flag.reason)}</span>
+                <span className="text-xs text-zinc-500">
+                  {flag.githubHandle ? `@${flag.githubHandle}` : flag.userId ?? 'unknown user'}
+                </span>
+                <span className="ml-auto text-xs text-zinc-600">
+                  {new Date(flag.createdAt).toLocaleString()}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">{formatFlagEvidence(flag.evidence)}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function FilterPill({ label, href, active }: { label: string; href: string; active: boolean }) {
   return (
     <Link
@@ -243,6 +298,29 @@ function stateColor(state: 'open' | 'closed' | 'merged'): string {
   if (state === 'open') return 'bg-emerald-900/40 text-emerald-300';
   if (state === 'merged') return 'bg-purple-900/40 text-purple-300';
   return 'bg-zinc-800 text-zinc-400';
+}
+
+function severityColor(severity: 'medium' | 'high'): string {
+  if (severity === 'high') return 'bg-red-950 text-red-300 ring-1 ring-red-800';
+  return 'bg-amber-950 text-amber-300 ring-1 ring-amber-800';
+}
+
+function reasonLabel(reason: MaintainerFlagRow['reason']): string {
+  const labels: Record<MaintainerFlagRow['reason'], string> = {
+    daily_event_burst: 'Daily XP event burst',
+    hourly_merge_burst: 'Hourly merge burst',
+    review_pair_burst: 'Repeated reviewer pair',
+  };
+  return labels[reason];
+}
+
+function formatFlagEvidence(evidence: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const key of ['eventCount', 'mergeCount', 'reviewCount', 'totalXp', 'day', 'week']) {
+    const value = evidence[key];
+    if (value !== null && value !== undefined) parts.push(`${key}=${String(value)}`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : 'Evidence payload captured for review.';
 }
 
 function relativeTime(iso: string): string {

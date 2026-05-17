@@ -321,6 +321,28 @@ export const activityLog = pgTable(
   }),
 );
 
+export const flaggedAccounts = pgTable(
+  'flagged_accounts',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    userId: uuid('user_id').references(() => profiles.id, { onDelete: 'set null' }),
+    reason: text('reason', {
+      enum: ['daily_event_burst', 'hourly_merge_burst', 'review_pair_burst'],
+    }).notNull(),
+    severity: text('severity', { enum: ['medium', 'high'] }).notNull().default('medium'),
+    status: text('status', { enum: ['open', 'resolved', 'dismissed'] }).notNull().default('open'),
+    dedupeKey: text('dedupe_key').notNull(),
+    evidence: jsonb('evidence').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (t) => ({
+    dedupeKeyUnique: uniqueIndex('flagged_accounts_dedupe_key_unique').on(t.dedupeKey),
+    statusCreatedIdx: index('flagged_accounts_status_created_idx').on(t.status, t.createdAt),
+    userCreatedIdx: index('flagged_accounts_user_created_idx').on(t.userId, t.createdAt),
+  }),
+);
+
 // ========================================================================
 // Maintainer-side tables (migration 0005)
 // ========================================================================
