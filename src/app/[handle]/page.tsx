@@ -60,6 +60,7 @@ type ActiveTask = {
 };
 
 type ProfileData = {
+  profileId: string;
   githubHandle: string;
   displayName: string | null;
   avatarUrl: string | null;
@@ -78,8 +79,11 @@ type ProfileData = {
 async function loadProfileData(handle: string): Promise<ProfileData | null> {
   const cacheKey = `profile:v2:${handle}`;
   const cached = await cacheGet<ProfileData>(cacheKey);
-  if (cached) return cached;
-
+  if (cached) {
+    const { getPublicStreak } = await import('@/app/actions/streak');
+    const { days: streakDays } = await getPublicStreak(cached.profileId);
+    return { ...cached, streakDays };
+  }
   const service = getServiceSupabase();
   if (!service) return null;
 
@@ -246,6 +250,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
   const { days: streakDays } = await getPublicStreak(profile.id);
 
   const data: ProfileData = {
+    profileId: profile.id,
     githubHandle: profile.github_handle,
     displayName: profile.display_name,
     avatarUrl: profile.avatar_url,
