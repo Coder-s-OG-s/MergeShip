@@ -1,0 +1,19 @@
+# MergeShip local dev services.
+# Supabase (Postgres + Auth + Studio) is managed by the Supabase CLI separately.
+# This file only adds Redis for contributors who don't have an Upstash account.
+#
+# Usage:
+#   docker compose up -d redis   # start
+#   docker compose stop redis    # stop
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 3

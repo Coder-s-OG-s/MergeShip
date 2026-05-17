@@ -5,7 +5,8 @@
  * Swap providers later by replacing the backend below — call sites never change.
  */
 
-import { Redis } from '@upstash/redis';
+import { Redis as UpstashRedis } from '@upstash/redis';
+import Redis from 'ioredis';
 
 interface CacheBackend {
   get<T>(key: string): Promise<T | null>;
@@ -43,7 +44,7 @@ class MemoryBackend implements CacheBackend {
 }
 
 class UpstashBackend implements CacheBackend {
-  constructor(private redis: Redis) {}
+  constructor(private redis: UpstashRedis) {}
 
   async get<T>(key: string): Promise<T | null> {
     const v = await this.redis.get<T>(key);
@@ -75,13 +76,76 @@ class UpstashBackend implements CacheBackend {
   }
 }
 
+class IoRedisBackend implements CacheBackend {
+  constructor(private redis: Redis) {}
+
+  async get<T>(key: string): Promise<T | null> {
+    try {
+      const v = await this.redis.get(key);
+      if (!v) return null;
+      return JSON.parse(v) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  async set(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+    if (ttlSeconds <= 0) return;
+    try {
+      await this.redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+    } catch {
+      // ignore
+    }
+  }
+
+  async del(key: string): Promise<void> {
+    try {
+      await this.redis.del(key);
+    } catch {
+      // ignore
+    }
+  }
+
+  async scanDel(prefix: string): Promise<void> {
+    let cursor = '0';
+    try {
+      while (true) {
+        const result = await this.redis.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 100);
+        cursor = result[0];
+        const keys = result[1];
+        if (keys.length > 0) await this.redis.del(...keys);
+        if (cursor === '0') break;
+      }
+    } catch {
+      // ignore
+    }
+  }
+}
+
 let backend: CacheBackend = pickDefaultBackend();
 
 function pickDefaultBackend(): CacheBackend {
-  const url = process.env.KV_REST_API_URL;
-  const token = process.env.KV_REST_API_TOKEN;
-  if (!url || !token) return new MemoryBackend();
-  return new UpstashBackend(new Redis({ url, token }));
+  const upstashUrl = process.env.KV_REST_API_URL;
+  const upstashToken = process.env.KV_REST_API_TOKEN;
+  if (upstashUrl && upstashToken) {
+    return new UpstashBackend(new UpstashRedis({ url: upstashUrl, token: upstashToken }));
+  }
+
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    const client = new Redis(redisUrl, {
+      maxRetriesPerRequest: 1,
+      retryStrategy: () => null, // Do not keep retrying connection
+    });
+    client.on('error', (err) => {
+      console.warn(`[cache] Local Redis error: ${err.message}. Falling back to memory.`);
+      backend = new MemoryBackend();
+      client.disconnect();
+    });
+    return new IoRedisBackend(client);
+  }
+
+  return new MemoryBackend();
 }
 
 // Test-only hook. Resets to a fresh memory map between tests.
