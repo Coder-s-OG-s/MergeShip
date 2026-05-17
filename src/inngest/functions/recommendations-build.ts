@@ -1,6 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
-import { filterAndRank, type ScoredIssue } from '@/lib/pipeline/recommend';
+import { filterAndRank, type ScoredIssue, type SkipCounts } from '@/lib/pipeline/recommend';
+import { SKIP_HISTORY_WINDOW_DAYS } from '@/lib/pipeline/constants';
 
 /**
  * For every active user, derive a fresh set of recommendation rows from the
@@ -61,6 +62,38 @@ export const recommendationsBuild = inngest.createFunction(
       };
       const userList = (users ?? []) as unknown as UserRow[];
 
+      // Build bulk skip-history lookup map (Issue #91)
+      // Avoids N+1 queries by fetching all skips in the trailing window at once.
+      const cutoffDate = new Date(
+        Date.now() - SKIP_HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const { data: skipsData } = await sb
+        .from('recommendations')
+        .select('user_id, issues!inner(repo_full_name, repo_language)')
+        .eq('status', 'reassigned')
+        .gte('recommended_at', cutoffDate);
+
+      const skipHistoryMap: Record<string, SkipCounts> = {};
+      for (const row of skipsData ?? []) {
+        const userId = row.user_id;
+        const issue = row.issues as unknown as {
+          repo_full_name: string;
+          repo_language: string | null;
+        };
+
+        if (!skipHistoryMap[userId]) {
+          skipHistoryMap[userId] = { byRepo: {}, byLanguage: {} };
+        }
+
+        const counts = skipHistoryMap[userId];
+        counts.byRepo[issue.repo_full_name] = (counts.byRepo[issue.repo_full_name] ?? 0) + 1;
+
+        if (issue.repo_language) {
+          counts.byLanguage[issue.repo_language] =
+            (counts.byLanguage[issue.repo_language] ?? 0) + 1;
+        }
+      }
+
       let totalInserted = 0;
       for (const u of userList) {
         const level = u.profiles?.level ?? 0;
@@ -88,11 +121,13 @@ export const recommendationsBuild = inngest.createFunction(
           .select('issue_id')
           .eq('user_id', u.user_id);
         const excludeIds = new Set((seen ?? []).map((r) => r.issue_id));
+        const skipCounts = skipHistoryMap[u.user_id];
 
         const picks = filterAndRank(candidates, {
           level,
           excludeIssueIds: excludeIds,
           allowFallback: true,
+          skipCounts,
         });
 
         if (picks.length === 0) continue;

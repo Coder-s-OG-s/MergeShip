@@ -5,12 +5,6 @@ import { RECOMMENDATION_PENALTIES } from './constants';
  * Recommendation pipeline — pure ranking + filtering logic.
  * The async fetch + persist orchestration lives in the server action
  * (src/app/actions/recommendations.ts).
- *
- * Penalty design (Issue #91):
- *   Penalties are SUBTRACTIVE and applied AFTER baseline ranking.
- *   No candidate is ever hard-excluded by a penalty — muted/skipped repos
- *   simply sink to the bottom so they can resurface when the pool is thin.
- *   See src/lib/pipeline/constants.ts for tunable values.
  */
 
 export type ScoredIssue = {
@@ -21,17 +15,11 @@ export type ScoredIssue = {
   difficulty: Difficulty;
   xpReward: number;
   repoHealthScore: number;
-  freshnessHours: number; // hours since issue was opened/updated
+  freshnessHours: number;
   languageMatch: boolean;
-  /** Primary language of the issue's repo (used for language-based penalties). */
   repoLanguage: string | null;
 };
 
-/**
- * Skip counts aggregated per repo and per language over the
- * SKIP_HISTORY_WINDOW_DAYS window. Built in the Inngest build step
- * so the ranking function stays pure and synchronous.
- */
 export type SkipCounts = {
   byRepo: Record<string, number>;
   byLanguage: Record<string, number>;
@@ -41,11 +29,8 @@ export type RecommendOptions = {
   level: number;
   excludeIssueIds: Set<number>;
   allowFallback?: boolean;
-  /** Repos the user explicitly muted (full names). */
   mutedRepos?: readonly string[];
-  /** Languages the user explicitly muted. */
   mutedLanguages?: readonly string[];
-  /** Aggregated skip history for this user (last 30 days). */
   skipCounts?: SkipCounts;
 };
 
@@ -61,24 +46,12 @@ export function mixForLevel(level: number): LevelMix {
   return { E: 0, M: 1, H: 4 };
 }
 
-/**
- * Compute the rank score for a candidate issue.
- *
- * Scoring is two-phase:
- *   1. **Baseline** — repo health, language match, freshness (unchanged).
- *   2. **Penalty** — skip-history and mute penalties subtracted from baseline.
- *
- * Higher = better. Penalties can drive the score negative which is fine —
- * it just means the candidate sinks below un-penalised alternatives.
- */
 function rankScore(issue: ScoredIssue, opts: RecommendOptions): number {
-  // ── Phase 1: baseline (existing logic, untouched) ──────────────
   const baseline =
     issue.repoHealthScore * 1 +
     (issue.languageMatch ? 20 : 0) +
     Math.max(0, 30 - issue.freshnessHours / 24);
 
-  // ── Phase 2: penalties (Issue #91) ─────────────────────────────
   let penalty = 0;
 
   const {
