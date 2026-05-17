@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getInstallOctokit, getUserOctokit } from '@/lib/github/app';
+import { getInstallOctokit } from '@/lib/github/app';
 import { insertXpEvent } from '@/lib/xp/events';
 import { computeAuditScore } from '@/lib/xp/audit';
 import { clampAuditScoreToLevel } from '@/lib/xp/audit-clamp';
@@ -9,7 +9,7 @@ import { sb, wire, step } from './test-helpers';
 
 // Mock external dependencies.
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
-vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn(), getUserOctokit: vi.fn() }));
+vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn() }));
 vi.mock('@/lib/xp/events', () => ({ insertXpEvent: vi.fn() }));
 vi.mock('@/lib/xp/audit', () => ({ computeAuditScore: vi.fn() }));
 vi.mock('@/lib/xp/audit-clamp', () => ({ clampAuditScoreToLevel: vi.fn() }));
@@ -65,6 +65,13 @@ const happy = () => {
 
 describe('auditRun', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('skips when already audited', async () => {
+    wire({
+      profiles: sb({ maybeSingle: vi.fn().mockResolvedValue({ data: { audit_completed: true } }) }),
+    });
+    expect(await run({ event: ev(), step })).toEqual({ skipped: true, reason: 'already_audited' });
+  });
 
   it('leaves normal score alone when below max level', async () => {
     happy();

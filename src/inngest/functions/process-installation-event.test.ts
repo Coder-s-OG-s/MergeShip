@@ -68,4 +68,57 @@ describe('processInstallationEvent', () => {
       }),
     );
   });
+
+  it('suspend sets suspended_at', async () => {
+    const installs = sb({ update: vi.fn().mockReturnThis() });
+    wire({ github_installations: installs });
+
+    await installRun({ event: ev('suspend'), step });
+
+    expect(installs.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        suspended_at: expect.any(String),
+      }),
+    );
+  });
+
+  it('unsuspend clears suspended_at', async () => {
+    const installs = sb({ update: vi.fn().mockReturnThis() });
+    wire({ github_installations: installs });
+
+    await installRun({ event: ev('unsuspend'), step });
+
+    expect(installs.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        suspended_at: null,
+      }),
+    );
+  });
+
+  it('transferred updates account_login and triggers maintainer discover', async () => {
+    const installs = sb({ update: vi.fn().mockReturnThis() });
+    wire({
+      github_installations: installs,
+      github_installation_users: sb({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({
+          data: [{ user_id: 'u1', profiles: { github_handle: 'alice' } }],
+        }),
+      }),
+    });
+
+    await installRun({ event: ev('transferred'), step });
+
+    expect(installs.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account_login: 'myorg',
+      }),
+    );
+    expect(mockSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'maintainer/discover',
+        data: expect.objectContaining({ userId: 'u1', githubHandle: 'alice', force: true }),
+      }),
+    );
+  });
 });
