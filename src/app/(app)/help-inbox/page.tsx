@@ -132,25 +132,29 @@ export default async function HelpInboxPage() {
                   {row.reason && (
                     <p className="mt-1 truncate text-sm text-zinc-400">{row.reason}</p>
                   )}
+                  {row.pr_url && (
+                    <a
+                      href={row.pr_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-block break-all text-sm text-purple-400 hover:underline"
+                    >
+                      {row.pr_url}
+                    </a>
+                  )}
+                </div>
+                {row.pr_url ? (
                   <a
                     href={row.pr_url}
                     target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-block break-all text-sm text-purple-400 hover:underline"
+                    rel="noopener noreferrer"
+                    className="shrink-0 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-500"
                   >
-                    {row.pr_url}
+                    Review on GitHub →
                   </a>
-                </div>
-                <button
-                  onClick={() => {
-                    if (row.pr_url) {
-                      window.open(row.pr_url, '_blank', 'noopener,noreferrer');
-                    }
-                  }}
-                  className="shrink-0 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-500"
-                >
-                  Review on GitHub →
-                </button>
+                ) : (
+                  <span className="shrink-0 text-xs text-zinc-500">No PR link</span>
+                )}
               </li>
             ))}
           </ul>
