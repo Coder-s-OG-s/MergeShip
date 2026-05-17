@@ -10,6 +10,7 @@ import { Redis } from '@upstash/redis';
 interface CacheBackend {
   get<T>(key: string): Promise<T | null>;
   set(key: string, value: unknown, ttlSeconds: number): Promise<void>;
+  incr(key: string, ttlSeconds: number): Promise<number>;
   del(key: string): Promise<void>;
   scanDel(prefix: string): Promise<void>;
 }
@@ -29,6 +30,15 @@ class MemoryBackend implements CacheBackend {
 
   async set(key: string, value: unknown, ttlSeconds: number): Promise<void> {
     this.store.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
+  }
+
+  async incr(key: string, ttlSeconds: number): Promise<number> {
+    const now = Date.now();
+    const hit = this.store.get(key);
+    const current = hit && hit.expiresAt > now && typeof hit.value === 'number' ? hit.value : 0;
+    const next = current + 1;
+    this.store.set(key, { value: next, expiresAt: now + ttlSeconds * 1000 });
+    return next;
   }
 
   async del(key: string): Promise<void> {
@@ -53,6 +63,14 @@ class UpstashBackend implements CacheBackend {
   async set(key: string, value: unknown, ttlSeconds: number): Promise<void> {
     if (ttlSeconds <= 0) return;
     await this.redis.set(key, value, { ex: ttlSeconds });
+  }
+
+  async incr(key: string, ttlSeconds: number): Promise<number> {
+    const count = await this.redis.incr(key);
+    if (count === 1) {
+      await this.redis.expire(key, ttlSeconds);
+    }
+    return count;
   }
 
   async del(key: string): Promise<void> {
@@ -95,6 +113,10 @@ export function cacheGet<T>(key: string): Promise<T | null> {
 
 export function cacheSet(key: string, value: unknown, ttlSeconds: number): Promise<void> {
   return backend.set(key, value, ttlSeconds);
+}
+
+export function cacheIncr(key: string, ttlSeconds: number): Promise<number> {
+  return backend.incr(key, ttlSeconds);
 }
 
 export function cacheDel(key: string): Promise<void> {

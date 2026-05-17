@@ -34,6 +34,15 @@ describe('rateLimit', () => {
     expect(blocked.remaining).toBe(0);
   });
 
+  it('enforces the limit for concurrent requests to the same bucket', async () => {
+    const opts = { namespace: 'test', key: 'burst', limit: 5, windowSec: 60 };
+    const results = await Promise.all(Array.from({ length: 20 }, () => rateLimit(opts)));
+
+    expect(results.filter((result) => result.ok)).toHaveLength(5);
+    expect(results.filter((result) => !result.ok)).toHaveLength(15);
+    expect(results.every((result) => result.resetAt === results[0]?.resetAt)).toBe(true);
+  });
+
   it('separate keys do not share budget', async () => {
     const a = await rateLimit({ namespace: 'test', key: 'a', limit: 1, windowSec: 60 });
     const b = await rateLimit({ namespace: 'test', key: 'b', limit: 1, windowSec: 60 });
