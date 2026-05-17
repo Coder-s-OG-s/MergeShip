@@ -22,6 +22,9 @@ import {
   type CommunityKind,
 } from '@/lib/maintainer/community';
 import { inngest } from '@/inngest/client';
+import { insertXpEvent } from '@/lib/xp/events';
+import { applyCap } from '@/lib/xp/caps';
+import { XP_REWARDS, XP_SOURCE, refIds } from '@/lib/xp/sources';
 
 import { classifyTriage, type IssueTriageBucket } from '@/lib/maintainer/issue-triage';
 
@@ -190,6 +193,7 @@ export async function getMaintainerPrQueue(args: {
       state: r.state as 'open' | 'closed' | 'merged',
       draft: r.draft,
       authorLogin: r.author_login,
+      authorUserId: r.author_user_id,
       authorLevel: author?.level ?? null,
       authorXp: author?.xp ?? null,
       authorMergedPrs: author?.mergedPrs ?? null,
@@ -361,6 +365,97 @@ export async function refreshMaintainerBackfill(
     data: { installationId },
   });
   return ok({ ok: true });
+}
+
+export async function verifyMentorPr(prId: number): Promise<Result<{ xpAwarded: number }>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const limited = await rateLimit({
+    namespace: 'mentor:verify',
+    key: user.id,
+    limit: 20,
+    windowSec: 60,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
+
+  const { data: reviewer } = await service
+    .from('profiles')
+    .select('id, github_handle, level')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (!reviewer) return err('not_found', 'profile not found');
+  if (!reviewer.github_handle) return err('profile_incomplete', 'GitHub handle missing');
+  if ((reviewer.level ?? 0) < 2) {
+    return err('not_authorised', 'L2+ mentors can verify PRs');
+  }
+
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select('id, repo_full_name, number, state, author_user_id, mentor_verified')
+    .eq('id', prId)
+    .maybeSingle();
+  if (!pr) return err('not_found', 'PR not found');
+  if (pr.state !== 'open') return err('invalid_state', 'only open PRs can be verified');
+  if (pr.mentor_verified) return err('already_verified', 'PR is already mentor verified');
+  if (!pr.author_user_id) return err('author_missing', 'PR author is not linked to a profile');
+  if (pr.author_user_id === reviewer.id) {
+    return err('self_verify_blocked', 'you cannot verify your own PR');
+  }
+
+  const dayStartIso = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z').toISOString();
+  const { count: todaysReviewCount } = await service
+    .from('xp_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', reviewer.id)
+    .eq('source', XP_SOURCE.REVIEW)
+    .gte('created_at', dayStartIso);
+
+  const cap = applyCap('review', todaysReviewCount ?? 0, XP_REWARDS.REVIEW);
+  if (!cap.allowed) return err('daily_review_cap_reached', 'daily review XP cap reached');
+
+  const now = new Date().toISOString();
+  const { data: updated, error: updateError } = await service
+    .from('pull_requests')
+    .update({
+      mentor_verified: true,
+      mentor_reviewer_id: reviewer.id,
+      mentor_review_at: now,
+    })
+    .eq('id', pr.id)
+    .eq('mentor_verified', false)
+    .select('id')
+    .maybeSingle();
+  if (updateError) return err('db_error', updateError.message);
+  if (!updated) return err('already_verified', 'PR is already mentor verified');
+
+  const inserted = await insertXpEvent({
+    userId: reviewer.id,
+    source: XP_SOURCE.REVIEW,
+    refType: 'mentor_verify',
+    refId: refIds.review(pr.repo_full_name, pr.number, reviewer.github_handle),
+    repo: pr.repo_full_name,
+    xpDelta: cap.xpDelta,
+    metadata: {
+      manualMentorVerify: true,
+      prId: pr.id,
+      authorUserId: pr.author_user_id,
+    },
+  });
+
+  await inngest.send({
+    name: 'mentor/post-comment',
+    data: { prId: pr.id, reviewerId: reviewer.id },
+  });
+
+  return ok({ xpAwarded: inserted ? cap.xpDelta : 0 });
 }
 
 // ---------------- community links ----------------

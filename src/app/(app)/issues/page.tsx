@@ -40,6 +40,10 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
   };
 
   const service = getServiceSupabase();
+  const { data: profile } = service
+    ? await service.from('profiles').select('level').eq('id', user.id).maybeSingle()
+    : { data: null };
+  const canVerify = (profile?.level ?? 0) >= 2;
 
   // Step 1: fetch recs with linked PRs
   const linkedRecsRaw = service
@@ -66,14 +70,39 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
     }
   }
 
-  const linkedRecs: LinkedRec[] = linkedRecsRaw.map((r: any) => ({
-    id: r.id,
-    linked_pr_url: r.linked_pr_url as string,
-    status: r.status as string,
-    xp_reward: r.xp_reward as number,
-    issue_id: r.issue_id as number,
-    issue: issueMap.get(r.issue_id) ?? null,
-  }));
+  const prMap = new Map<
+    string,
+    { id: number; author_user_id: string | null; mentor_verified: boolean }
+  >();
+  if (linkedRecsRaw.length > 0 && service) {
+    const prUrls = linkedRecsRaw.map((r: any) => r.linked_pr_url).filter(Boolean);
+    const { data: prsData } = await service
+      .from('pull_requests')
+      .select('id, url, author_user_id, mentor_verified')
+      .in('url', prUrls);
+    for (const pr of prsData ?? []) {
+      prMap.set(pr.url, {
+        id: pr.id,
+        author_user_id: pr.author_user_id,
+        mentor_verified: pr.mentor_verified,
+      });
+    }
+  }
+
+  const linkedRecs: LinkedRec[] = linkedRecsRaw.map((r: any) => {
+    const pr = prMap.get(r.linked_pr_url);
+    return {
+      id: r.id,
+      linked_pr_url: r.linked_pr_url as string,
+      status: r.status as string,
+      xp_reward: r.xp_reward as number,
+      issue_id: r.issue_id as number,
+      issue: issueMap.get(r.issue_id) ?? null,
+      pullRequestId: pr?.id ?? null,
+      pullRequestAuthorUserId: pr?.author_user_id ?? null,
+      mentorVerified: pr?.mentor_verified ?? false,
+    };
+  });
 
   const [pageResult, repoResult] = await Promise.all([getIssuesPage(filters), getRepoOptions()]);
 
@@ -93,7 +122,13 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
           <h1 className="font-serif text-4xl text-white">Browse Issues</h1>
         </header>
 
-        {linkedRecs.length > 0 && <MyWorkSection initialRecs={linkedRecs} />}
+        {linkedRecs.length > 0 && (
+          <MyWorkSection
+            initialRecs={linkedRecs}
+            currentUserId={user.id}
+            canVerify={canVerify}
+          />
+        )}
 
         <IssuesList initialData={pageData} initialFilters={filters} repoOptions={repoOptions} />
       </div>

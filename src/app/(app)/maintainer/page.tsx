@@ -10,6 +10,7 @@ import {
 } from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
+import { MentorVerifyButton } from './mentor-verify-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,6 +68,12 @@ export default async function MaintainerPage({
     filters,
   });
   const rows: MaintainerPrRow[] = isOk(queueRes) ? queueRes.data.rows : [];
+  const { data: profile } = await sb
+    .from('profiles')
+    .select('level')
+    .eq('id', user.id)
+    .maybeSingle();
+  const canVerify = (profile?.level ?? 0) >= 2;
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -185,7 +192,7 @@ export default async function MaintainerPage({
                     <span>{relativeTime(r.githubUpdatedAt)}</span>
                   </div>
                 </div>
-                {r.mentorVerified && (
+                {r.mentorVerified ? (
                   <span className="shrink-0 rounded-full bg-emerald-900/40 px-2.5 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-emerald-700/40">
                     ✓ Mentor verified
                     {r.mentorReviewerHandle && (
@@ -195,6 +202,10 @@ export default async function MaintainerPage({
                       </span>
                     )}
                   </span>
+                ) : (
+                  canVerify &&
+                  r.state === 'open' &&
+                  r.authorUserId !== user.id && <MentorVerifyButton prId={r.id} />
                 )}
               </li>
             ))}
