@@ -43,6 +43,17 @@ export type MaintainerIssueRow = {
   triage: IssueTriageBucket;
 };
 
+export type MaintainerFlagRow = {
+  id: number;
+  userId: string | null;
+  githubHandle: string | null;
+  reason: 'daily_event_burst' | 'hourly_merge_burst' | 'review_pair_burst';
+  severity: 'medium' | 'high';
+  status: 'open' | 'resolved' | 'dismissed';
+  evidence: Record<string, unknown>;
+  createdAt: string;
+};
+
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
   'needs-triage',
   'in-progress',
@@ -332,6 +343,58 @@ export async function getMaintainerIssueQueue(args: {
 
   const pageRows = filtered.slice(0, PAGE_SIZE);
   return ok({ rows: pageRows, hasMore: filtered.length > PAGE_SIZE });
+}
+
+export async function getMaintainerFlags(limit = 10): Promise<Result<MaintainerFlagRow[]>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  type RawFlag = {
+    id: number;
+    user_id: string | null;
+    reason: MaintainerFlagRow['reason'];
+    severity: MaintainerFlagRow['severity'];
+    status: MaintainerFlagRow['status'];
+    evidence: Record<string, unknown>;
+    created_at: string;
+    profiles: { github_handle?: string | null } | { github_handle?: string | null }[] | null;
+  };
+
+  const { data, error } = await service
+    .from('flagged_accounts')
+    .select('id, user_id, reason, severity, status, evidence, created_at, profiles(github_handle)')
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(Math.max(1, Math.min(50, limit)));
+
+  if (error) return err('db_error', error.message);
+
+  const rows = ((data ?? []) as RawFlag[]).map((row) => {
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+    return {
+      id: row.id,
+      userId: row.user_id,
+      githubHandle: profile?.github_handle ?? null,
+      reason: row.reason,
+      severity: row.severity,
+      status: row.status,
+      evidence: row.evidence ?? {},
+      createdAt: row.created_at,
+    };
+  });
+
+  return ok(rows);
 }
 
 export async function refreshMaintainerBackfill(
