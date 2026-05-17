@@ -21,6 +21,7 @@ import { githubStatsSync } from '@/inngest/functions/github-stats-sync';
 import { mentorPostComment } from '@/inngest/functions/mentor-post-comment';
 import { processIssueEvent } from '@/inngest/functions/process-issue-event';
 import { processIssueCommentEvent } from '@/inngest/functions/process-issue-comment-event';
+import { suspiciousXpAudit } from '@/inngest/functions/suspicious-xp-audit';
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -44,5 +45,6 @@ export const { GET, POST, PUT } = serve({
     mentorPostComment,
     processIssueEvent,
     processIssueCommentEvent,
+    suspiciousXpAudit,
   ],
 });
