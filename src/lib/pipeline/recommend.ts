@@ -61,6 +61,13 @@ function rankScore(issue: ScoredIssue, opts: RecommendOptions): number {
     if (repoSkips >= RECOMMENDATION_PENALTIES.REPO_SKIP_THRESHOLD) {
       penalty += RECOMMENDATION_PENALTIES.REPO_SKIP_PENALTY;
     }
+
+    if (issue.repoLanguage) {
+      const langSkips = opts.skipCounts.byLanguage[issue.repoLanguage] ?? 0;
+      if (langSkips >= RECOMMENDATION_PENALTIES.LANGUAGE_SKIP_THRESHOLD) {
+        penalty += RECOMMENDATION_PENALTIES.LANGUAGE_SKIP_PENALTY;
+      }
+    }
   }
 
   return baseline - penalty;
