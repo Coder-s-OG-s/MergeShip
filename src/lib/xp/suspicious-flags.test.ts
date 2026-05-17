@@ -37,6 +37,21 @@ describe('detectSuspiciousXpPatterns', () => {
     });
   });
 
+  it('escalates daily XP bursts to high severity when volume doubles the threshold', () => {
+    const events = Array.from({ length: XP_FLAG_THRESHOLDS.dailyEventCount * 2 }, (_, index) =>
+      xp({ id: index + 1, refId: `comment-${index + 1}` }),
+    );
+
+    const flags = detectSuspiciousXpPatterns({ xpEvents: events });
+
+    expect(flags).toHaveLength(1);
+    expect(flags[0]).toMatchObject({
+      userId: 'user-1',
+      reason: 'daily_event_burst',
+      severity: 'high',
+    });
+  });
+
   it('does not flag daily events at the threshold boundary or penalty events', () => {
     const events = [
       ...Array.from({ length: XP_FLAG_THRESHOLDS.dailyEventCount }, (_, index) =>
