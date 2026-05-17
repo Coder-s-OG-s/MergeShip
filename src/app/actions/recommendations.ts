@@ -194,6 +194,7 @@ export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<
 
 export async function skipRecommendation(
   recId: number,
+  skipReason?: string,
 ): Promise<Result<{ id: number; replacement: RecCard | null }>> {
   const sb = getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
@@ -214,9 +215,14 @@ export async function skipRecommendation(
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 
   // Atomic skip with the issue id so we know what tier to refill from.
+  // Persist the optional skip_reason alongside the status change.
+  const updatePayload: Record<string, unknown> = { status: 'reassigned' };
+  if (skipReason?.trim()) {
+    updatePayload.skip_reason = skipReason.trim().slice(0, 500);
+  }
   const { data, error: updateErr } = await service
     .from('recommendations')
-    .update({ status: 'reassigned' })
+    .update(updatePayload)
     .eq('id', recId)
     .eq('user_id', user.id)
     .eq('status', 'open')

@@ -3,10 +3,10 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { inngest } from '@/inngest/client';
+import { rateLimit } from '@/lib/rate-limit';
 import { ok, err, type Result } from '@/lib/result';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { rateLimit } from '@/lib/rate-limit';
 
 type BootstrapOutput = {
   profileId: string;
@@ -38,6 +38,7 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
   const githubId = String(identity.id);
   const githubHandle = (identity.identity_data?.['user_name'] ??
     identity.identity_data?.['preferred_username']) as string | undefined;
+
   if (!githubHandle) return err('no_github_handle', 'GitHub handle missing from identity');
 
   const avatarUrl = identity.identity_data?.['avatar_url'] as string | undefined;
@@ -68,8 +69,10 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
   }
 
   let auditQueued = false;
+
   if (!profile.audit_completed) {
     const providerToken = (await sb.auth.getSession()).data.session?.provider_token;
+
     if (providerToken) {
       await inngest.send({
         name: 'audit/run',
@@ -80,6 +83,7 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
           accessToken: providerToken,
         },
       });
+
       auditQueued = true;
     }
   }
@@ -108,6 +112,60 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
   });
 }
 
+/**
+ * Updates or clears the user's mute preferences.
+ * Pass empty arrays to clear preferences.
+ */
+export async function updateMutePreferences(
+  mutedRepos: string[],
+  mutedLanguages: string[],
+): Promise<Result<void>> {
+  const sb = getServerSupabase();
+
+  if (!sb) {
+    return err('not_configured', 'auth not configured');
+  }
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+
+  if (!user) {
+    return err('not_authenticated', 'sign in first');
+  }
+
+  const rateRes = await rateLimit({
+    namespace: 'profile:mute',
+    key: user.id,
+    limit: 10,
+    windowSec: 60,
+  });
+
+  if (!rateRes.ok) {
+    return err('rate_limited', 'slow down', true);
+  }
+
+  const service = getServiceSupabase();
+
+  if (!service) {
+    return err('not_configured', 'service role not configured');
+  }
+
+  const { error: updateErr } = await service
+    .from('profiles')
+    .update({
+      muted_repos: mutedRepos,
+      muted_languages: mutedLanguages,
+    })
+    .eq('id', user.id);
+
+  if (updateErr) {
+    return err('persist_failed', updateErr.message);
+  }
+
+  return ok(undefined);
+}
+
 // ============================================================================
 // Profile Update Action
 // ============================================================================
@@ -115,8 +173,20 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
 // Validation schema for profile updates
 const profileUpdateSchema = z.object({
   bio: z.string().max(280, 'Bio must be 280 characters or less').optional().nullable(),
-  skills: z.array(z.string()).max(10, 'Maximum 10 skills allowed').optional().nullable(),
-  website_url: z.string().url('Please enter a valid URL').optional().nullable().or(z.literal('')),
+
+  skills: z
+    .array(z.string())
+    .max(10, 'Maximum 10 skills allowed')
+    .optional()
+    .nullable(),
+
+  website_url: z
+    .string()
+    .url('Please enter a valid URL')
+    .optional()
+    .nullable()
+    .or(z.literal('')),
+
   twitter_handle: z
     .string()
     .regex(/^[A-Za-z0-9_]{1,15}$/, 'Invalid Twitter handle (no @ symbol, max 15 chars)')
@@ -130,8 +200,11 @@ export type ProfileUpdateData = z.infer<typeof profileUpdateSchema>;
 /**
  * Update user profile information (bio, skills, social links)
  */
-export async function updateProfile(data: ProfileUpdateData): Promise<Result<{ message: string }>> {
+export async function updateProfile(
+  data: ProfileUpdateData,
+): Promise<Result<{ message: string }>> {
   const sb = getServerSupabase();
+
   if (!sb) {
     return err('not_configured', 'Authentication not configured');
   }
