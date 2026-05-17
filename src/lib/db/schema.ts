@@ -50,6 +50,10 @@ export const profiles = pgTable(
     mutedLanguages: text('muted_languages').array().default([]).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    bio: text('bio'),
+    skills: text('skills').array(),
+    websiteUrl: text('website_url'),
+    twitterHandle: text('twitter_handle'),
   },
   (t) => ({
     xpDescIdx: index('profiles_xp_desc_idx').on(t.xp),
@@ -461,5 +465,32 @@ export const orgCommunities = pgTable(
       t.kind,
     ),
     installIdx: index('org_communities_install_idx').on(t.installationId),
+  }),
+);
+
+// ---------- failed webhook events (dead letter queue) ----------
+
+export const failedWebhookEvents = pgTable(
+  'failed_webhook_events',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+
+    deliveryId: text('delivery_id').notNull(),
+
+    eventType: text('event_type').notNull(),
+
+    source: text('source').notNull(), // e.g. github/pull_request
+
+    payload: jsonb('payload').notNull(),
+
+    error: text('error').notNull(),
+
+    retryCount: integer('retry_count').notNull().default(0),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    deliveryIdx: index('failed_webhook_delivery_idx').on(t.deliveryId),
+    eventTypeIdx: index('failed_webhook_event_type_idx').on(t.eventType),
   }),
 );

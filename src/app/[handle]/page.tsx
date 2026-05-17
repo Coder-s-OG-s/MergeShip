@@ -3,6 +3,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
+import { CopyButton } from '@/components/copy-button';
 
 export const revalidate = 300;
 
@@ -337,7 +338,12 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                     {levelLabel(profile.level)}
                   </span>
                 </div>
-                <p className="mb-3 text-[13px] text-zinc-500">@{profile.githubHandle}</p>
+                <p className="mb-3 text-[13px] text-zinc-500">
+                  @{profile.githubHandle}
+                  <CopyButton
+                    textToCopy={`${process.env.NEXT_PUBLIC_APP_URL ?? 'https://mergeship.dev'}/@${profile.githubHandle}`}
+                  />
+                </p>
                 <div className="flex flex-wrap items-center gap-4 text-[11px] uppercase tracking-widest text-zinc-400">
                   <span>
                     <span className="font-bold text-white">{profile.prsMerged}</span> PRS MERGED
@@ -516,6 +522,7 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                           href={task.url}
                           target="_blank"
                           rel="noopener noreferrer"
+                          aria-label={`Open ${task.repoFullName} #${task.issueNumber} on GitHub`}
                           className="text-zinc-500 hover:text-zinc-300"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
