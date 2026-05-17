@@ -93,14 +93,17 @@ export const processPrEvent = inngest.createFunction(
       const sb = getServiceSupabase();
 
       if (sb) {
-        await sb.from('failed_webhook_events').insert({
-          deliveryId: event.data.deliveryId,
-          eventType: 'github/pull_request',
+        const { error: insertError } = await sb.from('failed_webhook_events').insert({
+          delivery_id: event.data.deliveryId,
+          event_type: 'github/pull_request',
           source: 'inngest',
           payload: event.data,
           error: (err as Error).message,
-          retryCount: attempt,
+          retry_count: attempt,
         });
+        if (insertError) {
+          console.error('failed to record dead-letter event:', insertError.message);
+        }
       }
 
       throw err; // IMPORTANT → keeps Inngest retry working
