@@ -70,6 +70,14 @@ function rankScore(issue: ScoredIssue, opts: RecommendOptions): number {
     }
   }
 
+  // Mute-preference penalties (explicit user preference).
+  if (opts.mutedRepos?.includes(issue.repoFullName)) {
+    penalty += RECOMMENDATION_PENALTIES.MUTED_REPO_PENALTY;
+  }
+  if (issue.repoLanguage && opts.mutedLanguages?.includes(issue.repoLanguage)) {
+    penalty += RECOMMENDATION_PENALTIES.MUTED_LANGUAGE_PENALTY;
+  }
+
   return baseline - penalty;
 }
 
