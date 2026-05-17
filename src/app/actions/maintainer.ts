@@ -22,6 +22,8 @@ import {
   type CommunityKind,
 } from '@/lib/maintainer/community';
 import { inngest } from '@/inngest/client';
+import { getInstallOctokit } from '@/lib/github/app';
+import { cacheGet, cacheSet } from '@/lib/cache';
 
 import { classifyTriage, type IssueTriageBucket } from '@/lib/maintainer/issue-triage';
 
@@ -492,6 +494,87 @@ export async function deleteCommunityLink(linkId: number): Promise<Result<{ ok: 
 
   await service.from('org_communities').delete().eq('id', linkId);
   return ok({ ok: true });
+}
+
+export async function getPrCiStatus(
+  installationId: number,
+  repoFullName: string,
+  prNumber: number,
+): Promise<Result<'passing' | 'failing' | 'pending' | null>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const cacheKey = `ci:status:${repoFullName}:${prNumber}`;
+  const cached = await cacheGet<'passing' | 'failing' | 'pending' | null>(cacheKey);
+  if (cached !== null) {
+    return ok(cached);
+  }
+
+  // Fallback for local development using mock/demo seed repositories or if App Credentials are not configured
+  if (repoFullName.startsWith('demo/') || !process.env.GITHUB_APP_ID) {
+    const mockStatuses: ('passing' | 'failing' | 'pending')[] = ['passing', 'failing', 'pending'];
+    const status = mockStatuses[prNumber % mockStatuses.length]!;
+    await cacheSet(cacheKey, status, 120);
+    return ok(status);
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    const [owner, repo] = repoFullName.split('/');
+    if (!owner || !repo) {
+      return ok(null);
+    }
+
+    // Fetch the pull request to get the head SHA.
+    const prRes = await octokit.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
+    });
+    const headSha = prRes.data.head.sha;
+
+    // Fetch check runs for the head SHA.
+    const checksRes = await octokit.checks.listForRef({
+      owner,
+      repo,
+      ref: headSha,
+    });
+
+    const checkRuns = checksRes.data.check_runs ?? [];
+    let status: 'passing' | 'failing' | 'pending' | null = null;
+
+    if (checkRuns.length > 0) {
+      const hasPending = checkRuns.some((run) => run.status !== 'completed');
+      const hasFailed = checkRuns.some(
+        (run) =>
+          run.status === 'completed' &&
+          ['failure', 'timed_out', 'action_required'].includes(run.conclusion || ''),
+      );
+
+      if (hasFailed) {
+        status = 'failing';
+      } else if (hasPending) {
+        status = 'pending';
+      } else {
+        status = 'passing';
+      }
+    }
+
+    await cacheSet(cacheKey, status, 120);
+    return ok(status);
+  } catch (error) {
+    // Fall back to no badge
+    return ok(null);
+  }
 }
 
 // (COMMUNITY_KINDS is imported directly from '@/lib/maintainer/community'

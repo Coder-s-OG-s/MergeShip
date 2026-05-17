@@ -10,6 +10,7 @@ import {
 } from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
+import CiStatusBadge from './ci-status-badge';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,7 +158,12 @@ export default async function MaintainerPage({
                 className="flex items-start gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-4"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CiStatusBadge
+                      installationId={activeInstallId}
+                      repoFullName={r.repoFullName}
+                      prNumber={r.number}
+                    />
                     <a
                       href={r.url}
                       target="_blank"
