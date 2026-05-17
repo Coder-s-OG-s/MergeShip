@@ -161,7 +161,7 @@ export async function updateProfile(data: ProfileUpdateData): Promise<Result<{ m
   const validation = profileUpdateSchema.safeParse(data);
 
   if (!validation.success) {
-    return err('validation_failed', 'Please check your input and try again');
+    return err('validation_failed', JSON.stringify(validation.error.flatten().fieldErrors));
   }
 
   const validatedData = validation.data;
@@ -172,6 +172,7 @@ export async function updateProfile(data: ProfileUpdateData): Promise<Result<{ m
     skills: validatedData.skills || [],
     website_url: validatedData.website_url || null,
     twitter_handle: validatedData.twitter_handle || null,
+    updated_at: new Date().toISOString(),
   };
 
   // Update the profile in the database

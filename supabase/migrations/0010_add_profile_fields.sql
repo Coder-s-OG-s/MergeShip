@@ -1,4 +1,3 @@
-
 -- Bio text (like a short description about yourself)
 ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS bio TEXT;
@@ -15,9 +14,18 @@ ADD COLUMN IF NOT EXISTS website_url TEXT;
 ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS twitter_handle TEXT;
 
--- Make sure website URLs are actually valid URLs
-ALTER TABLE profiles
-ADD CONSTRAINT website_url_format CHECK (
-  website_url IS NULL OR 
-  website_url ~* '^https?://[^\s/$.?#].[^\s]*$'
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'website_url_format'
+  ) THEN
+    ALTER TABLE profiles
+    ADD CONSTRAINT website_url_format
+    CHECK (
+      website_url IS NULL
+      OR website_url ~* '^https?://.+'
+    );
+  END IF;
+END $$;
