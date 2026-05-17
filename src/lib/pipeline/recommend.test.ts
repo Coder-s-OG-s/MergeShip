@@ -11,6 +11,7 @@ const issue = (over: Partial<ScoredIssue>): ScoredIssue => ({
   repoHealthScore: 60,
   freshnessHours: 24,
   languageMatch: false,
+  repoLanguage: null,
   ...over,
 });
 
