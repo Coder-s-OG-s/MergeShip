@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { ExternalLink, Pencil, X } from 'lucide-react';
 import { linkPrToRec, unlinkPrFromRec, unclaimRecommendation } from '@/app/actions/recommendations';
+import { MentorVerifyButton } from '../maintainer/mentor-verify-button';
 
 export type LinkedRec = {
   id: number;
@@ -11,6 +12,9 @@ export type LinkedRec = {
   xp_reward: number;
   issue_id: number;
   issue: { title: string; repo_full_name: string; url: string } | null;
+  pullRequestId: number | null;
+  pullRequestAuthorUserId: string | null;
+  mentorVerified: boolean;
 };
 
 const STATUS_CLS: Record<string, string> = {
@@ -20,7 +24,15 @@ const STATUS_CLS: Record<string, string> = {
   reassigned: 'border-zinc-700 text-zinc-500',
 };
 
-export function MyWorkSection({ initialRecs }: { initialRecs: LinkedRec[] }) {
+export function MyWorkSection({
+  initialRecs,
+  currentUserId,
+  canVerify,
+}: {
+  initialRecs: LinkedRec[];
+  currentUserId: string;
+  canVerify: boolean;
+}) {
   const [recs, setRecs] = useState(initialRecs);
 
   function onUnlink(id: number) {
@@ -51,6 +63,8 @@ export function MyWorkSection({ initialRecs }: { initialRecs: LinkedRec[] }) {
             onUnlink={() => onUnlink(rec.id)}
             onUnclaim={() => onUnclaim(rec.id)}
             onRelink={(url) => onRelinkd(rec.id, url)}
+            currentUserId={currentUserId}
+            canVerify={canVerify}
           />
         ))}
       </div>
@@ -63,11 +77,15 @@ function WorkItem({
   onUnlink,
   onUnclaim,
   onRelink,
+  currentUserId,
+  canVerify,
 }: {
   rec: LinkedRec;
   onUnlink: () => void;
   onUnclaim: () => void;
   onRelink: (url: string) => void;
+  currentUserId: string;
+  canVerify: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editUrl, setEditUrl] = useState(rec.linked_pr_url);
@@ -185,22 +203,30 @@ function WorkItem({
         <div className="mb-2 text-[10px] uppercase tracking-widest text-red-400">{error}</div>
       )}
 
-      <div className="flex items-center gap-4">
-        <button
-          onClick={handleUnlink}
-          disabled={pending}
-          className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-400 disabled:opacity-40"
-        >
-          <X className="mr-1 inline h-3 w-3" />
-          UNLINK PR
-        </button>
-        <button
-          onClick={handleUnclaim}
-          disabled={pending}
-          className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-red-400 disabled:opacity-40"
-        >
-          UNCLAIM ISSUE
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleUnlink}
+            disabled={pending}
+            className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-400 disabled:opacity-40"
+          >
+            <X className="mr-1 inline h-3 w-3" />
+            UNLINK PR
+          </button>
+          <button
+            onClick={handleUnclaim}
+            disabled={pending}
+            className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-red-400 disabled:opacity-40"
+          >
+            UNCLAIM ISSUE
+          </button>
+        </div>
+        {canVerify &&
+          rec.pullRequestId !== null &&
+          !rec.mentorVerified &&
+          rec.pullRequestAuthorUserId !== currentUserId && (
+            <MentorVerifyButton prId={rec.pullRequestId} />
+          )}
       </div>
     </div>
   );
