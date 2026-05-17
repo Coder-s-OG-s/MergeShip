@@ -102,6 +102,7 @@ export const recommendationsBuild = inngest.createFunction(
         // Build per-user candidates so languageMatch reflects this user's
         // primary_language. Pool is shared; only the language flag varies.
         const candidates: ScoredIssue[] = rawPool.map((i) => ({
+          repoLanguage: i.repo_language,
           id: i.id,
           repoFullName: i.repo_full_name,
           number: i.github_issue_number,
