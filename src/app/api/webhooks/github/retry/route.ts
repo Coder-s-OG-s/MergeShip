@@ -43,10 +43,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'not found' }, { status: 404 });
   }
 
+  // Guard against corrupted or missing event_type values.
+  // Valid types follow the 'github/<event>' pattern set by the main
+  // webhook handler in route.ts (e.g. 'github/pull_request',
+  // 'github/installation', 'github/issues').
+  const eventType: string | undefined = failedEvent.event_type;
+  if (!eventType || !eventType.startsWith('github/')) {
+    return NextResponse.json(
+      { error: 'invalid event_type', event_type: eventType ?? null },
+      { status: 422 },
+    );
+  }
+
   await inngest.send({
-    name: 'github/pull_request',
+    name: eventType,
     data: failedEvent.payload,
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, event_type: eventType });
 }
