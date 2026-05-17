@@ -105,3 +105,43 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
     auditQueued,
   });
 }
+
+/**
+ * Updates or clears the user's mute preferences (Issue #91).
+ * Pass empty arrays to clear preferences.
+ */
+export async function updateMutePreferences(
+  mutedRepos: string[],
+  mutedLanguages: string[],
+): Promise<Result<void>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const rateRes = await rateLimit({
+    namespace: 'profile:mute',
+    key: user.id,
+    limit: 10,
+    windowSec: 60,
+  });
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true);
+
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role not configured');
+
+  const { error: updateErr } = await service
+    .from('profiles')
+    .update({
+      muted_repos: mutedRepos,
+      muted_languages: mutedLanguages,
+    })
+    .eq('id', user.id);
+
+  if (updateErr) return err('persist_failed', updateErr.message);
+
+  return ok(undefined);
+}
