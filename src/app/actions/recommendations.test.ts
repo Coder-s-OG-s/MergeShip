@@ -69,6 +69,8 @@ import {
   unlinkPrFromRec,
   unclaimRecommendation,
 } from './recommendations';
+import { getServerSupabase } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/service';
 
 const mockDbLimit = vi.fn();
 const mockDbOrderBy = vi.fn(() => ({ limit: mockDbLimit }));
@@ -162,6 +164,29 @@ describe('Recommendations Server Actions', () => {
 
       expect(result).toEqual({ ok: true, data: [] });
     });
+
+    it('returns not_configured error if auth is not configured', async () => {
+      vi.mocked(getServerSupabase).mockReturnValueOnce(
+        null as unknown as ReturnType<typeof getServerSupabase>,
+      );
+      const result = await getRecommendations();
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('not_configured');
+    });
+
+    it('returns not_authenticated error if user is not signed in', async () => {
+      mocks.mockGetUser.mockResolvedValueOnce({ data: { user: null } });
+      const result = await getRecommendations();
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('not_authenticated');
+    });
+
+    it('returns rate_limited error if limit exceeded', async () => {
+      mocks.mockRateLimit.mockResolvedValueOnce({ ok: false });
+      const result = await getRecommendations();
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('rate_limited');
+    });
   });
 
   describe('claimRecommendation', () => {
@@ -199,6 +224,25 @@ describe('Recommendations Server Actions', () => {
       if (!result.ok) {
         expect(result.error.code).toBe('claim_limit');
       }
+    });
+
+    it('returns not_configured error if service role missing', async () => {
+      vi.mocked(getServiceSupabase).mockReturnValueOnce(
+        null as unknown as ReturnType<typeof getServiceSupabase>,
+      );
+      const result = await claimRecommendation(1);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('not_configured');
+    });
+
+    it('returns persist_failed error if update fails', async () => {
+      mocks.mockServiceFrom
+        .mockReturnValueOnce(createMockChain({ count: 0 })) // count claims
+        .mockReturnValueOnce(createMockChain(null, { data: null, error: new Error('DB Error') }));
+
+      const result = await claimRecommendation(1);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('persist_failed');
     });
   });
 
@@ -309,6 +353,15 @@ describe('Recommendations Server Actions', () => {
 
       expect(result).toEqual({ ok: true, data: { id: 1 } });
       expect(mocks.mockCacheDel).toHaveBeenCalledWith('recs:test-user-id');
+    });
+
+    it('returns not_found if recommendation not found', async () => {
+      mocks.mockServiceFrom.mockReturnValueOnce(createMockChain(null, { data: null, error: null }));
+
+      const result = await unlinkPrFromRec(1);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('not_found');
     });
   });
 
