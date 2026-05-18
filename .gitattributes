@@ -1,0 +1,12 @@
+# Normalize line endings for all text files
+* text=auto
+
+# Force LF for code files (prevents CRLF issues on Windows)
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
