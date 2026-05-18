@@ -288,6 +288,29 @@ const EVENT_DOT: Record<string, string> = {
 
 const DIFFICULTY_LABEL: Record<string, string> = { E: 'L1', M: 'L2', H: 'L3' };
 
+export async function generateMetadata({ params }: { params: { handle: string } }) {
+  const handle = decodeURIComponent(params.handle).replace(/^@/, '');
+
+  const profile = await loadProfileData(handle);
+
+  if (!profile) {
+    return {
+      title: 'Profile not found | MergeShip',
+      description: 'This profile does not exist.',
+    };
+  }
+
+  return {
+    title: `${profile.displayName ?? profile.githubHandle} | MergeShip`,
+    description: `Level ${profile.level} • ${profile.xp} XP • ${profile.prsMerged} PRs merged`,
+    openGraph: {
+      title: `${profile.displayName ?? profile.githubHandle} | MergeShip`,
+      description: `Level ${profile.level} • ${profile.xp} XP • ${profile.prsMerged} PRs merged`,
+      images: [profile.avatarUrl ?? `https://github.com/${profile.githubHandle}.png`],
+    },
+  };
+}
+
 export default async function PublicProfile({ params }: { params: { handle: string } }) {
   const handle = decodeURIComponent(params.handle).replace(/^@/, '');
   const profile = await loadProfileData(handle);
