@@ -4,12 +4,20 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
+import { cacheGet, cacheSet } from '@/lib/cache';
 import {
   isUserMaintainer,
   listMaintainerInstalls,
   listMaintainerRepos,
   type MaintainerInstall,
 } from '@/lib/maintainer/detect';
+import {
+  buildMaintainerAnalytics,
+  type MaintainerAnalytics,
+  type PrAnalyticsRow,
+  type ProfileAnalyticsRow,
+  type RecommendationAnalyticsRow,
+} from '@/lib/maintainer/analytics';
 import {
   comparePrRows,
   validateFilters,
@@ -51,6 +59,7 @@ const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
 ]);
 
 const PAGE_SIZE = 25;
+const ANALYTICS_TTL_S = 30 * 60;
 
 export async function getMaintainerInstalls(): Promise<Result<MaintainerInstall[]>> {
   const sb = getServerSupabase();
@@ -332,6 +341,116 @@ export async function getMaintainerIssueQueue(args: {
 
   const pageRows = filtered.slice(0, PAGE_SIZE);
   return ok({ rows: pageRows, hasMore: filtered.length > PAGE_SIZE });
+}
+
+export async function getMaintainerAnalytics(args: {
+  installationId: number;
+}): Promise<Result<MaintainerAnalytics>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const limited = await rateLimit({
+    namespace: 'maint:analytics',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) {
+    return ok(buildMaintainerAnalytics({ prs: [], recommendations: [], profiles: [] }));
+  }
+
+  const cacheKey = `maint:analytics:${user.id}:${args.installationId}`;
+  const cached = await cacheGet<MaintainerAnalytics>(cacheKey);
+  if (cached) return ok(cached);
+
+  const since = new Date(Date.now() - 12 * 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  type RawPrAnalyticsRow = {
+    id: number;
+    state: 'open' | 'closed' | 'merged';
+    author_user_id: string | null;
+    github_created_at: string;
+    github_updated_at: string;
+    merged_at: string | null;
+  };
+
+  const { data: prRows } = await service
+    .from('pull_requests')
+    .select('id, state, author_user_id, github_created_at, github_updated_at, merged_at')
+    .in('repo_full_name', repos)
+    .or(`github_updated_at.gte.${since},merged_at.gte.${since}`);
+
+  type RawRecommendationRow = {
+    xp_reward: number;
+    completed_at: string | null;
+    issues?: { repo_full_name?: string | null } | { repo_full_name?: string | null }[] | null;
+  };
+
+  const { data: recRows } = await service
+    .from('recommendations')
+    .select('xp_reward, completed_at, issues!inner(repo_full_name)')
+    .eq('status', 'completed')
+    .gte('completed_at', since)
+    .in('issues.repo_full_name', repos);
+
+  const authorIds = Array.from(
+    new Set(
+      ((prRows ?? []) as RawPrAnalyticsRow[])
+        .map((row) => row.author_user_id)
+        .filter((id): id is string => !!id),
+    ),
+  );
+
+  type RawProfileRow = {
+    id: string;
+    level: number | null;
+    created_at: string;
+  };
+
+  const { data: profileRows } =
+    authorIds.length > 0
+      ? await service.from('profiles').select('id, level, created_at').in('id', authorIds)
+      : { data: [] };
+
+  const prs: PrAnalyticsRow[] = ((prRows ?? []) as RawPrAnalyticsRow[]).map((row) => ({
+    id: row.id,
+    state: row.state,
+    authorUserId: row.author_user_id,
+    githubCreatedAt: row.github_created_at,
+    githubUpdatedAt: row.github_updated_at,
+    mergedAt: row.merged_at,
+  }));
+
+  const recommendations: RecommendationAnalyticsRow[] = (
+    (recRows ?? []) as RawRecommendationRow[]
+  ).map((row) => ({
+    xpReward: row.xp_reward ?? 0,
+    completedAt: row.completed_at,
+  }));
+
+  const profiles: ProfileAnalyticsRow[] = ((profileRows ?? []) as RawProfileRow[]).map((row) => ({
+    id: row.id,
+    level: row.level,
+    createdAt: row.created_at,
+  }));
+
+  const analytics = buildMaintainerAnalytics({ prs, recommendations, profiles });
+  await cacheSet(cacheKey, analytics, ANALYTICS_TTL_S);
+  return ok(analytics);
 }
 
 export async function refreshMaintainerBackfill(

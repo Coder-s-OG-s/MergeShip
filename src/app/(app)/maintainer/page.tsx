@@ -3,11 +3,13 @@ import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
+  getMaintainerAnalytics,
   getMaintainerInstalls,
   getMaintainerPrQueue,
   type MaintainerInstall,
   type MaintainerPrRow,
 } from '@/app/actions/maintainer';
+import type { MaintainerAnalytics } from '@/lib/maintainer/analytics';
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
 
@@ -67,6 +69,8 @@ export default async function MaintainerPage({
     filters,
   });
   const rows: MaintainerPrRow[] = isOk(queueRes) ? queueRes.data.rows : [];
+  const analyticsRes = await getMaintainerAnalytics({ installationId: activeInstallId });
+  const analytics: MaintainerAnalytics | null = isOk(analyticsRes) ? analyticsRes.data : null;
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -145,6 +149,8 @@ export default async function MaintainerPage({
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
 
+        {analytics && <AnalyticsPanel analytics={analytics} installationId={activeInstallId} />}
+
         {rows.length === 0 ? (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-zinc-400">
             No PRs match your filters. Try widening state or running a refresh.
@@ -201,6 +207,134 @@ export default async function MaintainerPage({
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+function AnalyticsPanel({
+  analytics,
+  installationId,
+}: {
+  analytics: MaintainerAnalytics;
+  installationId: number;
+}) {
+  const maxMerged = Math.max(1, ...analytics.weekly.map((point) => point.mergedPrs));
+  const maxXp = Math.max(1, ...analytics.weekly.map((point) => point.xpDistributed));
+
+  return (
+    <section className="mb-8">
+      <div className="mb-3 flex items-end justify-between gap-4">
+        <div>
+          <h2 className="font-display text-xl font-semibold">Analytics trends</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            Cached for 30 minutes · generated {relativeTime(analytics.generatedAt)}
+          </p>
+        </div>
+        <Link
+          href={`/maintainer/issues?install=${installationId}`}
+          className="hidden rounded-lg border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:border-zinc-600 sm:inline-flex"
+        >
+          Review issue health →
+        </Link>
+      </div>
+
+      <div className="mb-4 grid gap-3 md:grid-cols-4">
+        <MetricCard label="Merged PRs / 12w" value={analytics.totals.mergedPrs12w} />
+        <MetricCard label="Avg merge rate" value={`${analytics.totals.mergeRatePerWeek}/wk`} />
+        <MetricCard
+          label="XP distributed"
+          value={analytics.totals.xpDistributed12w.toLocaleString()}
+        />
+        <MetricCard label="Active contributors" value={analytics.totals.activeContributors12w} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-zinc-100">Weekly merge rate</h3>
+            <span className="text-xs text-zinc-500">last 12 weeks</span>
+          </div>
+          <div className="flex h-40 items-end gap-2">
+            {analytics.weekly.map((point) => (
+              <div key={point.start} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                <div
+                  className="w-full rounded-t bg-emerald-400/80"
+                  style={{ height: `${Math.max(4, (point.mergedPrs / maxMerged) * 100)}%` }}
+                  title={`${point.label}: ${point.mergedPrs} merged PRs`}
+                />
+                <span className="max-w-full truncate text-[10px] text-zinc-600">{point.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-zinc-100">XP distributed per week</h3>
+            <span className="text-xs text-zinc-500">completed recommendations</span>
+          </div>
+          <div className="flex h-40 items-end gap-2">
+            {analytics.weekly.map((point) => (
+              <div key={point.start} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                <div
+                  className="w-full rounded-t bg-sky-400/80"
+                  style={{ height: `${Math.max(4, (point.xpDistributed / maxXp) * 100)}%` }}
+                  title={`${point.label}: ${point.xpDistributed} XP`}
+                />
+                <span className="max-w-full truncate text-[10px] text-zinc-600">{point.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-100">Contributor level distribution</h3>
+          <span className="text-xs text-zinc-500">monthly cohort view</span>
+        </div>
+        <div className="space-y-3">
+          {analytics.levelDistribution.map((point) => (
+            <StackedLevelRow key={point.monthStart} point={point} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MetricCard({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+      <div className="text-[10px] uppercase tracking-widest text-zinc-500">{label}</div>
+      <div className="mt-2 font-display text-2xl font-bold text-white">{value}</div>
+    </div>
+  );
+}
+
+function StackedLevelRow({ point }: { point: MaintainerAnalytics['levelDistribution'][number] }) {
+  const total = point.l0 + point.l1 + point.l2 + point.l3Plus;
+  const segments = [
+    { label: 'L0', value: point.l0, color: 'bg-zinc-600' },
+    { label: 'L1', value: point.l1, color: 'bg-emerald-500' },
+    { label: 'L2', value: point.l2, color: 'bg-sky-500' },
+    { label: 'L3+', value: point.l3Plus, color: 'bg-purple-500' },
+  ];
+
+  return (
+    <div className="grid grid-cols-[3rem_1fr_5rem] items-center gap-3 text-xs">
+      <span className="text-zinc-500">{point.label}</span>
+      <div className="flex h-3 overflow-hidden rounded-full bg-zinc-800">
+        {segments.map((segment) => (
+          <span
+            key={segment.label}
+            className={segment.color}
+            style={{ width: `${total > 0 ? (segment.value / total) * 100 : 0}%` }}
+            title={`${segment.label}: ${segment.value}`}
+          />
+        ))}
+      </div>
+      <span className="text-right text-zinc-500">{total} users</span>
     </div>
   );
 }
