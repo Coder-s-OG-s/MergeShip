@@ -5,6 +5,13 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { NavItems } from './nav-items';
 import { LogoutButton } from './logout-button';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  icons: {
+    icon: '/favicon.svg',
+  },
+};
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = getServerSupabase();

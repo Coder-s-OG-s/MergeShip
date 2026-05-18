@@ -194,9 +194,20 @@ function SectionCurtain({ children, dark, className = '' }: {
 
 // ─── Nav ─────────────────────────────────────────────────────────────────────
 
+// Local Supabase doesn't have the GitHub OAuth provider enabled (we don't
+// commit a config.toml with a client secret). On a contributor's laptop, the
+// "Get Started" button has to route to /dev/login instead — same flow the
+// dev-login page itself uses. On prod (mergeship.dev → *.supabase.co) the
+// real OAuth flow still runs.
+function isLocalSupabase(): boolean {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+  return url.includes('127.0.0.1') || url.includes('localhost');
+}
+
 function NavAuth() {
   const [user, setUser] = useState<NavUser | null>(null);
   const [configured, setConfigured] = useState<boolean>(true);
+  const localDev = isLocalSupabase();
 
   useEffect(() => {
     const sb = getBrowserSupabase();
@@ -258,6 +269,14 @@ function NavAuth() {
       </div>
     );
   }
+  if (localDev) {
+    return (
+      <Link href="/dev/login" className="btn">
+        Sign in (dev) →
+      </Link>
+    );
+  }
+
   return (
     <button className="btn" onClick={handleLogin}>
       Get Started →
@@ -327,8 +346,21 @@ function Hero() {
             MergeShip changes that — level by level, PR by PR.
           </FadeUp>
           <FadeUp className="hero-ctas" delay={1.1} y={24}>
-            <Link href="/dashboard" className="btn">Start Contributing →</Link>
-            <a href="#how" className="btn-ghost">see how it works →</a>
+          <Link
+            href="/dashboard"
+            className="btn"
+            onClick={(e) => {
+              const isLoggedIn = false;
+              if (!isLoggedIn) {
+                e.preventDefault();
+                alert("Please sign in first to continue.");
+                window.location.href = "/signin";
+              }
+            }}
+          >
+            Start Contributing →
+          </Link>
+            <a href="#features" className="btn-ghost">see how it works →</a>
           </FadeUp>
         </div>
         <FadeUp className="hero-stats" delay={1.3} y={0}>
@@ -491,7 +523,7 @@ function HowItWorks() {
   return (
     <SectionCurtain>
       <SectionHeader num="02" title="ONE LOGIN. INTELLIGENT ROUTING." />
-      <div className="how-grid" id="how">
+      <div className="how-grid" id="features">
         <div className="how-index">
           {flows.map((f, i) => (
             <button key={i} className={`how-index-item${active === i ? ' active' : ''}`} onClick={() => setActive(i)}>

@@ -41,10 +41,28 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'MergeShip — Open Source, Leveled Up',
+  title: 'MergeShip',
   description:
     'The platform that trains contributors to be ready before they submit, and gives maintainers a smart command center.',
   keywords: 'open source, contributors, maintainers, GitHub, issues, pull requests',
+  openGraph: {
+    title: 'MergeShip',
+    description:
+      'The platform that trains contributors to be ready before they submit, and gives maintainers a smart command center.',
+    siteName: 'MergeShip',
+    images: [
+      {
+        url: '/og-image.svg',
+        width: 1200,
+        height: 630,
+        alt: 'MergeShip — Open Source, Leveled Up',
+      },
+    ],
+    type: 'website',
+  },
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
