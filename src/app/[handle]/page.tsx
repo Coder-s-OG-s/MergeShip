@@ -301,7 +301,7 @@ export default async function PublicProfile({ params }: { params: { handle: stri
           <div className="flex items-center">
             <Link
               href="/dashboard"
-              className="mr-4 inline-flex items-center gap-2 rounded-md px-3 py-1 text-[12px] uppercase tracking-widest text-zinc-400 hover:bg-[#161b22] hover:text-white transition-colors"
+              className="mr-4 inline-flex items-center gap-2 rounded-md px-3 py-1 text-[12px] uppercase tracking-widest text-zinc-400 transition-colors hover:bg-[#161b22] hover:text-white"
             >
               <ArrowLeft className="h-4 w-4" />
               Back
