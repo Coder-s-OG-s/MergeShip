@@ -11,6 +11,8 @@ import {
   type RepoOption,
 } from '@/app/actions/issues';
 
+
+
 const DIFFICULTY_LABEL: Record<string, string> = { E: 'L1', M: 'L2', H: 'L3' };
 const DIFFICULTY_COLOR: Record<string, string> = {
   E: 'border-emerald-700 text-emerald-400',
@@ -33,11 +35,13 @@ function IssueCard({
   onClaim,
   onUnclaim,
   actionPending,
+  onOpen,
 }: {
   issue: IssueWithStatus;
   onClaim: (id: number) => void;
   onUnclaim: (recId: number) => void;
   actionPending: boolean;
+  onOpen: (issue: IssueWithStatus) => void;
 }) {
   const isClaimed = issue.userRecStatus === 'claimed';
   const repoName = issue.repoFullName.split('/')[1] ?? issue.repoFullName;
@@ -82,14 +86,12 @@ function IssueCard({
         </span>
       </div>
 
-      <a
-        href={issue.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mb-3 block font-serif text-xl leading-snug text-white hover:text-zinc-300"
+      <div
+        onClick={() => onOpen(issue)}
+        className="mb-3 block cursor-pointer font-serif text-xl leading-snug text-white hover:text-zinc-300"
       >
         {issue.title}
-      </a>
+      </div>
 
       {issue.labels && issue.labels.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
@@ -170,6 +172,10 @@ export function IssuesList({
   const [actionIssueId, setActionIssueId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+
+    const [selectedIssue, setSelectedIssue] = useState<IssueWithStatus | null>(null);
+  const [open, setOpen] = useState(false);
+
   const [search, setSearch] = useState(initialFilters.search ?? '');
   const [state, setState] = useState<'open' | 'closed'>(initialFilters.state ?? 'open');
   const [difficulty, setDifficulty] = useState<string>(initialFilters.difficulty ?? '');
@@ -223,6 +229,8 @@ export function IssuesList({
     router.refresh();
   };
 
+
+
   const handleUnclaim = async (recId: number, issueId: number) => {
     setActionIssueId(issueId);
     setActionError(null);
@@ -240,6 +248,77 @@ export function IssuesList({
 
   return (
     <div>
+      <div>
+        {initialData.issues.map((issue) => (
+          <IssueCard
+            key={issue.id}
+            issue={issue}
+            onClaim={handleClaim}
+            onUnclaim={(recId) => handleUnclaim(recId, issue.id)}
+            actionPending={actionIssueId === issue.id}
+            onOpen={(issue) => {
+              setSelectedIssue(issue);
+              setOpen(true);
+            }}
+          />
+        ))}
+      </div>
+
+      {open && selectedIssue && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+
+          {/* BACKDROP */}
+          <div
+            className="absolute inset-0 bg-black/70"
+            onClick={() => setOpen(false)}
+          />
+
+          {/* MODAL */}
+          <div className="relative z-50 w-[520px] rounded-lg border border-[#2d333b] bg-[#161b22] p-5">
+
+            <h2 className="mb-3 text-lg font-bold text-white">
+              {selectedIssue.title}
+            </h2>
+
+            <p className="mb-4 text-sm text-zinc-400">
+              {selectedIssue.body || "No description available."}
+            </p>
+
+            <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+              <p>Repo: {selectedIssue.repoFullName}</p>
+              <p>Difficulty: {selectedIssue.difficulty}</p>
+              <p>XP: {selectedIssue.xpReward}</p>
+            </div>
+
+            <a
+              href={selectedIssue.url}
+              target="_blank"
+              className="text-[11px] uppercase tracking-widest text-blue-400 underline"
+            >
+              Open on GitHub
+            </a>
+
+            <div className="mt-4 flex gap-2">
+
+              <button
+                onClick={() => {
+                  handleClaim(selectedIssue.id);
+                  setOpen(false);
+                }}
+              >
+                CLAIM
+              </button>
+
+              <button onClick={() => setOpen(false)}>
+                SKIP
+              </button>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {/* Filters */}
       <div className="mb-10 flex flex-wrap items-center gap-3">
         <div className="relative min-w-[180px] flex-1">
