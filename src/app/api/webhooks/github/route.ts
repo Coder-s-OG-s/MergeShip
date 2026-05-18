@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { verifyWebhookSignature } from '@/lib/github/webhook-verify';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { inngest } from '@/inngest/client';
+import { rateLimit } from '@/lib/rate-limit';
 
 /**
  * GitHub App webhook receiver.
@@ -26,6 +27,18 @@ export async function POST(req: NextRequest) {
   if (!deliveryId || !eventType) {
     return NextResponse.json({ error: 'missing required headers' }, { status: 400 });
   }
+
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0] ||
+    req.headers.get('x-real-ip') ||
+    'unknown';
+
+  await rateLimit({
+    namespace: 'webhook',
+    key: ip,
+    limit: 100,
+    windowSec: 60,
+  });
 
   const raw = await req.text();
 
