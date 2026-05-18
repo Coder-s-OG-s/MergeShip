@@ -538,7 +538,12 @@ export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> 
     return err('not_authenticated', 'sign in first');
   }
 
-  await rateLimit(user.id);
+  await rateLimit({
+    namespace: 'maintainer',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
 
   if (!(await isUserMaintainer(user.id))) {
     return err('not_authorised', 'not a maintainer');
@@ -560,7 +565,7 @@ export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> 
 
   const repos = await listMaintainerRepos(user.id, installationId);
 
-  const repoNames = repos.map((r) => r.fullName);
+  const repoNames = repos;
 
   const { data: issues, error } = await service
     .from('issues')
@@ -622,7 +627,12 @@ export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
     return err('not_authenticated', 'sign in first');
   }
 
-  await rateLimit(user.id);
+  await rateLimit({
+    namespace: 'maintainer',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
 
   if (!(await isUserMaintainer(user.id))) {
     return err('not_authorised', 'not a maintainer');
@@ -644,7 +654,7 @@ export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
 
   const repos = await listMaintainerRepos(user.id, installationId);
 
-  const repoNames = repos.map((r) => r.fullName);
+  const repoNames = repos;
 
   const fourteenDaysAgo = new Date();
 
@@ -699,7 +709,12 @@ export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
     return err('not_authenticated', 'sign in first');
   }
 
-  await rateLimit(user.id);
+  await rateLimit({
+    namespace: 'maintainer',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
 
   if (!(await isUserMaintainer(user.id))) {
     return err('not_authorised', 'not a maintainer');
