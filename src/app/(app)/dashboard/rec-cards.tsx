@@ -68,7 +68,7 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
     <div>
       {error && (
         <div
-          className="mb-4 border border-red-800 bg-red-900/20 px-4 py-3 text-[11px] uppercase tracking-widest text-red-400"
+          className="mb-3 border border-red-800 bg-red-900/20 px-3 py-2 text-[10px] uppercase tracking-widest text-red-400 sm:mb-4 sm:px-4 sm:py-3 sm:text-[11px]"
           role="alert"
         >
           {error}
@@ -77,8 +77,8 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
       <div className="max-h-[520px] overflow-y-auto pr-1 [&::-webkit-scrollbar-thumb:hover]:bg-zinc-500 [&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-1">
         <ul>
           {recs.map((rec) => (
-            <li key={rec.id} className="border-b border-[#2d333b] py-6 last:border-0">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
+            <li key={rec.id} className="border-b border-[#2d333b] py-4 last:border-0 sm:py-6">
+              <div className="mb-2 flex flex-wrap items-center gap-2 sm:mb-3">
                 <span
                   className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${TIER_COLOR[rec.difficulty]}`}
                   title={
@@ -99,21 +99,21 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
                 href={rec.url}
                 target="_blank"
                 rel="noreferrer"
-                className="mb-4 flex items-start gap-2 font-serif text-lg leading-snug text-white hover:text-zinc-300"
+                className="mb-3 flex items-start gap-2 font-serif text-base leading-snug text-white hover:text-zinc-300 sm:mb-4 sm:text-lg"
               >
                 {rec.title}
-                <ExternalLink className="mt-1 h-3 w-3 shrink-0 text-zinc-500" />
+                <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 text-zinc-500" />
               </a>
 
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 {rec.status === 'claimed' ? (
                   <ClaimedActions rec={rec} onError={setError} />
                 ) : (
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                     <button
                       onClick={() => handleClaim(rec)}
                       disabled={pending && busyId === rec.id}
-                      className="border border-zinc-600 px-4 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      className="w-full border border-zinc-600 px-3 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:px-4"
                     >
                       {busyId === rec.id ? 'CLAIMING...' : 'CLAIM'}
                     </button>
@@ -126,7 +126,7 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
                     </button>
                   </div>
                 )}
-                <span className="ml-auto text-[10px] uppercase tracking-widest text-emerald-600">
+                <span className="text-[10px] uppercase tracking-widest text-emerald-600">
                   +{rec.xpReward} XP
                 </span>
               </div>
@@ -170,8 +170,8 @@ function ClaimedActions({ rec, onError }: { rec: RecCard; onError: (msg: string 
   }
 
   return (
-    <div className="w-full space-y-3">
-      <div className="flex items-center gap-3">
+    <div className="w-full space-y-2 sm:space-y-3">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <span className="text-[10px] uppercase tracking-widest text-purple-400">CLAIMED</span>
         {linked && (
           <span className="border border-emerald-800 px-2 py-0.5 text-[10px] uppercase tracking-widest text-emerald-400">
@@ -192,14 +192,14 @@ function ClaimedActions({ rec, onError }: { rec: RecCard; onError: (msg: string 
             placeholder="PASTE PR URL OR DESCRIBE YOUR ISSUE"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            className="w-full border border-[#2d333b] bg-[#161b22] px-4 py-2 text-[11px] uppercase tracking-widest text-zinc-300 placeholder-zinc-600 outline-none focus:border-zinc-500"
+            className="w-full border border-[#2d333b] bg-[#161b22] px-3 py-2 text-[10px] uppercase tracking-widest text-zinc-300 placeholder-zinc-600 outline-none focus:border-zinc-500 sm:px-4 sm:text-[11px]"
           />
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
             {isValidPrUrl && (
               <button
                 onClick={onLink}
                 disabled={pending}
-                className="border border-zinc-600 px-4 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="w-full border border-zinc-600 px-3 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:px-4"
               >
                 {pending ? 'LINKING...' : 'LINK PR'}
               </button>

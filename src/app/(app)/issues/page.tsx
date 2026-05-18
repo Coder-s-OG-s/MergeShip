@@ -84,13 +84,13 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
   const repoOptions: RepoOption[] = repoResult.ok ? repoResult.data : [];
 
   return (
-    <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
+    <div className="min-h-screen bg-[#111318] px-4 py-8 font-mono text-white sm:px-6 md:px-12 md:py-12">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-12 border-b border-[#2d333b] pb-6">
-          <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+        <header className="mb-8 border-b border-[#2d333b] pb-4 md:mb-12 md:pb-6">
+          <div className="mb-2 text-[11px] uppercase tracking-widest text-zinc-500 md:mb-4">
             02 / ISSUES
           </div>
-          <h1 className="font-serif text-4xl text-white">Browse Issues</h1>
+          <h1 className="font-serif text-2xl text-white sm:text-3xl md:text-4xl">Browse Issues</h1>
         </header>
 
         {linkedRecs.length > 0 && <MyWorkSection initialRecs={linkedRecs} />}

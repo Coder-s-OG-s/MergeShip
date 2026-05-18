@@ -145,16 +145,16 @@ export default async function DashboardPage() {
   const syncedAt = dashCache.syncedAt;
 
   return (
-    <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
+    <div className="min-h-screen bg-[#111318] px-4 py-8 font-mono text-white sm:px-6 md:px-12 md:py-12">
       <div className="mx-auto max-w-6xl">
         <LevelUpBanner />
         {/* Header */}
-        <header className="mb-12 flex flex-col justify-between gap-6 border-b border-[#2d333b] pb-6 md:flex-row md:items-end">
+        <header className="mb-8 flex flex-col justify-between gap-4 border-b border-[#2d333b] pb-4 md:mb-12 md:gap-6 md:pb-6 lg:flex-row lg:items-end">
           <div>
-            <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+            <div className="mb-2 text-[11px] uppercase tracking-widest text-zinc-500 md:mb-4">
               01 / DASHBOARD
             </div>
-            <h1 className="font-serif text-4xl text-white">
+            <h1 className="font-serif text-2xl text-white sm:text-3xl md:text-4xl">
               Welcome back, {profile?.github_handle ?? 'Contributor'}.
             </h1>
           </div>
@@ -164,14 +164,14 @@ export default async function DashboardPage() {
         </header>
         {/* Stats Row */}
         <Suspense fallback={<StatsSkeleton />}>
-          <div className="mb-16 grid grid-cols-1 gap-12 md:grid-cols-4">
+          <div className="mb-12 grid grid-cols-1 gap-6 sm:grid-cols-2 md:mb-16 md:gap-12 lg:grid-cols-4">
             {/* Level Progress */}
             <div>
-              <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+              <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500 md:mb-4">
                 LEVEL PROGRESS
               </div>
-              <div className="flex items-center gap-4">
-                <div className="border border-zinc-700 px-3 py-2 font-serif text-xl text-zinc-300">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                <div className="border border-zinc-700 px-3 py-2 font-serif text-lg sm:text-xl text-zinc-300">
                   L{level}
                 </div>
                 <div className="flex-1">
@@ -190,11 +190,11 @@ export default async function DashboardPage() {
 
             {/* Total Merges */}
             <div>
-              <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+              <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500 md:mb-4">
                 TOTAL MERGES
               </div>
               <div className="flex items-end gap-2">
-                <span className="font-serif text-4xl leading-none">
+                <span className="font-serif text-3xl leading-none sm:text-4xl">
                   {(merges ?? 0).toString().padStart(2, '0')}
                 </span>
                 <TrendingUp className="mb-1 h-4 w-4 text-[#10b981]" />
@@ -203,11 +203,11 @@ export default async function DashboardPage() {
 
             {/* Mentor Points */}
             <div>
-              <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+              <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500 md:mb-4">
                 MENTOR POINTS
               </div>
               <div className="flex items-end gap-2">
-                <span className="font-serif text-4xl leading-none">
+                <span className="font-serif text-3xl leading-none sm:text-4xl">
                   {mentorPoints.toLocaleString()}
                 </span>
                 <Box className="mb-1 h-5 w-5 text-zinc-400" />
@@ -216,11 +216,11 @@ export default async function DashboardPage() {
 
             {/* Current Streak */}
             <div>
-              <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+              <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500 md:mb-4">
                 CURRENT STREAK
               </div>
               <div className="flex items-end gap-2">
-                <span className="font-serif text-4xl leading-none">
+                <span className="font-serif text-3xl leading-none sm:text-4xl">
                   {(streak ?? 0).toString().padStart(2, '0')}
                 </span>
                 <span className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
@@ -232,11 +232,11 @@ export default async function DashboardPage() {
         </Suspense>
 
         {/* Main Columns */}
-        <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-12 md:gap-16 lg:grid-cols-2">
           {/* Left Column */}
-          <div className="space-y-16">
+          <div className="space-y-12 md:space-y-16">
             <section>
-              <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
+              <div className="mb-4 flex flex-col items-start justify-between gap-2 border-b border-[#2d333b] pb-3 md:mb-6 md:flex-row md:items-center md:gap-0 md:pb-4">
                 <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">
                   ACTIVE ISSUES
                 </h2>
@@ -258,7 +258,7 @@ export default async function DashboardPage() {
             </section>
 
             <section>
-              <div className="mb-6 border-b border-[#2d333b] pb-4">
+              <div className="mb-4 border-b border-[#2d333b] pb-3 md:mb-6 md:pb-4">
                 <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">
                   YOUR MENTEES
                 </h2>
@@ -268,9 +268,9 @@ export default async function DashboardPage() {
                   enrichedMentees.map((mentee: any) => (
                     <div
                       key={mentee.id}
-                      className="flex items-center justify-between border-b border-[#2d333b] pb-4"
+                      className="flex flex-col gap-3 border-b border-[#2d333b] pb-4 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-3 sm:gap-4">
                         <div className="flex h-10 w-10 items-center justify-center border border-zinc-800 bg-[#1c2128] text-xs uppercase text-zinc-500">
                           {mentee.github_handle.substring(0, 2)}
                         </div>
@@ -283,7 +283,7 @@ export default async function DashboardPage() {
                       </div>
                       <Link
                         href={mentee.pr_url || '#'}
-                        className="border border-zinc-700 px-4 py-2 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:bg-zinc-800"
+                        className="w-full border border-zinc-700 px-4 py-2 text-center text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:bg-zinc-800 sm:w-auto"
                       >
                         REVIEW DRAFT
                       </Link>
@@ -299,7 +299,7 @@ export default async function DashboardPage() {
           </div>
 
           {/* Right Column */}
-          <div className="space-y-16">
+          <div className="space-y-12 md:space-y-16">
             <GitHubPRsPanel
               prs={prs}
               claimedPrUrls={claimedPrUrls}
@@ -307,7 +307,7 @@ export default async function DashboardPage() {
             />
 
             <section>
-              <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
+              <div className="mb-4 flex items-center justify-between border-b border-[#2d333b] pb-3 md:mb-6 md:pb-4">
                 <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">
                   LEADERBOARD SNAPSHOT
                 </h2>
@@ -321,15 +321,17 @@ export default async function DashboardPage() {
                     return (
                       <div
                         key={leader.github_handle}
-                        className={`flex justify-between border-b border-[#2d333b] py-3.5 ${isMe ? '-mx-3 bg-[#3b0764]/40 px-3 text-purple-300' : 'text-zinc-400'}`}
+                        className={`flex justify-between border-b border-[#2d333b] py-3 md:py-3.5 ${isMe ? '-mx-2 bg-[#3b0764]/40 px-2 text-purple-300 md:-mx-3 md:px-3' : 'text-zinc-400'}`}
                       >
-                        <div className="flex gap-5">
+                        <div className="flex gap-3 md:gap-5">
                           <span className={`w-6 ${isMe ? 'opacity-50' : 'text-zinc-600'}`}>
                             {(index + 1).toString().padStart(2, '0')}
                           </span>
-                          {leader.github_handle} {isMe && '(YOU)'}
+                          <span className="truncate">
+                            {leader.github_handle} {isMe && '(YOU)'}
+                          </span>
                         </div>
-                        <span>{leader.xp.toLocaleString()} XP</span>
+                        <span className="ml-2">{leader.xp.toLocaleString()} XP</span>
                       </div>
                     );
                   })
@@ -344,9 +346,9 @@ export default async function DashboardPage() {
         </div>
 
         {/* Footer */}
-        <footer className="mt-24 flex justify-between border-t border-[#2d333b] pt-8 text-[10px] uppercase tracking-widest text-zinc-600">
+        <footer className="mt-16 flex flex-col gap-4 border-t border-[#2d333b] pt-6 text-[10px] uppercase tracking-widest text-zinc-600 md:mt-24 md:flex-row md:justify-between md:pt-8">
           <span>©{new Date().getFullYear()} ARCH_06 / SYSTEM_v1.0</span>
-          <div className="flex gap-6">
+          <div className="flex gap-4 sm:gap-6">
             <Link href="#" className="transition-colors hover:text-zinc-400">
               TERMS
             </Link>
@@ -384,13 +386,13 @@ function NotConfigured() {
 
 function StatsSkeleton() {
   return (
-    <div className="mb-16 grid grid-cols-1 gap-12 md:grid-cols-4">
+    <div className="mb-12 grid grid-cols-1 gap-6 sm:grid-cols-2 md:mb-16 md:gap-12 lg:grid-cols-4">
       {/* Level Progress Skeleton */}
       <div>
-        <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+        <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500 md:mb-4">
           LEVEL PROGRESS
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <div className="h-11 w-12 animate-pulse border border-zinc-700 bg-zinc-800" />
           <div className="flex-1">
             <div className="mb-2 h-1.5 w-full animate-pulse bg-zinc-800" />
@@ -401,31 +403,31 @@ function StatsSkeleton() {
 
       {/* Total Merges Skeleton */}
       <div>
-        <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">TOTAL MERGES</div>
+        <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500 md:mb-4">TOTAL MERGES</div>
         <div className="flex items-end gap-2">
-          <div className="h-9 w-16 animate-pulse rounded bg-zinc-800" />
+          <div className="h-8 w-16 animate-pulse rounded bg-zinc-800 sm:h-9" />
           <div className="mb-1 h-4 w-4 animate-pulse rounded bg-zinc-800" />
         </div>
       </div>
 
       {/* Mentor Points Skeleton */}
       <div>
-        <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+        <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500 md:mb-4">
           MENTOR POINTS
         </div>
         <div className="flex items-end gap-2">
-          <div className="h-9 w-24 animate-pulse rounded bg-zinc-800" />
+          <div className="h-8 w-24 animate-pulse rounded bg-zinc-800 sm:h-9" />
           <div className="mb-1 h-5 w-5 animate-pulse rounded bg-zinc-800" />
         </div>
       </div>
 
       {/* Current Streak Skeleton */}
       <div>
-        <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+        <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500 md:mb-4">
           CURRENT STREAK
         </div>
         <div className="flex items-end gap-2">
-          <div className="h-9 w-16 animate-pulse rounded bg-zinc-800" />
+          <div className="h-8 w-16 animate-pulse rounded bg-zinc-800 sm:h-9" />
           <div className="mb-1 h-4 w-12 animate-pulse rounded bg-zinc-800" />
         </div>
       </div>

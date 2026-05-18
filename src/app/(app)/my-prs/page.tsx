@@ -297,11 +297,11 @@ export default async function MyPRsPage() {
       : 0;
 
   return (
-    <div className="flex min-h-screen bg-[#111318] font-mono text-white">
+    <div className="flex min-h-screen flex-col bg-[#111318] font-mono text-white md:flex-row">
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-10 py-10">
-        <header className="mb-8">
-          <h1 className="font-sans text-[36px] font-black tracking-tight text-white">
+      <div className="flex-1 overflow-y-auto px-4 py-8 sm:px-6 md:px-10 md:py-10">
+        <header className="mb-6 md:mb-8">
+          <h1 className="font-sans text-2xl font-black tracking-tight text-white sm:text-3xl md:text-[36px]">
             My Pull Requests
           </h1>
         </header>
@@ -309,7 +309,7 @@ export default async function MyPRsPage() {
       </div>
 
       {/* Right Stats Panel */}
-      <aside className="w-[260px] shrink-0 border-l border-[#2d333b] p-6">
+      <aside className="hidden w-full border-t border-[#2d333b] p-6 md:block md:w-[260px] md:shrink-0 md:border-l md:border-t-0">
         <div className="rounded-sm border border-[#2d333b] bg-[#161b22] p-5">
           <div className="mb-5 flex items-center gap-2">
             <svg className="h-4 w-4 text-[#39d353]" fill="currentColor" viewBox="0 0 16 16">
@@ -322,7 +322,7 @@ export default async function MyPRsPage() {
 
           <div className="mb-5">
             <div className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">Total XP</div>
-            <div className="font-sans text-[44px] font-black leading-none text-[#39d353]">
+            <div className="font-sans text-4xl font-black leading-none text-[#39d353] md:text-[44px]">
               {totalXp.toLocaleString()}
             </div>
           </div>

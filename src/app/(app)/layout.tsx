@@ -5,6 +5,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { NavItems } from './nav-items';
 import { LogoutButton } from './logout-button';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
+import { MobileSidebarToggle } from './mobile-sidebar-toggle';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -45,8 +46,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#111318] font-mono text-white">
-      {/* Sidebar */}
-      <aside className="flex w-64 shrink-0 flex-col justify-between border-r border-[#2d333b] bg-[#111318]">
+      {/* Desktop Sidebar */}
+      <aside className="hidden w-64 shrink-0 flex-col justify-between border-r border-[#2d333b] bg-[#111318] md:flex">
         <div>
           <div className="p-8 pb-12">
             <Link
@@ -82,8 +83,33 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
+      {/* Mobile Sidebar Toggle */}
+      <MobileSidebarToggle>
+        <nav className="flex flex-col gap-1 px-4">
+          <NavItems profileHref={`/@${handle}`} level={level} isMaintainer={isMaintainer} />
+        </nav>
+        <div className="border-t border-[#2d333b] p-6">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-sm bg-zinc-800">
+              <div className="flex h-full w-full items-center justify-center bg-zinc-700 text-xs">
+                {handle?.substring(0, 2).toUpperCase()}
+              </div>
+            </div>
+            <div className="overflow-hidden">
+              <div className="truncate text-[13px] font-bold uppercase">
+                {handle || 'CONTRIBUTOR'}
+              </div>
+              <div className="truncate text-[11px] tracking-wider text-zinc-500">
+                L{level} PRACTITIONER
+              </div>
+            </div>
+          </div>
+          <LogoutButton />
+        </div>
+      </MobileSidebarToggle>
+
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main className="flex-1 overflow-y-auto pt-16 md:pt-0">{children}</main>
     </div>
   );
 }

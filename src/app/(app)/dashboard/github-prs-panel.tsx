@@ -21,13 +21,13 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
 
   return (
     <section>
-      <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
+      <div className="mb-4 flex flex-col gap-3 border-b border-[#2d333b] pb-3 md:mb-6 md:flex-row md:items-center md:justify-between md:gap-0 md:pb-4">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">MY PRS</h2>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as Filter)}
-            className="cursor-pointer appearance-none border border-zinc-700 bg-[#1c2128] px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-300 focus:border-[#10b981] focus:outline-none"
+            className="w-full cursor-pointer appearance-none border border-zinc-700 bg-[#1c2128] px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-300 focus:border-[#10b981] focus:outline-none sm:w-auto"
           >
             <option value="open">Open</option>
             <option value="closed">Closed</option>
@@ -50,16 +50,18 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
             No {filter} PRs.
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {filtered.map((pr) => (
-              <div key={pr.id} className="border-b border-[#2d333b] pb-6 last:border-0">
+              <div key={pr.id} className="border-b border-[#2d333b] pb-4 last:border-0 sm:pb-6">
                 <Link href={pr.url} target="_blank" rel="noopener noreferrer">
-                  <h3 className="mb-1 text-[15px] text-white hover:underline">{pr.title}</h3>
+                  <h3 className="mb-1 line-clamp-2 text-sm text-white hover:underline sm:text-base">
+                    {pr.title}
+                  </h3>
                 </Link>
-                <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500">
+                <div className="mb-2 text-[11px] uppercase tracking-widest text-zinc-500 sm:mb-3">
                   #{pr.number} · {pr.repo_full_name} · {formatDate(pr.github_created_at)}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <StateBadge state={pr.state} />
                   {claimedSet.has(pr.url) && (
                     <span className="border border-purple-700 bg-purple-900/30 px-2 py-0.5 text-[10px] uppercase tracking-widest text-purple-300">

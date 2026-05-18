@@ -244,8 +244,8 @@ function NavAuth() {
 
   if (!configured) {
     return (
-      <button className="btn" disabled title="Auth not configured on this deployment">
-        Sign-in coming soon
+      <button className="btn" onClick={handleLogin}>
+        Get Started →
       </button>
     );
   }
@@ -267,13 +267,6 @@ function NavAuth() {
         </Link>
         <button className="btn-ghost" onClick={handleLogout}>Sign Out</button>
       </div>
-    );
-  }
-  if (localDev) {
-    return (
-      <Link href="/dev/login" className="btn">
-        Sign in (dev) →
-      </Link>
     );
   }
 
