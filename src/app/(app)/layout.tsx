@@ -49,10 +49,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <aside className="flex w-64 shrink-0 flex-col justify-between border-r border-[#2d333b] bg-[#111318]">
         <div>
           <div className="p-8 pb-12">
-            <Link
-              href="/dashboard"
-              className="font-serif text-2xl font-bold tracking-wider text-white"
-            >
+            <Link href="/" className="font-serif text-2xl font-bold tracking-wider text-white">
               MERGESHIP
             </Link>
           </div>
