@@ -39,10 +39,7 @@ export type FlagCandidate = {
   evidence: Record<string, unknown>;
 };
 
-const MERGE_SOURCES = new Set<string>([
-  XP_SOURCE.RECOMMENDED_MERGE,
-  XP_SOURCE.UNRECOMMENDED_MERGE,
-]);
+const MERGE_SOURCES = new Set<string>([XP_SOURCE.RECOMMENDED_MERGE, XP_SOURCE.UNRECOMMENDED_MERGE]);
 
 export function detectSuspiciousXpPatterns(args: {
   xpEvents: XpAuditEvent[];
@@ -102,8 +99,7 @@ function detectHourlyMergeBursts(events: XpAuditEvent[]): FlagCandidate[] {
       const window = sorted.filter((event) => {
         const eventTime = ts(event.createdAt);
         return (
-          eventTime >= windowStart &&
-          eventTime - windowStart <= XP_FLAG_THRESHOLDS.hourlyWindowMs
+          eventTime >= windowStart && eventTime - windowStart <= XP_FLAG_THRESHOLDS.hourlyWindowMs
         );
       });
       if (window.length <= XP_FLAG_THRESHOLDS.hourlyMergeCount) continue;

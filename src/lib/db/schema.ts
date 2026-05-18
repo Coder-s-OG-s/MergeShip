@@ -333,8 +333,12 @@ export const flaggedAccounts = pgTable(
     reason: text('reason', {
       enum: ['daily_event_burst', 'hourly_merge_burst', 'review_pair_burst'],
     }).notNull(),
-    severity: text('severity', { enum: ['medium', 'high'] }).notNull().default('medium'),
-    status: text('status', { enum: ['open', 'resolved', 'dismissed'] }).notNull().default('open'),
+    severity: text('severity', { enum: ['medium', 'high'] })
+      .notNull()
+      .default('medium'),
+    status: text('status', { enum: ['open', 'resolved', 'dismissed'] })
+      .notNull()
+      .default('open'),
     dedupeKey: text('dedupe_key').notNull(),
     evidence: jsonb('evidence').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

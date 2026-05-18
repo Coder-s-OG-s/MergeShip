@@ -330,7 +330,7 @@ function FlaggedAccountsPanel({ flags }: { flags: MaintainerFlagRow[] }) {
                 </span>
                 <span className="font-medium text-zinc-200">{reasonLabel(flag.reason)}</span>
                 <span className="text-xs text-zinc-500">
-                  {flag.githubHandle ? `@${flag.githubHandle}` : flag.userId ?? 'unknown user'}
+                  {flag.githubHandle ? `@${flag.githubHandle}` : (flag.userId ?? 'unknown user')}
                 </span>
                 <span className="ml-auto text-xs text-zinc-600">
                   {new Date(flag.createdAt).toLocaleString()}
