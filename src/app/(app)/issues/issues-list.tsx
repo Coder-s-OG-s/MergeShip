@@ -1,7 +1,7 @@
 'use client';
 
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useState, useTransition, useCallback, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { Search, ExternalLink, ChevronLeft, ChevronRight, Copy, Check } from 'lucide-react';
 import {
   claimIssue,
@@ -72,18 +72,17 @@ function IssueCard({
               className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${DIFFICULTY_COLOR[issue.difficulty] ?? 'border-zinc-700 text-zinc-400'}`}
               title={
                 issue.difficulty === 'E'
-                  ? 'Easy — good for first-time contributors'
+                  ? 'Easy — good for first contributions, lower XP'
                   : issue.difficulty === 'M'
-                    ? 'Medium — requires some codebase familiarity'
+                    ? 'Medium — requires some codebase knowledge'
                     : issue.difficulty === 'H'
-                      ? 'Hard — significant feature or architectural change'
+                      ? 'Hard — significant complexity, higher XP'
                       : ''
               }
             >
               {DIFFICULTY_LABEL[issue.difficulty] ?? issue.difficulty}
             </span>
           )}
-
           {isClaimed && (
             <span className="bg-purple-900/50 px-2 py-0.5 text-[10px] uppercase text-purple-300">
               CLAIMED
@@ -213,6 +212,7 @@ export function IssuesList({
   repoOptions: RepoOption[];
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [actionIssueId, setActionIssueId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -234,7 +234,7 @@ export function IssuesList({
         page: string;
       }>,
     ) => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(searchParams.toString());
       const q = overrides.q ?? search;
       const st = overrides.state ?? state;
       const diff = overrides.difficulty ?? difficulty;
@@ -245,7 +245,11 @@ export function IssuesList({
       if (st !== 'open') params.set('state', st);
       if (diff) params.set('difficulty', diff);
       if (r) params.set('repo', r);
-      if (sc === 'true') params.set('claimed', 'true');
+      if (sc === 'true') {
+        params.set('claimed', 'true');
+      } else {
+        params.delete('claimed');
+      }
       if (pg !== '1') params.set('page', pg);
       startTransition(() => {
         router.push(`/issues${params.size > 0 ? `?${params.toString()}` : ''}`);
@@ -281,30 +285,6 @@ export function IssuesList({
   const totalPages = Math.ceil(initialData.total / initialData.pageSize);
   const currentPage = initialData.page;
 
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const active = document.activeElement;
-      const isTyping =
-        active instanceof HTMLInputElement ||
-        active instanceof HTMLTextAreaElement ||
-        (active as HTMLElement)?.isContentEditable;
-
-      if (e.key === '/' && active !== searchInputRef.current && !isTyping) {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      }
-
-      if (e.key === 'Escape' && active === searchInputRef.current) {
-        searchInputRef.current?.blur();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
   return (
     <div>
       {/* Filters */}
@@ -312,9 +292,8 @@ export function IssuesList({
         <div className="relative min-w-[180px] flex-1">
           <Search className="absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-zinc-500" />
           <input
-            ref={searchInputRef}
             type="text"
-            placeholder="Press / to search"
+            placeholder="SEARCH ISSUES"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && navigate({ q: search, page: '1' })}
