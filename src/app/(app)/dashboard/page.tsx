@@ -11,7 +11,7 @@ import { isOk } from '@/lib/result';
 import { xpToNextLevel, xpForLevel } from '@/lib/xp/curve';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
-import { ArrowRight, TrendingUp, Box } from 'lucide-react';
+import { ArrowRight, TrendingUp, Box, CheckCircle, Circle } from 'lucide-react';
 import type { GitHubPR } from '@/app/actions/github-sync';
 
 export const dynamic = 'force-dynamic';
@@ -143,6 +143,12 @@ export default async function DashboardPage() {
   const merges = dashCache.merges;
   const streak = dashCache.streak;
   const syncedAt = dashCache.syncedAt;
+
+  const hasConnectedGitHub = !!profile?.github_handle;
+  const hasClaimedIssue = claimedRecs && claimedRecs.length > 0;
+  const hasOpenPR = prs && prs.length > 0;
+  const allDone = hasConnectedGitHub && hasClaimedIssue && hasOpenPR;
+  const showChecklist = (merges === 0 || merges === null) && !allDone;
 
   return (
     <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
@@ -356,9 +362,15 @@ export default async function DashboardPage() {
             <Link href="#" className="transition-colors hover:text-zinc-400">
               SECURITY
             </Link>
-          </div>
         </footer>
       </div>
+      {showChecklist && (
+        <AntigravityChecklist
+          hasConnectedGitHub={hasConnectedGitHub}
+          hasClaimedIssue={hasClaimedIssue}
+          hasOpenPR={hasOpenPR}
+        />
+      )}
     </div>
   );
 }
@@ -429,6 +441,65 @@ function StatsSkeleton() {
           <div className="mb-1 h-4 w-12 animate-pulse rounded bg-zinc-800" />
         </div>
       </div>
+    </div>
+  );
+}
+
+function AntigravityChecklist({
+  hasConnectedGitHub,
+  hasClaimedIssue,
+  hasOpenPR,
+}: {
+  hasConnectedGitHub: boolean;
+  hasClaimedIssue: boolean;
+  hasOpenPR: boolean;
+}) {
+  return (
+    <div className="fixed bottom-8 right-8 z-50 w-80 animate-in slide-in-from-bottom-8 rounded-xl border border-purple-500/30 bg-[#1c2128]/95 p-6 text-sm text-zinc-300 shadow-2xl shadow-purple-900/20 backdrop-blur transition-all duration-500 hover:-translate-y-1 hover:shadow-purple-700/30">
+      <h3 className="mb-4 flex items-center gap-2 font-serif text-lg text-white">
+        <span className="text-xl">🚀</span> Antigravity Checklist
+      </h3>
+      <ul className="space-y-4">
+        <li className="flex items-start gap-3">
+          {hasConnectedGitHub ? (
+            <CheckCircle className="mt-0.5 h-4 w-4 text-[#10b981]" />
+          ) : (
+            <Circle className="mt-0.5 h-4 w-4 text-zinc-500" />
+          )}
+          <div className={hasConnectedGitHub ? 'text-zinc-500 line-through' : 'text-zinc-200'}>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-widest">Lift-off</p>
+            <Link href="/settings" className="text-xs transition-colors hover:text-white">
+              Connect GitHub account
+            </Link>
+          </div>
+        </li>
+        <li className="flex items-start gap-3">
+          {hasClaimedIssue ? (
+            <CheckCircle className="mt-0.5 h-4 w-4 text-[#10b981]" />
+          ) : (
+            <Circle className="mt-0.5 h-4 w-4 text-zinc-500" />
+          )}
+          <div className={hasClaimedIssue ? 'text-zinc-500 line-through' : 'text-zinc-200'}>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-widest">Mid-air balance</p>
+            <Link href="/issues" className="text-xs transition-colors hover:text-white">
+              Claim your first issue
+            </Link>
+          </div>
+        </li>
+        <li className="flex items-start gap-3">
+          {hasOpenPR ? (
+            <CheckCircle className="mt-0.5 h-4 w-4 text-[#10b981]" />
+          ) : (
+            <Circle className="mt-0.5 h-4 w-4 text-zinc-500" />
+          )}
+          <div className={hasOpenPR ? 'text-zinc-500 line-through' : 'text-zinc-200'}>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-widest">Orbit complete</p>
+            <Link href="/dashboard" className="text-xs transition-colors hover:text-white">
+              Submit a PR
+            </Link>
+          </div>
+        </li>
+      </ul>
     </div>
   );
 }
