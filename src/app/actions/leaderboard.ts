@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { tryGetDb } from '@/lib/db/client';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { ok, err, type Result } from '@/lib/result';
+import { getServerSupabase } from '@/lib/supabase/server';
 
 export type LeaderboardScope = 'global' | 'cohort' | 'language' | 'tag';
 
@@ -23,9 +24,17 @@ export async function getLeaderboard(
   scope: LeaderboardScope,
   scopeId: string | null,
   limit = 50,
-): Promise<Result<LeaderboardEntry[]>> {
+): Promise<
+  Result<{
+    entries: LeaderboardEntry[];
+    currentUserRank: LeaderboardEntry | null;
+  }>
+> {
   const cacheKey = `leaderboard:${scope}:${scopeId ?? 'all'}:${limit}`;
-  const cached = await cacheGet<LeaderboardEntry[]>(cacheKey);
+  const cached = await cacheGet<{
+    entries: LeaderboardEntry[];
+    currentUserRank: LeaderboardEntry | null;
+  }>(cacheKey);
   if (cached) return ok(cached);
 
   const db = tryGetDb();
@@ -93,6 +102,50 @@ export async function getLeaderboard(
     level: r.level,
   }));
 
-  await cacheSet(cacheKey, entries, TTL);
-  return ok(entries);
+  const sb = await getServerSupabase();
+
+  let currentUserRank: LeaderboardEntry | null = null;
+
+  if (sb) {
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+
+    if (user) {
+      const allRows = (await db.execute(sql`
+        select id, github_handle, display_name, avatar_url, xp, level
+        from profiles
+        order by xp desc
+      `)) as unknown as typeof rows;
+
+      const normalizedAllRows: typeof rows = Array.isArray(allRows)
+        ? allRows
+        : (allRows as unknown as { rows: typeof rows }).rows;
+
+      const currentIndex = normalizedAllRows.findIndex((r) => r.id === user.id);
+
+      if (currentIndex >= 0) {
+        const current = normalizedAllRows[currentIndex]!;
+
+        currentUserRank = {
+          rank: currentIndex + 1,
+          userId: current.id,
+          githubHandle: current.github_handle,
+          displayName: current.display_name,
+          avatarUrl: current.avatar_url,
+          xp: current.xp,
+          level: current.level,
+        };
+      }
+    }
+  }
+
+  const response = {
+    entries,
+    currentUserRank,
+  };
+
+  await cacheSet(cacheKey, response, TTL);
+
+  return ok(response);
 }

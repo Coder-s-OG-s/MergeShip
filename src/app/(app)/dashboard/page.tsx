@@ -113,11 +113,34 @@ export default async function DashboardPage() {
   const mentorPoints = mentorEvents?.reduce((acc, e) => acc + (e.xp_delta || 0), 0) || 0;
 
   // Leaderboard
+  // Leaderboard
   const { data: leaders } = await service
     .from('profiles')
     .select('github_handle, xp')
     .order('xp', { ascending: false })
     .limit(4);
+
+  // Get all profiles to calculate current user's rank
+  const { data: allProfiles } = await service
+    .from('profiles')
+    .select('github_handle, xp')
+    .order('xp', { ascending: false });
+
+  const currentUserRank =
+    allProfiles?.findIndex((p: any) => p.github_handle === profile?.github_handle) ?? -1;
+
+  const myLeaderboardEntry =
+    currentUserRank >= 0
+      ? {
+          github_handle: profile?.github_handle ?? 'You',
+          xp,
+          rank: currentUserRank + 1,
+        }
+      : null;
+
+  const isUserVisible = leaders?.some(
+    (leader: any) => leader.github_handle === profile?.github_handle,
+  );
 
   // Mentees
   const { data: menteesData } = await service
@@ -238,23 +261,64 @@ export default async function DashboardPage() {
             <section>
               <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
                 <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">
-                  ACTIVE ISSUES
+                  LEADERBOARD SNAPSHOT
                 </h2>
-                <Link
-                  href="/issues"
-                  className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-zinc-400 hover:text-white"
-                >
-                  BROWSE MORE <ArrowRight className="h-3 w-3" />
-                </Link>
+
+                <span className="text-[11px] uppercase tracking-widest text-zinc-500">GLOBAL</span>
               </div>
 
-              {recs.length > 0 ? (
-                <RecCards recs={recs} />
-              ) : (
-                <div className="py-4 text-sm text-zinc-500">
-                  No recommendations yet. Check back soon.
-                </div>
-              )}
+              <div className="text-xs uppercase tracking-widest">
+                {leaders && leaders.length > 0 ? (
+                  <>
+                    {leaders.map((leader: any, index: number) => {
+                      const isMe = leader.github_handle === profile?.github_handle;
+
+                      return (
+                        <div
+                          key={leader.github_handle}
+                          className={`flex justify-between border-b border-[#2d333b] py-3.5 ${
+                            isMe ? '-mx-3 bg-[#3b0764]/40 px-3 text-purple-300' : 'text-zinc-400'
+                          }`}
+                        >
+                          <div className="flex gap-5">
+                            <span className={`w-6 ${isMe ? 'opacity-50' : 'text-zinc-600'}`}>
+                              {(index + 1).toString().padStart(2, '0')}
+                            </span>
+                            {leader.github_handle} {isMe && '(YOU)'}
+                          </div>
+
+                          <span>{leader.xp.toLocaleString()} XP</span>
+                        </div>
+                      );
+                    })}
+
+                    {!isUserVisible && myLeaderboardEntry && (
+                      <>
+                        <div className="border-t border-[#3f3f46] pb-2 pt-5">
+                          <span className="text-[10px] tracking-[0.3em] text-zinc-500">
+                            YOUR RANK
+                          </span>
+                        </div>
+
+                        <div className="-mx-3 flex justify-between bg-[#3b0764]/30 px-3 py-3.5 text-purple-300">
+                          <div className="flex gap-5">
+                            <span className="w-6 opacity-50">
+                              {myLeaderboardEntry.rank.toString().padStart(2, '0')}
+                            </span>
+                            {myLeaderboardEntry.github_handle} (YOU)
+                          </div>
+
+                          <span>{myLeaderboardEntry.xp.toLocaleString()} XP</span>
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
+                    Leaderboard is empty.
+                  </div>
+                )}
+              </div>
             </section>
 
             <section>
