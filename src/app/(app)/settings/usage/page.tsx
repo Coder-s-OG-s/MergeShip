@@ -14,6 +14,8 @@ const KIND_LABEL: Record<string, string> = {
   pr_backfilled: 'Backfilled PR history',
   pr_mentor_verified: 'Your PR was mentor-verified',
   xp_tripwire: 'Daily XP tripwire',
+  claim_reset_stale: 'Claim reset due to inactivity',
+  claim_warning_stale: 'Inactivity warning for claimed issue',
 };
 
 export default async function UsagePage() {
