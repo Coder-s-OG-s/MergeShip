@@ -49,9 +49,8 @@ export function PRList({ prs }: Props) {
   // Tab counts respect the active repo filter
   const counts: Record<PRTab, number> = {
     all: repoFiltered.length,
-    pending_review: repoFiltered.filter(
-      (p) => p.state === 'open' && p.mentor_status === 'pending'
-    ).length,
+    pending_review: repoFiltered.filter((p) => p.state === 'open' && p.mentor_status === 'pending')
+      .length,
     mentor_approved: repoFiltered.filter((p) => p.mentor_status === 'approved').length,
     merged: repoFiltered.filter((p) => p.state === 'merged').length,
     closed: repoFiltered.filter((p) => p.state === 'closed').length,
@@ -384,7 +383,6 @@ function PRMeta({ pr }: { pr: EnrichedPR }) {
           <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 16 16">
             <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm0 2a6 6 0 110 12A6 6 0 018 2zm0 1a5 5 0 100 10A5 5 0 008 3zm.5 2.5v2h2a.5.5 0 010 1h-2v2a.5.5 0 01-1 0v-2h-2a.5.5 0 010-1h2v-2a.5.5 0 011 0z" />
           </svg>
-
           +{pr.xp_earned} XP earned
         </span>
       )}
