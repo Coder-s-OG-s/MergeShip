@@ -112,12 +112,16 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 
-  // Enforce 3-claim limit: count currently claimed recs before allowing a new one.
+  // Enforce 3-claim limit: count only non-expired claimed recs.  Expired claims
+  // are released by the hourly recsExpire cron, but we also filter here so users
+  // are never locked out between cron runs.
+  const now = new Date().toISOString();
   const { count: claimedCount } = await service
     .from('recommendations')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', user.id)
-    .eq('status', 'claimed');
+    .eq('status', 'claimed')
+    .gte('expires_at', now);
   if ((claimedCount ?? 0) >= 3) {
     return err('claim_limit', 'you already have 3 active claims - merge or close them first');
   }
