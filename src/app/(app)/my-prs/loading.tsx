@@ -1,11 +1,9 @@
-export default function DashboardLoading() {
+export default function MyPrLoading() {
   return (
     <div className="flex min-h-screen bg-[#111318] font-mono text-white">
       <div className="flex-1 animate-pulse overflow-y-auto px-10 py-10">
         <header className="mb-8">
-          <h1 className="font-sans text-[36px] font-black tracking-tight text-white opacity-20">
-            My Pull Requests
-          </h1>
+          <div className="h-9 w-64 rounded bg-zinc-800" />
         </header>
 
         <div className="flex items-end justify-between gap-4 border-b border-[#2d333b]">
