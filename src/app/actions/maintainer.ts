@@ -22,6 +22,8 @@ import {
   type CommunityKind,
 } from '@/lib/maintainer/community';
 import { inngest } from '@/inngest/client';
+import { getInstallOctokit } from '@/lib/github/app';
+import { cacheGet, cacheSet } from '@/lib/cache';
 
 import { classifyTriage, type IssueTriageBucket } from '@/lib/maintainer/issue-triage';
 
@@ -41,6 +43,26 @@ export type MaintainerIssueRow = {
   lastEventAt: string | null;
   githubCreatedAt: string | null;
   triage: IssueTriageBucket;
+};
+
+export type RepoHealthRow = {
+  repoFullName: string;
+  repoHealthScore: number;
+  updatedAt: string | null;
+};
+
+export type StaleIssueRow = {
+  id: number;
+  title: string;
+  repoFullName: string;
+  daysStale: number;
+  claimed: boolean;
+};
+
+export type ContributorRow = {
+  githubHandle: string;
+  xp: number;
+  level: number;
 };
 
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
@@ -494,6 +516,308 @@ export async function deleteCommunityLink(linkId: number): Promise<Result<{ ok: 
   return ok({ ok: true });
 }
 
+export async function getPrCiStatus(
+  installationId: number,
+  repoFullName: string,
+  prNumber: number,
+): Promise<Result<'passing' | 'failing' | 'pending' | null>> {
+  const sb = getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const cacheKey = `ci:status:${repoFullName}:${prNumber}`;
+  const cached = await cacheGet<'passing' | 'failing' | 'pending' | null>(cacheKey);
+  if (cached !== null) {
+    return ok(cached);
+  }
+
+  // Fallback for local development using mock/demo seed repositories or if App Credentials are not configured
+  if (repoFullName.startsWith('demo/') || !process.env.GITHUB_APP_ID) {
+    const mockStatuses: ('passing' | 'failing' | 'pending')[] = ['passing', 'failing', 'pending'];
+    const status = mockStatuses[prNumber % mockStatuses.length]!;
+    await cacheSet(cacheKey, status, 120);
+    return ok(status);
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    const [owner, repo] = repoFullName.split('/');
+    if (!owner || !repo) {
+      return ok(null);
+    }
+
+    // Fetch the pull request to get the head SHA.
+    const prRes = await octokit.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
+    });
+    const headSha = prRes.data.head.sha;
+
+    // Fetch check runs for the head SHA.
+    const checksRes = await octokit.checks.listForRef({
+      owner,
+      repo,
+      ref: headSha,
+    });
+
+    const checkRuns = checksRes.data.check_runs ?? [];
+    let status: 'passing' | 'failing' | 'pending' | null = null;
+
+    if (checkRuns.length > 0) {
+      const hasPending = checkRuns.some((run) => run.status !== 'completed');
+      const hasFailed = checkRuns.some(
+        (run) =>
+          run.status === 'completed' &&
+          ['failure', 'timed_out', 'action_required'].includes(run.conclusion || ''),
+      );
+
+      if (hasFailed) {
+        status = 'failing';
+      } else if (hasPending) {
+        status = 'pending';
+      } else {
+        status = 'passing';
+      }
+    }
+
+    await cacheSet(cacheKey, status, 120);
+    return ok(status);
+  } catch (error) {
+    // Fall back to no badge
+    return ok(null);
+  }
+}
+
 // (COMMUNITY_KINDS is imported directly from '@/lib/maintainer/community'
 // in client / page code — re-exporting it here would violate Next.js's
 // 'use server' rule that only async functions may be exported.)
+export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> {
+  const sb = getServerSupabase();
+
+  if (!sb) {
+    return err('not_configured', 'auth not configured');
+  }
+
+  const service = getServiceSupabase();
+
+  if (!service) {
+    return err('not_configured', 'service role missing');
+  }
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+
+  if (!user) {
+    return err('not_authenticated', 'sign in first');
+  }
+
+  await rateLimit({
+    namespace: 'maintainer',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const installs = await listMaintainerInstalls(user.id);
+
+  const installationIds = installs.map((i) => i.installationId);
+
+  if (installationIds.length === 0) {
+    return ok([]);
+  }
+
+  const installationId = installationIds[0];
+
+  if (!installationId) {
+    return ok([]);
+  }
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+
+  const repoNames = repos;
+
+  const { data: issues, error } = await service
+    .from('issues')
+    .select('repo_full_name, repo_health_score')
+    .in('repo_full_name', repoNames);
+
+  if (error) {
+    return err('query_failed', error.message);
+  }
+
+  const healthMap = new Map<string, number[]>();
+
+  for (const issue of issues ?? []) {
+    const repo = issue.repo_full_name;
+
+    if (!healthMap.has(repo)) {
+      healthMap.set(repo, []);
+    }
+
+    healthMap.get(repo)?.push(issue.repo_health_score ?? 0);
+  }
+
+  return ok(
+    repoNames.map((repo) => {
+      const scores = healthMap.get(repo) ?? [];
+
+      const average =
+        scores.length > 0
+          ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length)
+          : 0;
+
+      return {
+        repoFullName: repo,
+        repoHealthScore: average,
+        updatedAt: new Date().toISOString(),
+      };
+    }),
+  );
+}
+
+export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
+  const sb = getServerSupabase();
+
+  if (!sb) {
+    return err('not_configured', 'auth not configured');
+  }
+
+  const service = getServiceSupabase();
+
+  if (!service) {
+    return err('not_configured', 'service role missing');
+  }
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+
+  if (!user) {
+    return err('not_authenticated', 'sign in first');
+  }
+
+  await rateLimit({
+    namespace: 'maintainer',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const installs = await listMaintainerInstalls(user.id);
+
+  const installationIds = installs.map((i) => i.installationId);
+
+  if (installationIds.length === 0) {
+    return ok([]);
+  }
+
+  const installationId = installationIds[0];
+
+  if (!installationId) {
+    return ok([]);
+  }
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+
+  const repoNames = repos;
+
+  const fourteenDaysAgo = new Date();
+
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+  const { data: issues, error } = await service
+    .from('issues')
+    .select('id, title, repo_full_name, github_created_at, assignee_login')
+    .eq('state', 'open')
+    .in('repo_full_name', repoNames)
+    .lt('github_created_at', fourteenDaysAgo.toISOString());
+
+  if (error) {
+    return err('query_failed', error.message);
+  }
+
+  return ok(
+    (issues ?? []).map((issue) => {
+      const created = new Date(issue.github_created_at ?? Date.now());
+
+      const diffMs = Date.now() - created.getTime();
+
+      return {
+        id: issue.id,
+        title: issue.title,
+        repoFullName: issue.repo_full_name,
+        daysStale: Math.floor(diffMs / (1000 * 60 * 60 * 24)),
+        claimed: Boolean(issue.assignee_login),
+      };
+    }),
+  );
+}
+
+export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
+  const sb = getServerSupabase();
+
+  if (!sb) {
+    return err('not_configured', 'auth not configured');
+  }
+
+  const service = getServiceSupabase();
+
+  if (!service) {
+    return err('not_configured', 'service role missing');
+  }
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+
+  if (!user) {
+    return err('not_authenticated', 'sign in first');
+  }
+
+  await rateLimit({
+    namespace: 'maintainer',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const { data: contributors, error } = await service
+    .from('profiles')
+    .select('github_handle, xp, level')
+    .order('xp', { ascending: false })
+    .limit(5);
+
+  if (error) {
+    return err('query_failed', error.message);
+  }
+
+  return ok(
+    (contributors ?? []).map((c) => ({
+      githubHandle: c.github_handle ?? 'unknown',
+      xp: c.xp ?? 0,
+      level: c.level ?? 0,
+    })),
+  );
+}

@@ -45,6 +45,10 @@ export const profiles = pgTable(
     timezone: text('timezone'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    bio: text('bio'),
+    skills: text('skills').array(),
+    websiteUrl: text('website_url'),
+    twitterHandle: text('twitter_handle'),
   },
   (t) => ({
     xpDescIdx: index('profiles_xp_desc_idx').on(t.xp),
