@@ -182,7 +182,7 @@ function SectionCurtain({ children, dark, className = '' }: {
         initial={{ scaleX: 0 }}
         animate={
           phase === 'wiping' ? { scaleX: [0, 1, 1, 0] } :
-          phase === 'done' ? { scaleX: 0 } : { scaleX: 0 }
+            phase === 'done' ? { scaleX: 0 } : { scaleX: 0 }
         }
         transition={{ duration: 0.9, times: [0, 0.45, 0.55, 1], ease: [0.76, 0, 0.24, 1] }}
         style={{ background: dark ? '#000' : '#111110', transformOrigin: 'left' }}
@@ -286,6 +286,7 @@ function NavAuth() {
 
 function Nav() {
   const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     onScroll();
@@ -313,7 +314,39 @@ function Nav() {
         <a className="nav-link" href="#how">How It Works</a>
         <a className="nav-link" href="#levels">Levels</a>
       </div>
+      {mobileMenuOpen && (
+        <div
+          className="mobile-overlay"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+      {mobileMenuOpen && (
+        <div className="mobile-nav">
+          <a href="#contributors" onClick={() => setMobileMenuOpen(false)}>
+            For Contributors
+          </a>
+
+          <a href="#maintainers" onClick={() => setMobileMenuOpen(false)}>
+            For Maintainers
+          </a>
+
+          <a href="#how" onClick={() => setMobileMenuOpen(false)}>
+            How It Works
+          </a>
+
+          <a href="#levels" onClick={() => setMobileMenuOpen(false)}>
+            Levels
+          </a>
+        </div>
+      )}
       <NavAuth />
+      <button
+        className="mobile-menu-btn"
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+      >
+        ☰
+      </button>
+
     </nav>
   );
 }
@@ -346,21 +379,21 @@ function Hero() {
             MergeShip changes that — level by level, PR by PR.
           </FadeUp>
           <FadeUp className="hero-ctas" delay={1.1} y={24}>
-          <Link
-            href="/dashboard"
-            className="btn"
-            onClick={(e) => {
-              const isLoggedIn = false;
-              if (!isLoggedIn) {
-                e.preventDefault();
-                alert("Please sign in first to continue.");
-                window.location.href = "/signin";
-              }
-            }}
-          >
-            Start Contributing →
-          </Link>
-            <a href="#how" className="btn-ghost">see how it works →</a>
+            <Link
+              href="/dashboard"
+              className="btn"
+              onClick={(e) => {
+                const isLoggedIn = false;
+                if (!isLoggedIn) {
+                  e.preventDefault();
+                  alert("Please sign in first to continue.");
+                  window.location.href = "/signin";
+                }
+              }}
+            >
+              Start Contributing →
+            </Link>
+            <a href="#features" className="btn-ghost">see how it works →</a>
           </FadeUp>
         </div>
         <FadeUp className="hero-stats" delay={1.3} y={0}>
