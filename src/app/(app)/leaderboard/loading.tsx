@@ -1,4 +1,4 @@
-export default function DashboardLoading() {
+export default function LeaderboardPageLoading() {
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-3xl animate-pulse">
