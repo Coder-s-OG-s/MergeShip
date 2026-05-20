@@ -523,7 +523,7 @@ function HowItWorks() {
   return (
     <SectionCurtain>
       <SectionHeader num="02" title="ONE LOGIN. INTELLIGENT ROUTING." />
-      <div className="how-grid" id="features">
+      <div className="how-grid" id="how">
         <div className="how-index">
           {flows.map((f, i) => (
             <button key={i} className={`how-index-item${active === i ? ' active' : ''}`} onClick={() => setActive(i)}>
