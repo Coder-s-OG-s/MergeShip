@@ -1,9 +1,7 @@
-// src/app/(app)/dashboard/loading.tsx
 export default function DashboardLoading() {
   return (
     <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
       <div className="mx-auto max-w-6xl animate-pulse">
-        {/* Top Notification Banner Skeleton */}
         <div className="mb-6 flex items-center justify-between gap-4 border border-zinc-800/40 bg-zinc-900/20 px-5 py-4">
           <div className="flex items-center gap-4">
             <div className="h-6 w-24 bg-zinc-800/50" />
@@ -12,7 +10,6 @@ export default function DashboardLoading() {
           <div className="h-6 w-16 rounded bg-zinc-800/40" />
         </div>
 
-        {/* Dashboard Header Skeleton */}
         <header className="mb-12 flex flex-col justify-between gap-6 border-b border-[#2d333b] pb-6 md:flex-row md:items-end">
           <div>
             <div className="mb-4 h-3 w-28 bg-zinc-800/30" />
@@ -26,9 +23,7 @@ export default function DashboardLoading() {
           </div>
         </header>
 
-        {/* Stats Metrics Grid Skeleton (4 Columns) */}
         <div className="mb-16 grid grid-cols-1 gap-12 md:grid-cols-4">
-          {/* Level Progress */}
           <div>
             <div className="mb-4 h-3 w-24 bg-zinc-800/30" />
             <div className="flex items-center gap-4">
@@ -40,7 +35,6 @@ export default function DashboardLoading() {
             </div>
           </div>
 
-          {/* Total Merges */}
           <div>
             <div className="mb-4 h-3 w-24 bg-zinc-800/30" />
             <div className="flex items-end gap-2">
@@ -49,7 +43,6 @@ export default function DashboardLoading() {
             </div>
           </div>
 
-          {/* Mentor Points */}
           <div>
             <div className="mb-4 h-3 w-28 bg-zinc-800/30" />
             <div className="flex items-end gap-2">
@@ -58,7 +51,6 @@ export default function DashboardLoading() {
             </div>
           </div>
 
-          {/* Current Streak */}
           <div>
             <div className="mb-4 h-3 w-28 bg-zinc-800/30" />
             <div className="flex items-end gap-2">
@@ -68,11 +60,8 @@ export default function DashboardLoading() {
           </div>
         </div>
 
-        {/* Main Two-Column Layout */}
         <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
-          {/* Left Column (Active Issues & Mentees) */}
           <div className="space-y-16">
-            {/* Active Issues Section */}
             <section>
               <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
                 <div className="h-3 w-24 bg-zinc-800/30" />
@@ -92,7 +81,6 @@ export default function DashboardLoading() {
               </div>
             </section>
 
-            {/* Mentees Section */}
             <section>
               <div className="mb-6 border-b border-[#2d333b] pb-4">
                 <div className="h-3 w-24 bg-zinc-800/30" />
@@ -117,9 +105,7 @@ export default function DashboardLoading() {
             </section>
           </div>
 
-          {/* Right Column (My PRs & Leaderboard Snapshot) */}
           <div className="space-y-16">
-            {/* My PRs Section */}
             <section>
               <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
                 <div className="h-3 w-16 bg-zinc-800/30" />
@@ -139,7 +125,6 @@ export default function DashboardLoading() {
               </div>
             </section>
 
-            {/* Leaderboard Section */}
             <section>
               <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
                 <div className="h-3 w-36 bg-zinc-800/30" />
@@ -160,7 +145,6 @@ export default function DashboardLoading() {
           </div>
         </div>
 
-        {/* Footer Skeleton */}
         <footer className="mt-24 flex justify-between border-t border-[#2d333b] pt-8">
           <div className="h-3 w-36 bg-zinc-800/30" />
           <div className="flex gap-6">
