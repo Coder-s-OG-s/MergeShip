@@ -46,6 +46,7 @@ export default async function DashboardPage() {
 
   const xp = profile?.xp ?? 0;
   const level = profile?.level ?? 0;
+  const isNewUser = xp === 0 && (profile?.github_total_merges ?? 0) === 0;
   const { needed, next } = xpToNextLevel(xp);
   const nextLevel = next ?? level;
 
@@ -148,6 +149,17 @@ export default async function DashboardPage() {
     <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
       <div className="mx-auto max-w-6xl">
         <LevelUpBanner />
+        {isNewUser && (
+          <div className="mb-8 rounded-md border border-[#2d333b] bg-[#161b22] p-6">
+            <h2 className="mb-3 text-lg font-bold text-white">Getting Started</h2>
+
+            <ul className="space-y-2 text-sm text-zinc-300">
+              <li>1. Connect your GitHub</li>
+              <li>2. Browse and claim an issue</li>
+              <li>3. Submit a PR</li>
+            </ul>
+          </div>
+        )}
         {/* Header */}
         <header className="mb-12 flex flex-col justify-between gap-6 border-b border-[#2d333b] pb-6 md:flex-row md:items-end">
           <div>
