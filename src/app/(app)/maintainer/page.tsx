@@ -7,7 +7,9 @@ import {
   getMaintainerPrQueue,
   getRepoHealthOverview,
   getStaleIssues,
+  getFlaggedAccounts,
   getTopContributors,
+  type FlaggedAccountRow,
   type MaintainerInstall,
   type MaintainerPrRow,
   type RepoHealthRow,
@@ -82,6 +84,10 @@ export default async function MaintainerPage({
 
   const contributorsRes = await getTopContributors();
   const topContributors: ContributorRow[] = isOk(contributorsRes) ? contributorsRes.data : [];
+  const flaggedAccountsRes = await getFlaggedAccounts();
+  const flaggedAccounts: FlaggedAccountRow[] = isOk(flaggedAccountsRes)
+    ? flaggedAccountsRes.data
+    : [];
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -159,6 +165,50 @@ export default async function MaintainerPage({
         <p className="mb-4 text-xs text-zinc-500">
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
+        {flaggedAccounts.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-amber-900/60 bg-amber-950/20 p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-amber-100">Suspicious XP Signals</h2>
+                <p className="mt-1 text-xs text-amber-200/70">
+                  Daily detector output for maintainer review.
+                </p>
+              </div>
+              <span className="rounded-full bg-amber-900/50 px-2 py-1 text-xs text-amber-100">
+                {flaggedAccounts.length} open
+              </span>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {flaggedAccounts.map((flag) => (
+                <div key={flag.id} className="rounded-lg border border-amber-900/50 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-amber-50">@{flag.githubHandle}</p>
+                      <p className="mt-1 text-xs text-amber-200/70">
+                        Level {flag.level} · {flag.xp} XP
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        flag.severity === 'high'
+                          ? 'bg-red-900/50 text-red-200'
+                          : 'bg-amber-900/50 text-amber-100'
+                      }`}
+                    >
+                      {flag.severity}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm text-amber-100">{formatFlagReason(flag.reason)}</p>
+                  <p className="mt-1 text-xs text-amber-200/70">{flag.summary}</p>
+                  <p className="mt-2 text-xs text-amber-200/50">
+                    Detected {relativeTime(flag.detectedAt)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         <div className="mb-8 grid gap-6 lg:grid-cols-3">
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>
@@ -371,6 +421,16 @@ function NoInstalls() {
       </div>
     </div>
   );
+}
+
+function formatFlagReason(reason: string) {
+  const labels: Record<string, string> = {
+    daily_xp_event_spike: 'Daily XP event spike',
+    rapid_merge_spike: 'Rapid merge spike',
+    reviewer_approval_concentration: 'Reviewer approval concentration',
+  };
+
+  return labels[reason] ?? 'Suspicious activity';
 }
 
 function NotConfigured() {

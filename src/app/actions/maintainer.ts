@@ -65,6 +65,18 @@ export type ContributorRow = {
   level: number;
 };
 
+export type FlaggedAccountRow = {
+  id: number;
+  githubHandle: string;
+  xp: number;
+  level: number;
+  reason: string;
+  severity: 'medium' | 'high';
+  detectedAt: string;
+  summary: string;
+  count: number;
+};
+
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
   'needs-triage',
   'in-progress',
@@ -820,4 +832,106 @@ export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
       level: c.level ?? 0,
     })),
   );
+}
+
+export async function getFlaggedAccounts(): Promise<Result<FlaggedAccountRow[]>> {
+  const sb = getServerSupabase();
+
+  if (!sb) {
+    return err('not_configured', 'auth not configured');
+  }
+
+  const service = getServiceSupabase();
+
+  if (!service) {
+    return err('not_configured', 'service role missing');
+  }
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+
+  if (!user) {
+    return err('not_authenticated', 'sign in first');
+  }
+
+  await rateLimit({
+    namespace: 'maintainer',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const { data: flags, error } = await service
+    .from('flagged_accounts')
+    .select('id, user_id, reason, severity, evidence, detected_at')
+    .eq('status', 'open')
+    .order('detected_at', { ascending: false })
+    .limit(10);
+
+  if (error) {
+    return err('query_failed', error.message);
+  }
+
+  const userIds = Array.from(new Set((flags ?? []).map((flag) => flag.user_id).filter(Boolean)));
+  const { data: profiles, error: profilesError } =
+    userIds.length > 0
+      ? await service
+          .from('profiles')
+          .select('id, github_handle, xp, level')
+          .in('id', userIds)
+      : { data: [], error: null };
+
+  if (profilesError) {
+    return err('query_failed', profilesError.message);
+  }
+
+  const profilesById = new Map(
+    (profiles ?? []).map((profile) => [
+      profile.id,
+      {
+        githubHandle: profile.github_handle ?? 'unknown',
+        xp: profile.xp ?? 0,
+        level: profile.level ?? 0,
+      },
+    ]),
+  );
+
+  return ok(
+    (flags ?? []).map((flag) => {
+      const profile = profilesById.get(flag.user_id ?? '');
+      const evidence = readFlagEvidence(flag.evidence);
+
+      return {
+        id: flag.id,
+        githubHandle: profile?.githubHandle ?? 'unknown',
+        xp: profile?.xp ?? 0,
+        level: profile?.level ?? 0,
+        reason: flag.reason,
+        severity: flag.severity === 'high' ? 'high' : 'medium',
+        detectedAt: flag.detected_at,
+        summary: evidence.summary,
+        count: evidence.count,
+      };
+    }),
+  );
+}
+
+function readFlagEvidence(evidence: unknown) {
+  if (!evidence || typeof evidence !== 'object') {
+    return { summary: 'Suspicious activity pattern detected.', count: 0 };
+  }
+
+  const record = evidence as Record<string, unknown>;
+  return {
+    summary:
+      typeof record.summary === 'string'
+        ? record.summary
+        : 'Suspicious activity pattern detected.',
+    count: typeof record.count === 'number' ? record.count : 0,
+  };
 }
