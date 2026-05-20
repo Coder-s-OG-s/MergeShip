@@ -26,6 +26,59 @@ export default function DashboardLoading() {
 
         <div className="mb-4 h-3.5 w-48 rounded bg-zinc-800/30" />
 
+        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+            <div className="mb-4 h-4 w-28 rounded bg-zinc-800" />
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between border-b border-zinc-800/60 pb-2 last:border-0 last:pb-0"
+                >
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3.5 w-24 rounded bg-zinc-800/70" />
+                    <div className="h-2.5 w-16 rounded bg-zinc-800/30" />
+                  </div>
+                  <div className="h-5 w-10 rounded-full bg-zinc-800/40" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+            <div className="mb-4 h-4 w-20 rounded bg-zinc-800" />
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="border-b border-zinc-800/60 pb-2 last:border-0 last:pb-0">
+                  <div className="mb-1.5 flex justify-between gap-2">
+                    <div className="h-3.5 flex-1 rounded bg-zinc-800/70" />
+                    <div className="h-3 w-8 shrink-0 rounded bg-zinc-800/40" />
+                  </div>
+                  <div className="h-2.5 w-20 rounded bg-zinc-800/30" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+            <div className="mb-4 h-4 w-28 rounded bg-zinc-800" />
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between border-b border-zinc-800/60 pb-2 last:border-0 last:pb-0"
+                >
+                  <div className="space-y-1.5">
+                    <div className="h-3.5 w-16 rounded bg-zinc-800/70" />
+                    <div className="h-2.5 w-12 rounded bg-zinc-800/30" />
+                  </div>
+                  <div className="h-3.5 w-12 rounded bg-zinc-800/40" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
         <ul className="space-y-2">
           {[1, 2].map((i) => (
             <li
