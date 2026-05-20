@@ -4,7 +4,7 @@ export default function DashboardLoading() {
       <div className="mx-auto max-w-6xl animate-pulse">
         <header className="mb-12 border-b border-[#2d333b] pb-6">
           <div className="mb-4 h-3 w-24 rounded bg-zinc-800" />
-          <div className="font-serif text-4xl text-white opacity-20">Browse Issues</div>
+          <div className="h-9 w-64 rounded bg-zinc-800" />
         </header>
 
         <div className="mb-10 flex flex-wrap items-center gap-3">
