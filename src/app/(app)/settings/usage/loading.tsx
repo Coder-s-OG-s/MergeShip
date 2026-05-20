@@ -1,4 +1,4 @@
-export default function DashboardLoading() {
+export default function UsageSettingsLoading() {
   return (
     <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
       <div className="mx-auto max-w-3xl animate-pulse">
