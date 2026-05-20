@@ -1,4 +1,4 @@
-export default function MyPrLoading() {
+export default function MyPRsPageLoading() {
   return (
     <div className="flex min-h-screen bg-[#111318] font-mono text-white">
       <div className="flex-1 animate-pulse overflow-y-auto px-10 py-10">
