@@ -360,7 +360,7 @@ function Hero() {
           >
             Start Contributing →
           </Link>
-            <a href="#features" className="btn-ghost">see how it works →</a>
+            <a href="#how" className="btn-ghost">see how it works →</a>
           </FadeUp>
         </div>
         <FadeUp className="hero-stats" delay={1.3} y={0}>
