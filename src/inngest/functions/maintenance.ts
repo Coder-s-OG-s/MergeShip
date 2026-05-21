@@ -79,6 +79,7 @@ export const activityLogCleanup = inngest.createFunction(
       if (!sb) throw new Error('service role missing');
       const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
       const { data } = await sb.from('activity_log').delete().lt('created_at', cutoff).select('id');
+      return { deleted: data?.length ?? 0 };
     });
   },
 );
