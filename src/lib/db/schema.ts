@@ -256,6 +256,48 @@ export const helpRequests = pgTable(
   }),
 );
 
+export const mentorshipSessions = pgTable(
+  'mentorship_sessions',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    mentorId: uuid('mentor_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    menteeId: uuid('mentee_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    level: integer('level').notNull().default(1),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+  },
+  (t) => ({
+    mentorIdx: index('mentorship_sessions_mentor_idx').on(t.mentorId),
+    menteeIdx: index('mentorship_sessions_mentee_idx').on(t.menteeId),
+  }),
+);
+
+export const messages = pgTable(
+  'messages',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    sessionId: bigint('session_id', { mode: 'number' })
+      .notNull()
+      .references(() => mentorshipSessions.id, { onDelete: 'cascade' }),
+    senderId: uuid('sender_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    content: text('content').notNull(),
+    timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
+    readStatus: text('read_status', { enum: ['unread', 'read'] })
+      .notNull()
+      .default('unread'),
+  },
+  (t) => ({
+    sessionIdx: index('messages_session_idx').on(t.sessionId),
+    senderIdx: index('messages_sender_idx').on(t.senderId),
+  }),
+);
+
 // ---------- cohorts + tags ----------
 
 export const cohorts = pgTable('cohorts', {

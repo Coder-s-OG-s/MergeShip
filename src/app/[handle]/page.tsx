@@ -4,6 +4,7 @@ import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
 import { ExternalLink, ArrowLeft } from 'lucide-react';
 import { CopyButton } from '@/components/copy-button';
+import StartMentorshipChatButton from '@/components/chat/StartMentorshipChatButton';
 
 export const revalidate = 300;
 
@@ -383,6 +384,7 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                     textToCopy={`${process.env.NEXT_PUBLIC_APP_URL ?? 'https://mergeship.dev'}/@${profile.githubHandle}`}
                   />
                 </p>
+                <StartMentorshipChatButton mentorHandle={profile.githubHandle} />
                 <div className="flex flex-wrap items-center gap-4 text-[11px] uppercase tracking-widest text-zinc-400">
                   <span>
                     <span className="font-bold text-white">{profile.prsMerged}</span> PRS MERGED

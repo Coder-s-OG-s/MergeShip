@@ -4,6 +4,7 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { SyncButton } from './sync-button';
 import { GitHubPRsPanel } from './github-prs-panel';
+import MentorshipSessionsSidebar from '@/components/chat/MentorshipSessionsSidebar';
 import RecCards from './rec-cards';
 import LevelUpBanner from './level-up-banner';
 import { redirect } from 'next/navigation';
@@ -230,6 +231,10 @@ export default async function DashboardPage() {
             </div>
           </div>
         </Suspense>
+
+        <div className="mb-16">
+          <MentorshipSessionsSidebar />
+        </div>
 
         {/* Main Columns */}
         <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
