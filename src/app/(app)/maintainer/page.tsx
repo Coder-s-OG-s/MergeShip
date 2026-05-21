@@ -5,11 +5,13 @@ import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
   getMaintainerPrQueue,
+  getMaintainerAnalyticsTrends,
   getRepoHealthOverview,
   getStaleIssues,
   getTopContributors,
   type MaintainerInstall,
   type MaintainerPrRow,
+  type MaintainerAnalyticsTrends,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
@@ -17,6 +19,7 @@ import {
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
 import CiStatusBadge from './ci-status-badge';
+import AnalyticsTrends from './analytics-trends';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,6 +77,10 @@ export default async function MaintainerPage({
     filters,
   });
   const rows: MaintainerPrRow[] = isOk(queueRes) ? queueRes.data.rows : [];
+  const trendsRes = await getMaintainerAnalyticsTrends({ installationId: activeInstallId });
+  const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
+    ? trendsRes.data
+    : { weekly: [], levelDistribution: [] };
   const repoHealthRes = await getRepoHealthOverview();
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
@@ -159,6 +166,7 @@ export default async function MaintainerPage({
         <p className="mb-4 text-xs text-zinc-500">
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
+        <AnalyticsTrends data={analyticsTrends} />
         <div className="mb-8 grid gap-6 lg:grid-cols-3">
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>
