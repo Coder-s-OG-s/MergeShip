@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Command } from 'cmdk';
 import { Search, Loader2 } from 'lucide-react';
 import { searchGlobal, type SearchResult } from '@/app/actions/search';
-import { Dialog, DialogContent, DialogOverlay } from '@radix-ui/react-dialog';
+import { Dialog, DialogContent, DialogOverlay, DialogTitle } from '@radix-ui/react-dialog';
 
 export function CommandPalette() {
   const router = useRouter();
@@ -68,6 +68,7 @@ export function CommandPalette() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogOverlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm transition-all duration-100" />
         <DialogContent className="fixed left-[50%] top-[20%] z-50 w-full max-w-xl translate-x-[-50%] overflow-hidden rounded-xl border border-zinc-800 bg-[#161b22] shadow-2xl outline-none">
+          <DialogTitle className="sr-only">Search issues and contributors</DialogTitle>
           <Command className="flex h-full w-full flex-col overflow-hidden bg-transparent text-zinc-300">
             <div className="flex items-center border-b border-zinc-800 px-3">
               <Search className="mr-2 h-4 w-4 shrink-0 text-zinc-500" />
