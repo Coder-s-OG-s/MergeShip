@@ -24,7 +24,7 @@ jobs:
             Otherwise it will be labeled `stale` in another 7 days.
           days-before-stale: 7
           days-before-close: -1
-          stale-pr-label: ''
+          stale-pr-label: 'stale-warned'
           exempt-pr-labels: 'pinned,work-in-progress'
           only-pr-labels: ''
           operations-per-run: 100
