@@ -880,10 +880,7 @@ export async function getFlaggedAccounts(): Promise<Result<FlaggedAccountRow[]>>
   const userIds = Array.from(new Set((flags ?? []).map((flag) => flag.user_id).filter(Boolean)));
   const { data: profiles, error: profilesError } =
     userIds.length > 0
-      ? await service
-          .from('profiles')
-          .select('id, github_handle, xp, level')
-          .in('id', userIds)
+      ? await service.from('profiles').select('id, github_handle, xp, level').in('id', userIds)
       : { data: [], error: null };
 
   if (profilesError) {
@@ -929,9 +926,7 @@ function readFlagEvidence(evidence: unknown) {
   const record = evidence as Record<string, unknown>;
   return {
     summary:
-      typeof record.summary === 'string'
-        ? record.summary
-        : 'Suspicious activity pattern detected.',
+      typeof record.summary === 'string' ? record.summary : 'Suspicious activity pattern detected.',
     count: typeof record.count === 'number' ? record.count : 0,
   };
 }
