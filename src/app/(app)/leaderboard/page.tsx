@@ -42,21 +42,21 @@ export default async function LeaderboardPage({
         </nav>
 
         <ul className="mt-6 divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900">
-          {isOk(result) && result.data.length === 0 ? (
+          {isOk(result) && result.data.entries.length === 0 ? (
             <li className="p-6 text-zinc-400">No entries yet.</li>
           ) : isOk(result) ? (
             <>
               {(() => {
                 // Current logged-in user handle from visible list
-                const currentGithubHandle = result.data.find((e: any) => e.rank)?.githubHandle;
+                const currentGithubHandle = result.data.entries.find((e: any) => e.rank)?.githubHandle;
 
-                const isUserVisible = result.data.some(
+                const isUserVisible = result.data.entries.some(
                   (entry: any) => entry.githubHandle === currentGithubHandle,
                 );
 
                 return (
                   <>
-                    {result.data.map((entry: any) => {
+                    {result.data.entries.map((entry: any) => {
                       const isMe = entry.githubHandle === currentGithubHandle;
 
                       return (
