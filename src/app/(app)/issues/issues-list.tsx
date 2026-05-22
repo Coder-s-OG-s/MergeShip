@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useTransition, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { Search, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useTransition, useCallback, useEffect, useRef } from 'react';
+import { Search, ExternalLink, ChevronLeft, ChevronRight, Copy, Check } from 'lucide-react';
 import {
   claimIssue,
   unclaimIssue,
@@ -44,6 +44,18 @@ function IssueCard({
   const repoName = issue.repoFullName.split('/')[1] ?? issue.repoFullName;
   const org = issue.repoFullName.split('/')[0] ?? '';
 
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(issue.url);
+
+    setCopied(true);
+
+    setTimeout(() => {
+      setCopied(false);
+    }, 1500);
+  };
+
   return (
     <div className="border-b border-[#2d333b] py-6 last:border-0">
       <div className="mb-3 flex items-start justify-between gap-4">
@@ -60,18 +72,17 @@ function IssueCard({
               className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${DIFFICULTY_COLOR[issue.difficulty] ?? 'border-zinc-700 text-zinc-400'}`}
               title={
                 issue.difficulty === 'E'
-                  ? 'Easy — good for first-time contributors'
+                  ? 'Easy — good for first contributions, lower XP'
                   : issue.difficulty === 'M'
-                    ? 'Medium — requires some codebase familiarity'
+                    ? 'Medium — requires some codebase knowledge'
                     : issue.difficulty === 'H'
-                      ? 'Hard — significant feature or architectural change'
+                      ? 'Hard — significant complexity, higher XP'
                       : ''
               }
             >
               {DIFFICULTY_LABEL[issue.difficulty] ?? issue.difficulty}
             </span>
           )}
-
           {isClaimed && (
             <span className="bg-purple-900/50 px-2 py-0.5 text-[10px] uppercase text-purple-300">
               CLAIMED
@@ -112,6 +123,7 @@ function IssueCard({
             <span className="text-[10px] uppercase tracking-widest text-purple-400">
               YOUR ISSUE
             </span>
+
             <a
               href={issue.url}
               target="_blank"
@@ -120,6 +132,22 @@ function IssueCard({
             >
               VIEW <ExternalLink className="h-3 w-3" />
             </a>
+
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 border border-zinc-700 px-3 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:bg-zinc-800"
+            >
+              {copied ? (
+                <>
+                  COPIED <Check className="h-3 w-3" />
+                </>
+              ) : (
+                <>
+                  COPY <Copy className="h-3 w-3" />
+                </>
+              )}
+            </button>
+
             <button
               onClick={() => issue.userRecId && onUnclaim(issue.userRecId)}
               disabled={actionPending || !issue.userRecId}
@@ -137,6 +165,7 @@ function IssueCard({
             >
               {actionPending ? 'CLAIMING...' : 'CLAIM ISSUE'}
             </button>
+
             <a
               href={issue.url}
               target="_blank"
@@ -145,8 +174,24 @@ function IssueCard({
             >
               VIEW <ExternalLink className="h-3 w-3" />
             </a>
+
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-300"
+            >
+              {copied ? (
+                <>
+                  COPIED <Check className="h-3 w-3" />
+                </>
+              ) : (
+                <>
+                  COPY <Copy className="h-3 w-3" />
+                </>
+              )}
+            </button>
           </>
         )}
+
         {issue.xpReward && (
           <span className="ml-auto text-[10px] uppercase tracking-widest text-emerald-600">
             +{issue.xpReward} XP
@@ -167,6 +212,7 @@ export function IssuesList({
   repoOptions: RepoOption[];
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [actionIssueId, setActionIssueId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -188,7 +234,7 @@ export function IssuesList({
         page: string;
       }>,
     ) => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams(searchParams.toString());
       const q = overrides.q ?? search;
       const st = overrides.state ?? state;
       const diff = overrides.difficulty ?? difficulty;
@@ -199,7 +245,11 @@ export function IssuesList({
       if (st !== 'open') params.set('state', st);
       if (diff) params.set('difficulty', diff);
       if (r) params.set('repo', r);
-      if (sc === 'true') params.set('claimed', 'true');
+      if (sc === 'true') {
+        params.set('claimed', 'true');
+      } else {
+        params.delete('claimed');
+      }
       if (pg !== '1') params.set('page', pg);
       startTransition(() => {
         router.push(`/issues${params.size > 0 ? `?${params.toString()}` : ''}`);
