@@ -153,7 +153,7 @@ function pickDefaultBackend(): CacheBackend {
       maxRetriesPerRequest: 1,
       retryStrategy: () => null, // Do not keep retrying connection
     });
-    client.on('error', (err) => {
+    client.on('error', (err: Error) => {
       console.warn(`[cache] Local Redis error: ${err.message}. Falling back to memory.`);
       backend = new MemoryBackend();
       client.disconnect();

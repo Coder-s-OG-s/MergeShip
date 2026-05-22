@@ -17,7 +17,22 @@ function levelProgressPct(xp: number, level: number): number {
   return Math.max(0, Math.min(100, pct));
 }
 
-export default async function StatsRow({ userId, profile }: { userId: string; profile: any }) {
+type PartialProfile = {
+  github_handle: string | null;
+  xp: number;
+  level: number;
+  github_total_merges: number | null;
+  github_streak: number | null;
+  github_stats_synced_at: string | null;
+} | null;
+
+export default async function StatsRow({
+  userId,
+  profile,
+}: {
+  userId: string;
+  profile: PartialProfile;
+}) {
   const service = getServiceSupabase();
   if (!service) return null;
 
