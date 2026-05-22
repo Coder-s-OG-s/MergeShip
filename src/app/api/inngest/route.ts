@@ -16,7 +16,12 @@ import {
   processMemberEvent,
 } from '@/inngest/functions/process-membership-events';
 import { prBackfill } from '@/inngest/functions/pr-backfill';
-import { streakDetect, recsExpire, activityLogCleanup } from '@/inngest/functions/maintenance';
+import {
+  streakDetect,
+  recsExpire,
+  activityLogCleanup,
+  autoUnclaimStale,
+} from '@/inngest/functions/maintenance';
 import { githubStatsSync } from '@/inngest/functions/github-stats-sync';
 import { mentorPostComment } from '@/inngest/functions/mentor-post-comment';
 import { processIssueEvent } from '@/inngest/functions/process-issue-event';
@@ -40,6 +45,7 @@ export const { GET, POST, PUT } = serve({
     streakDetect,
     recsExpire,
     activityLogCleanup,
+    autoUnclaimStale,
     githubStatsSync,
     mentorPostComment,
     processIssueEvent,

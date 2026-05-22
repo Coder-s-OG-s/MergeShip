@@ -220,12 +220,20 @@ export default async function DashboardPage() {
                 CURRENT STREAK
               </div>
               <div className="flex items-end gap-2">
-                <span className="font-serif text-4xl leading-none">
-                  {(streak ?? 0).toString().padStart(2, '0')}
-                </span>
-                <span className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
-                  DAYS 🔥
-                </span>
+                {(streak ?? 0) > 0 ? (
+                  <>
+                    <span className="font-serif text-4xl leading-none">
+                      {(streak ?? 0).toString().padStart(2, '0')}
+                    </span>
+                    <span className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
+                      DAYS 🔥
+                    </span>
+                  </>
+                ) : (
+                  <span className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
+                    NO STREAK
+                  </span>
+                )}
               </div>
             </div>
           </div>
