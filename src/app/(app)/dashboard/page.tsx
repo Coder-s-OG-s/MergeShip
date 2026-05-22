@@ -182,7 +182,7 @@ export default async function DashboardPage() {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            <SyncButton lastSyncedAt={syncedAt} />
+            <SyncButton lastSyncedAt={syncedAt} userId={user.id} />
           </div>
         </header>
         {/* Stats Row */}
@@ -399,7 +399,7 @@ export default async function DashboardPage() {
                   })
                 ) : (
                   <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
-                    Leaderboard is empty.
+                    BE THE FIRST ON THE BOARD — MERGE A PR TO EARN XP
                   </div>
                 )}
               </div>

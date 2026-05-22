@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, ArrowLeft } from 'lucide-react';
 import { CopyButton } from '@/components/copy-button';
 
 export const revalidate = 300;
@@ -60,6 +60,7 @@ type ActiveTask = {
 };
 
 type ProfileData = {
+  profileId: string;
   githubHandle: string;
   displayName: string | null;
   avatarUrl: string | null;
@@ -78,8 +79,11 @@ type ProfileData = {
 async function loadProfileData(handle: string): Promise<ProfileData | null> {
   const cacheKey = `profile:v2:${handle}`;
   const cached = await cacheGet<ProfileData>(cacheKey);
-  if (cached) return cached;
-
+  if (cached) {
+    const { getPublicStreak } = await import('@/app/actions/streak');
+    const { days: streakDays } = await getPublicStreak(cached.profileId);
+    return { ...cached, streakDays };
+  }
   const service = getServiceSupabase();
   if (!service) return null;
 
@@ -246,6 +250,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
   const { days: streakDays } = await getPublicStreak(profile.id);
 
   const data: ProfileData = {
+    profileId: profile.id,
     githubHandle: profile.github_handle,
     displayName: profile.display_name,
     avatarUrl: profile.avatar_url,
@@ -283,6 +288,29 @@ const EVENT_DOT: Record<string, string> = {
 
 const DIFFICULTY_LABEL: Record<string, string> = { E: 'L1', M: 'L2', H: 'L3' };
 
+export async function generateMetadata({ params }: { params: { handle: string } }) {
+  const handle = decodeURIComponent(params.handle).replace(/^@/, '');
+
+  const profile = await loadProfileData(handle);
+
+  if (!profile) {
+    return {
+      title: 'Profile not found | MergeShip',
+      description: 'This profile does not exist.',
+    };
+  }
+
+  return {
+    title: `${profile.displayName ?? profile.githubHandle} | MergeShip`,
+    description: `Level ${profile.level} • ${profile.xp} XP • ${profile.prsMerged} PRs merged`,
+    openGraph: {
+      title: `${profile.displayName ?? profile.githubHandle} | MergeShip`,
+      description: `Level ${profile.level} • ${profile.xp} XP • ${profile.prsMerged} PRs merged`,
+      images: [profile.avatarUrl ?? `https://github.com/${profile.githubHandle}.png`],
+    },
+  };
+}
+
 export default async function PublicProfile({ params }: { params: { handle: string } }) {
   const handle = decodeURIComponent(params.handle).replace(/^@/, '');
   const profile = await loadProfileData(handle);
@@ -293,12 +321,23 @@ export default async function PublicProfile({ params }: { params: { handle: stri
       {/* Top nav */}
       <nav className="border-b border-[#21262d] px-8 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <Link
-            href="/dashboard"
-            className="font-serif text-lg font-bold tracking-widest text-white"
-          >
-            MERGESHIP
-          </Link>
+          <div className="flex items-center">
+            <Link
+              href="/dashboard"
+              className="mr-4 inline-flex items-center gap-2 rounded-md px-3 py-1 text-[12px] uppercase tracking-widest text-zinc-400 transition-colors hover:bg-[#161b22] hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Link>
+
+            <Link
+              href="/dashboard"
+              className="font-serif text-lg font-bold tracking-widest text-white"
+            >
+              MERGESHIP
+            </Link>
+          </div>
+
           <Link
             href={`https://github.com/${profile.githubHandle}`}
             target="_blank"

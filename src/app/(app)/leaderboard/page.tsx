@@ -4,8 +4,6 @@ import { isOk } from '@/lib/result';
 
 export const dynamic = 'force-dynamic';
 
-const LANGUAGE_TABS = ['TypeScript', 'Python', 'Go', 'Rust'] as const;
-
 export default async function LeaderboardPage({
   searchParams,
 }: {
@@ -26,19 +24,6 @@ export default async function LeaderboardPage({
           >
             Global
           </Link>
-          {LANGUAGE_TABS.map((lang) => (
-            <Link
-              key={lang}
-              href={`/leaderboard?scope=language&id=${lang}`}
-              className={`rounded-lg px-3 py-1 ${
-                scope === 'language' && scopeId === lang
-                  ? 'bg-zinc-800'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              {lang}
-            </Link>
-          ))}
         </nav>
 
         <ul className="mt-6 divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900">
