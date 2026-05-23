@@ -130,19 +130,27 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  let query = service
-    .from('issues')
+  const isSearch = !!filters.search?.trim();
+
+  // Cast to any to avoid complex union type builder errors between rpc and from
+  let query: any = isSearch
+    ? service.rpc('search_issues', { search_query: filters.search!.trim() })
+    : service.from('issues');
+
+  query = query
     .select(
       'id, repo_full_name, github_issue_number, title, difficulty, xp_reward, labels, state, url, fetched_at',
       { count: 'exact' },
     )
     .eq('state', filters.state ?? 'open')
-    .order('fetched_at', { ascending: false })
     .range(from, to);
 
-  if (filters.search?.trim()) {
-    query = query.ilike('title', `%${filters.search.trim()}%`);
+  // When searching via RPC, results are naturally ordered by rank (from the SQL function).
+  // Otherwise, we order by fetched_at descending.
+  if (!isSearch) {
+    query = query.order('fetched_at', { ascending: false });
   }
+
   if (filters.difficulty) {
     query = query.eq('difficulty', filters.difficulty);
   }
