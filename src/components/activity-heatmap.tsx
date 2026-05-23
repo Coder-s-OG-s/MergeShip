@@ -19,20 +19,20 @@ export function ActivityHeatmap({ activityHistory }: ActivityHeatmapProps) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Display exactly 13 columns (weeks), each with 7 rows (Sunday to Saturday).
-  // Find the Sunday of the week that was 12 weeks ago.
+  // Display exactly 53 columns (weeks), each with 7 rows (Sunday to Saturday).
+  // Find the Sunday of the week that was 52 weeks ago.
   const currentDayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
   const startOfCurrentWeek = new Date(today);
   startOfCurrentWeek.setDate(today.getDate() - currentDayOfWeek);
 
   const startDate = new Date(startOfCurrentWeek);
-  startDate.setDate(startOfCurrentWeek.getDate() - 12 * 7); // 12 weeks ago Sunday
+  startDate.setDate(startOfCurrentWeek.getDate() - 52 * 7); // 52 weeks ago Sunday
 
-  // Generate 91 days (13 weeks)
+  // Generate 371 days (53 weeks)
   const days: { dateStr: string; count: number; isFuture: boolean; label: string }[] = [];
   const runningDate = new Date(startDate);
 
-  for (let i = 0; i < 91; i++) {
+  for (let i = 0; i < 371; i++) {
     const ymd = runningDate.toISOString().slice(0, 10);
     const count = activityMap.get(ymd) || 0;
     const isFuture = runningDate > today;
@@ -70,7 +70,7 @@ export function ActivityHeatmap({ activityHistory }: ActivityHeatmapProps) {
       <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
         <div>
           <h3 className="font-mono text-[11px] uppercase tracking-widest text-zinc-400">
-            Activity Timeline (Last 90 Days)
+            Activity Timeline (Last Year)
           </h3>
           <p className="mt-1 font-serif text-lg font-bold text-white">
             {totalContributions} Contributions

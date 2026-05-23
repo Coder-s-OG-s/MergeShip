@@ -102,9 +102,9 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
 
   if (!profile) return null;
 
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  ninetyDaysAgo.setHours(0, 0, 0, 0);
+  const oneYearAgo = new Date();
+  oneYearAgo.setDate(oneYearAgo.getDate() - 365);
+  oneYearAgo.setHours(0, 0, 0, 0);
 
   // Fetch all data in parallel
   const [
@@ -161,12 +161,12 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
       .order('claimed_at', { ascending: false })
       .limit(5),
 
-    // Public activity from xp_events for the past 90 days
+    // Public activity from xp_events for the past year
     service
       .from('xp_events')
       .select('created_at')
       .eq('user_id', profile.id)
-      .gte('created_at', ninetyDaysAgo.toISOString())
+      .gte('created_at', oneYearAgo.toISOString())
       .in('source', ['recommended_merge', 'unrecommended_merge', 'help_review']),
   ]);
 
