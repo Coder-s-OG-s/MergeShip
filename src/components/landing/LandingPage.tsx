@@ -360,7 +360,7 @@ function Hero() {
           >
             Start Contributing →
           </Link>
-            <a href="#features" className="btn-ghost">see how it works →</a>
+            <a href="#how" className="btn-ghost">see how it works →</a>
           </FadeUp>
         </div>
         <FadeUp className="hero-stats" delay={1.3} y={0}>
@@ -523,7 +523,7 @@ function HowItWorks() {
   return (
     <SectionCurtain>
       <SectionHeader num="02" title="ONE LOGIN. INTELLIGENT ROUTING." />
-      <div className="how-grid" id="features">
+      <div className="how-grid" id="how">
         <div className="how-index">
           {flows.map((f, i) => (
             <button key={i} className={`how-index-item${active === i ? ' active' : ''}`} onClick={() => setActive(i)}>

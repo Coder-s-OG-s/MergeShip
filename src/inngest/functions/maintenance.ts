@@ -83,3 +83,81 @@ export const activityLogCleanup = inngest.createFunction(
     });
   },
 );
+
+const CLAIM_STALE_THRESHOLD_DAYS = 14;
+const CLAIM_WARNING_THRESHOLD_DAYS = 10;
+
+/**
+ * Auto-unclaim stale recommendations after 14 days without a linked PR
+ * and send warning notifications at day 10.
+ */
+export const autoUnclaimStale = inngest.createFunction(
+  { id: 'auto-unclaim-stale' },
+  { cron: '30 0 * * *' }, // 00:30 UTC daily
+  async ({ step }) => {
+    const unclaimResult = await step.run('unclaim-stale-recs', async () => {
+      const sb = getServiceSupabase();
+      if (!sb) throw new Error('service role missing');
+
+      const threshold = new Date(
+        Date.now() - CLAIM_STALE_THRESHOLD_DAYS * 24 * 3600 * 1000,
+      ).toISOString();
+
+      const { data: updatedRecs, error } = await sb
+        .from('recommendations')
+        .update({ status: 'open', claimed_at: null })
+        .eq('status', 'claimed')
+        .is('linked_pr_url', null)
+        .lt('claimed_at', threshold)
+        .select('id, user_id');
+
+      if (error) throw new Error(`unclaim update failed: ${error.message}`);
+
+      if (updatedRecs && updatedRecs.length > 0) {
+        const logs = updatedRecs.map((rec) => ({
+          user_id: rec.user_id,
+          kind: 'claim_reset_stale',
+          detail: { recId: rec.id } as never,
+        }));
+        await sb.from('activity_log').insert(logs);
+      }
+
+      return { unclaimed: updatedRecs?.length ?? 0 };
+    });
+
+    const warnResult = await step.run('warn-stale-recs', async () => {
+      const sb = getServiceSupabase();
+      if (!sb) throw new Error('service role missing');
+
+      const warnMin = new Date(
+        Date.now() - (CLAIM_WARNING_THRESHOLD_DAYS + 1) * 24 * 3600 * 1000,
+      ).toISOString();
+      const warnMax = new Date(
+        Date.now() - CLAIM_WARNING_THRESHOLD_DAYS * 24 * 3600 * 1000,
+      ).toISOString();
+
+      const { data: toWarn, error } = await sb
+        .from('recommendations')
+        .select('id, user_id')
+        .eq('status', 'claimed')
+        .is('linked_pr_url', null)
+        .gte('claimed_at', warnMin)
+        .lt('claimed_at', warnMax);
+
+      if (error) throw new Error(`warn query failed: ${error.message}`);
+
+      if (toWarn && toWarn.length > 0) {
+        const warnLogs = toWarn.map((rec) => ({
+          user_id: rec.user_id,
+          kind: 'claim_warning_stale',
+          detail: { recId: rec.id, daysClaimed: CLAIM_WARNING_THRESHOLD_DAYS } as never,
+        }));
+        await sb.from('activity_log').insert(warnLogs);
+      }
+
+      return { warned: toWarn?.length ?? 0 };
+    });
+
+    return { ...unclaimResult, ...warnResult };
+  },
+);

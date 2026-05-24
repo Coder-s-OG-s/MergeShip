@@ -25,6 +25,7 @@ export type MaintainerPrRow = {
   mentorReviewerHandle: string | null;
   mentorReviewerLevel: number | null;
   githubUpdatedAt: string; // ISO
+  ciStatus?: 'passing' | 'failing' | 'pending' | null;
 };
 
 export type QueueFilters = {
