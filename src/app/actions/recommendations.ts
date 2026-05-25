@@ -112,33 +112,39 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 
-  // Enforce 3-claim limit: count only non-expired claimed recs.  Expired claims
-  // are released by the hourly recsExpire cron, but we also filter here so users
-  // are never locked out between cron runs.
-  const now = new Date().toISOString();
-  const { count: claimedCount } = await service
-    .from('recommendations')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .eq('status', 'claimed')
-    .gte('expires_at', now);
-  if ((claimedCount ?? 0) >= 3) {
-    return err('claim_limit', 'you already have 3 active claims - merge or close them first');
+  // Atomic claim via a PostgreSQL function.
+  //
+  // The previous implementation read the active-claim count and then wrote the
+  // status update as two separate round-trips. Concurrent requests from the
+  // same user could both pass the count check before either write committed,
+  // allowing more than 3 simultaneous claims (TOCTOU).
+  //
+  // claim_recommendation_atomic runs the count check and the UPDATE in a
+  // single statement so they execute atomically. If the user already holds 3
+  // active claims or the rec is not open, the function returns zero rows and
+  // the action returns an appropriate error — no race window exists between
+  // the check and the write.
+  const { data: rpcRows, error: rpcErr } = await service.rpc('claim_recommendation_atomic', {
+    p_rec_id: recId,
+    p_user_id: user.id,
+  });
+
+  if (rpcErr) return err('persist_failed', rpcErr.message);
+
+  const claimedId = (rpcRows as Array<{ id: number }>)?.[0]?.id;
+  if (claimedId === undefined) {
+    // Zero rows: either at the 3-claim limit or the rec is no longer open.
+    // Distinguish by checking whether the rec exists and is still open.
+    const { count } = await service
+      .from('recommendations')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('status', 'claimed');
+    if ((count ?? 0) >= 3) {
+      return err('claim_limit', 'you already have 3 active claims - merge or close them first');
+    }
+    return err('already_claimed', 'this rec is no longer open');
   }
-
-  // Atomic claim: UPDATE ... WHERE status='open' AND user_id=auth.uid()
-  // Zero rows affected = already claimed or doesn't exist.
-  const { data, error: updateErr } = await service
-    .from('recommendations')
-    .update({ status: 'claimed', claimed_at: new Date().toISOString() })
-    .eq('id', recId)
-    .eq('user_id', user.id)
-    .eq('status', 'open')
-    .select('id')
-    .maybeSingle();
-
-  if (updateErr) return err('persist_failed', updateErr.message);
-  if (!data) return err('already_claimed', 'this rec is no longer open');
 
   // Invalidate cache so next dashboard load is fresh.
   await cacheDel(`recs:${user.id}`);
@@ -150,7 +156,7 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
     detail: { recId } as never,
   });
 
-  return ok({ id: data.id });
+  return ok({ id: claimedId });
 }
 
 const PR_URL_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;

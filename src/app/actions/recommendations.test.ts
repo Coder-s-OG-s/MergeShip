@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => {
   return {
     mockGetUser: vi.fn(),
     mockServiceFrom: vi.fn(),
+    mockServiceRpc: vi.fn(),
     mockCacheGet: vi.fn(),
     mockCacheSet: vi.fn(),
     mockCacheDel: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock('@/lib/supabase/server', () => ({
 vi.mock('@/lib/supabase/service', () => ({
   getServiceSupabase: vi.fn(() => ({
     from: mocks.mockServiceFrom,
+    rpc: mocks.mockServiceRpc,
   })),
 }));
 
@@ -109,6 +111,7 @@ describe('Recommendations Server Actions', () => {
     mocks.mockGetUser.mockResolvedValue({ data: { user: { id: 'test-user-id' } } });
     mocks.mockRateLimit.mockResolvedValue({ ok: true });
     mocks.mockServiceFrom.mockImplementation(() => createMockChain(null, null));
+    mocks.mockServiceRpc.mockResolvedValue({ data: [{ id: 1 }], error: null });
   });
 
   describe('getRecommendations', () => {
@@ -190,40 +193,44 @@ describe('Recommendations Server Actions', () => {
   });
 
   describe('claimRecommendation', () => {
-    it('updates status to claimed and sets claimed_at, invalidating cache', async () => {
-      mocks.mockServiceFrom
-        .mockReturnValueOnce(createMockChain({ count: 0 })) // count claims
-        .mockReturnValueOnce(createMockChain(null, { data: { id: 1 }, error: null })) // update
-        .mockReturnValueOnce(createMockChain({})); // insert activity_log
+    it('claims the rec atomically via RPC and invalidates cache', async () => {
+      // RPC returns a row with the claimed rec ID.
+      mocks.mockServiceRpc.mockResolvedValueOnce({ data: [{ id: 1 }], error: null });
+      // insert activity_log
+      mocks.mockServiceFrom.mockReturnValueOnce(createMockChain({}));
 
       const result = await claimRecommendation(1);
 
       expect(result).toEqual({ ok: true, data: { id: 1 } });
+      expect(mocks.mockServiceRpc).toHaveBeenCalledWith('claim_recommendation_atomic', {
+        p_rec_id: 1,
+        p_user_id: 'test-user-id',
+      });
       expect(mocks.mockCacheDel).toHaveBeenCalledWith('recs:test-user-id');
     });
 
-    it('returns already_claimed error if status is not open', async () => {
-      mocks.mockServiceFrom
-        .mockReturnValueOnce(createMockChain({ count: 0 })) // count claims
-        .mockReturnValueOnce(createMockChain(null, { data: null, error: null })); // update returns null row
+    it('returns already_claimed when RPC returns zero rows and count is below limit', async () => {
+      // RPC returns empty rows (rec is not open).
+      mocks.mockServiceRpc.mockResolvedValueOnce({ data: [], error: null });
+      // Fallback count query: 1 claimed rec (below limit of 3).
+      mocks.mockServiceFrom.mockReturnValueOnce(createMockChain({ count: 1 }));
 
       const result = await claimRecommendation(1);
 
       expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe('already_claimed');
-      }
+      if (!result.ok) expect(result.error.code).toBe('already_claimed');
     });
 
-    it('returns claim_limit error if user has 3 or more claims', async () => {
-      mocks.mockServiceFrom.mockReturnValueOnce(createMockChain({ count: 3 })); // count claims
+    it('returns claim_limit when RPC returns zero rows and count is at limit', async () => {
+      // RPC returns empty rows (3-claim cap reached).
+      mocks.mockServiceRpc.mockResolvedValueOnce({ data: [], error: null });
+      // Fallback count query: 3 claimed recs (at limit).
+      mocks.mockServiceFrom.mockReturnValueOnce(createMockChain({ count: 3 }));
 
       const result = await claimRecommendation(1);
 
       expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe('claim_limit');
-      }
+      if (!result.ok) expect(result.error.code).toBe('claim_limit');
     });
 
     it('returns not_configured error if service role missing', async () => {
@@ -235,10 +242,11 @@ describe('Recommendations Server Actions', () => {
       if (!result.ok) expect(result.error.code).toBe('not_configured');
     });
 
-    it('returns persist_failed error if update fails', async () => {
-      mocks.mockServiceFrom
-        .mockReturnValueOnce(createMockChain({ count: 0 })) // count claims
-        .mockReturnValueOnce(createMockChain(null, { data: null, error: new Error('DB Error') }));
+    it('returns persist_failed when RPC returns an error', async () => {
+      mocks.mockServiceRpc.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'function not found' },
+      });
 
       const result = await claimRecommendation(1);
       expect(result.ok).toBe(false);
