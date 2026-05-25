@@ -41,6 +41,16 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
 
   const service = getServiceSupabase();
 
+  let currentUserLevel = 0;
+  if (service) {
+    const { data: profile } = await service
+      .from('profiles')
+      .select('level')
+      .eq('id', user.id)
+      .single();
+    currentUserLevel = profile?.level ?? 0;
+  }
+
   // Step 1: fetch recs with linked PRs
   const linkedRecsRaw = service
     ? ((
@@ -55,14 +65,30 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
 
   // Step 2: fetch issue details separately (avoids FK detection issues)
   const issueMap = new Map<number, { title: string; repo_full_name: string; url: string }>();
+  const prMap = new Map<
+    string,
+    { id: number; author_user_id: string | null; mentor_verified: boolean; state: string }
+  >();
+
   if (linkedRecsRaw.length > 0 && service) {
     const issueIds = linkedRecsRaw.map((r: any) => r.issue_id).filter(Boolean);
-    const { data: issuesData } = await service
-      .from('issues')
-      .select('id, title, repo_full_name, url')
-      .in('id', issueIds);
+    const prUrls = linkedRecsRaw.map((r: any) => r.linked_pr_url).filter(Boolean);
+
+    const [{ data: issuesData }, { data: prsData }] = await Promise.all([
+      service.from('issues').select('id, title, repo_full_name, url').in('id', issueIds),
+      prUrls.length > 0
+        ? service
+            .from('pull_requests')
+            .select('id, url, author_user_id, mentor_verified, state')
+            .in('url', prUrls)
+        : { data: [] },
+    ]);
+
     for (const issue of issuesData ?? []) {
       issueMap.set(issue.id, issue);
+    }
+    for (const pr of prsData ?? []) {
+      prMap.set(pr.url, pr);
     }
   }
 
@@ -73,6 +99,7 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
     xp_reward: r.xp_reward as number,
     issue_id: r.issue_id as number,
     issue: issueMap.get(r.issue_id) ?? null,
+    pr: prMap.get(r.linked_pr_url as string) ?? null,
   }));
 
   const [pageResult, repoResult] = await Promise.all([getIssuesPage(filters), getRepoOptions()]);
@@ -93,7 +120,12 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
           <h1 className="font-serif text-4xl text-white">Browse Issues</h1>
         </header>
 
-        {linkedRecs.length > 0 && <MyWorkSection initialRecs={linkedRecs} />}
+        {linkedRecs.length > 0 && (
+          <MyWorkSection
+            initialRecs={linkedRecs}
+            currentUser={{ id: user.id, level: currentUserLevel }}
+          />
+        )}
 
         <IssuesList initialData={pageData} initialFilters={filters} repoOptions={repoOptions} />
       </div>
