@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   __setMemoryCache,
+  __pickBackendName,
   cacheGet,
   cacheSet,
   cacheDel,
@@ -169,5 +170,51 @@ describe('UpstashBackend', () => {
     expect(mockUpstash.scan).toHaveBeenCalledTimes(2);
     expect(mockUpstash.del).toHaveBeenCalledWith('k1', 'k2');
     expect(mockUpstash.del).toHaveBeenCalledWith('k3');
+  });
+});
+
+describe('backend selection', () => {
+  it('selects UpstashBackend when KV_REST_API_URL and KV_REST_API_TOKEN are set', () => {
+    const name = __pickBackendName({
+      KV_REST_API_URL: 'https://example.upstash.io',
+      KV_REST_API_TOKEN: 'token',
+    });
+    expect(name).toBe('UpstashBackend');
+  });
+
+  it('selects IoRedisBackend when only REDIS_URL is set', () => {
+    const name = __pickBackendName({ REDIS_URL: 'redis://localhost:6379' });
+    expect(name).toBe('IoRedisBackend');
+  });
+
+  it('selects MemoryBackend when no Redis env vars are set', () => {
+    const name = __pickBackendName({});
+    expect(name).toBe('MemoryBackend');
+  });
+
+  it('prefers Upstash over Redis when both are set', () => {
+    const name = __pickBackendName({
+      KV_REST_API_URL: 'https://example.upstash.io',
+      KV_REST_API_TOKEN: 'token',
+      REDIS_URL: 'redis://localhost:6379',
+    });
+    expect(name).toBe('UpstashBackend');
+  });
+
+  it('logs console.error when MemoryBackend is selected in production', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    __pickBackendName({ NODE_ENV: 'production' });
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0]?.[0]).toContain('[cache] No Redis backend configured');
+    spy.mockRestore();
+  });
+
+  it('does not log when MemoryBackend is selected outside production', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    __pickBackendName({ NODE_ENV: 'development' });
+    __pickBackendName({ NODE_ENV: 'test' });
+    __pickBackendName({});
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

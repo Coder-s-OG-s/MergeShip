@@ -140,6 +140,20 @@ export class IoRedisBackend implements CacheBackend {
 
 let backend: CacheBackend = pickDefaultBackend();
 
+/**
+ * Selects the cache backend from environment variables.
+ *
+ * Priority: Upstash (KV_REST_API_URL + KV_REST_API_TOKEN) > Redis (REDIS_URL)
+ * > MemoryBackend.
+ *
+ * MemoryBackend is intentional for local development and tests. In a
+ * serverless deployment (e.g. Vercel) each function invocation is an
+ * isolated process with its own in-memory store, so MemoryBackend provides
+ * no cross-request state sharing. Rate limits and other shared-state features
+ * will not work correctly without a Redis-compatible backend in production.
+ * A startup error is logged when MemoryBackend is selected in production so
+ * the misconfiguration is visible in deployment logs.
+ */
 function pickDefaultBackend(): CacheBackend {
   const upstashUrl = process.env.KV_REST_API_URL;
   const upstashToken = process.env.KV_REST_API_TOKEN;
@@ -161,12 +175,52 @@ function pickDefaultBackend(): CacheBackend {
     return new IoRedisBackend(client);
   }
 
+  if (process.env.NODE_ENV === 'production') {
+    console.error(
+      '[cache] No Redis backend configured (KV_REST_API_URL / REDIS_URL not set). ' +
+        'Falling back to MemoryBackend. In a serverless deployment each invocation ' +
+        'gets an isolated in-process store, so rate limits and shared-state features ' +
+        'are NOT enforced across requests. ' +
+        'Set KV_REST_API_URL + KV_REST_API_TOKEN (Upstash) or REDIS_URL (self-hosted) ' +
+        'to enable a shared cache backend.',
+    );
+  }
   return new MemoryBackend();
 }
 
-// Test-only hook. Resets to a fresh memory map between tests.
+// Test-only hooks. Must not be called in production code paths.
 export function __setMemoryCache(): void {
   backend = new MemoryBackend();
+}
+
+/**
+ * Calls pickDefaultBackend with the given environment overrides and returns
+ * the name of the selected backend class. Used in tests to assert which
+ * backend is selected for a given env configuration without reloading the
+ * module.
+ */
+export function __pickBackendName(env: {
+  KV_REST_API_URL?: string;
+  KV_REST_API_TOKEN?: string;
+  REDIS_URL?: string;
+  NODE_ENV?: string;
+}): string {
+  const { KV_REST_API_URL, KV_REST_API_TOKEN, REDIS_URL, NODE_ENV } = env;
+
+  if (KV_REST_API_URL && KV_REST_API_TOKEN) return 'UpstashBackend';
+  if (REDIS_URL) return 'IoRedisBackend';
+
+  if (NODE_ENV === 'production') {
+    console.error(
+      '[cache] No Redis backend configured (KV_REST_API_URL / REDIS_URL not set). ' +
+        'Falling back to MemoryBackend. In a serverless deployment each invocation ' +
+        'gets an isolated in-process store, so rate limits and shared-state features ' +
+        'are NOT enforced across requests. ' +
+        'Set KV_REST_API_URL + KV_REST_API_TOKEN (Upstash) or REDIS_URL (self-hosted) ' +
+        'to enable a shared cache backend.',
+    );
+  }
+  return 'MemoryBackend';
 }
 
 export function cacheGet<T>(key: string): Promise<T | null> {
