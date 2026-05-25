@@ -52,16 +52,17 @@ export async function POST(req: NextRequest) {
     if (insertErr.code === '23505') {
       duplicate = true;
     } else {
-      return NextResponse.json(
-        {
-          error: 'persist failed',
-          code: insertErr.code,
-          message: insertErr.message,
-          details: insertErr.details,
-          hint: insertErr.hint,
-        },
-        { status: 500 },
-      );
+      // Log the full error server-side for debugging while keeping the
+      // response body free of internal database details (table names,
+      // constraint names, schema hints) that would leak via error fields.
+      console.error('[webhook] delivery persist failed', {
+        deliveryId,
+        code: insertErr.code,
+        message: insertErr.message,
+        details: insertErr.details,
+        hint: insertErr.hint,
+      });
+      return NextResponse.json({ error: 'internal error' }, { status: 500 });
     }
   }
 
