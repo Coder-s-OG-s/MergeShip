@@ -11,15 +11,18 @@ const AUDIT_MAX_LEVEL = 2;
 
 /**
  * Audit pipeline. Fires once per user, ideally right after their GitHub App
- * install lands. Idempotent — duplicate runs silently no-op because xp_events
+ * install lands. Idempotent -- duplicate runs silently no-op because xp_events
  * has UNIQUE(user_id, source, ref_id) keyed off github_id.
  *
  * Auth precedence:
- *   1. event.data.accessToken (user OAuth token, freshly minted at sign-in)
- *      — used when audit is fired during the bootstrap flow.
- *   2. install token minted from event.data.installationId
- *      — used when audit is fired from the install webhook handler. Install
- *      tokens are minted on demand from the App JWT and don't expire on us.
+ *   1. installationId provided in the event -- an install token is minted on
+ *      demand from the App JWT. These are short-lived and never persist in
+ *      event storage, so they are preferred.
+ *   2. No installationId -- the function queries github_installations at
+ *      execution time. This covers the common case where the audit is queued
+ *      at bootstrap before the install webhook arrives.
+ *   3. accessToken -- retained for backward compatibility with events already
+ *      in the queue. New events no longer include this field.
  *
  * The function does everything in a single step.run so retries replay the
  * whole pipeline. Combined with the xp_events UNIQUE constraint, no zombie
@@ -31,6 +34,7 @@ type AuditEvent = {
     userId: string;
     githubHandle: string;
     githubId: string;
+    /** @deprecated No longer sent by bootstrap flow. Retained for events already in the queue. */
     accessToken?: string;
     installationId?: number;
   };

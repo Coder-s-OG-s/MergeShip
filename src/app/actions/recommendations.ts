@@ -122,10 +122,10 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
   // Zero rows returned means one of two things: the user already holds 3 active
   // claims, or this specific rec is no longer open. Both outcomes are safe to
   // surface with the same error because the UI re-fetches state after either.
-  const { data: rpcData, error: rpcErr } = await service.rpc(
-    'claim_recommendation_atomic',
-    { p_rec_id: recId, p_user_id: user.id },
-  );
+  const { data: rpcData, error: rpcErr } = await service.rpc('claim_recommendation_atomic', {
+    p_rec_id: recId,
+    p_user_id: user.id,
+  });
 
   if (rpcErr) return err('persist_failed', rpcErr.message);
 
@@ -137,7 +137,7 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
     );
   }
 
-  const claimedId = rows[0].id;
+  const claimedId = rows[0]!.id;
 
   // Invalidate cache so next dashboard load is fresh.
   await cacheDel(`recs:${user.id}`);

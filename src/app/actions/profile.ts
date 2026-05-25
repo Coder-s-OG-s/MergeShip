@@ -69,19 +69,31 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
 
   let auditQueued = false;
   if (!profile.audit_completed) {
-    const providerToken = (await sb.auth.getSession()).data.session?.provider_token;
-    if (providerToken) {
-      await inngest.send({
-        name: 'audit/run',
-        data: {
-          userId: profile.id,
-          githubHandle: profile.github_handle,
-          githubId,
-          accessToken: providerToken,
-        },
-      });
-      auditQueued = true;
-    }
+    // Look up the user's active GitHub App installation. Passing the installation
+    // ID lets audit-run mint a short-lived install token at execution time rather
+    // than embedding a long-lived OAuth token in the Inngest event payload (which
+    // is persisted to third-party storage). If no installation exists yet the
+    // function performs the same DB lookup at execution time and may find one by
+    // then; if still nothing it exits cleanly with reason 'no_auth_source'.
+    const { data: installs } = await service
+      .from('github_installations')
+      .select('id')
+      .eq('user_id', profile.id)
+      .is('uninstalled_at', null)
+      .order('installed_at', { ascending: false })
+      .limit(1);
+    const installationId = (installs?.[0]?.id as number | undefined) ?? undefined;
+
+    await inngest.send({
+      name: 'audit/run',
+      data: {
+        userId: profile.id,
+        githubHandle: profile.github_handle,
+        githubId,
+        installationId,
+      },
+    });
+    auditQueued = true;
   }
 
   // Fire-and-forget maintainer discovery so this user picks up admin
