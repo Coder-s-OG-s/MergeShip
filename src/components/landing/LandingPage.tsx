@@ -2,8 +2,8 @@
 // @ts-nocheck — partner's landing page; backend rebuild keeps it untouched except for auth swap
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, useScroll, animate } from 'framer-motion';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { motion, useScroll, animate, useReducedMotion } from 'framer-motion';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { getBrowserSupabase } from '@/lib/supabase/browser';
@@ -89,13 +89,27 @@ function SplitText({ text, delay = 0 }: { text: string; delay?: number }) {
 
 // ─── StatNumber ──────────────────────────────────────────────────────────────
 
-function StatNumber({ value, duration = 1.2 }: { value: string; duration?: number }) {
+function StatNumber({ value, duration = 2 }: { value: string; duration?: number }) {
   const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref as React.RefObject<Element>, { once: true });
+  const inView = useInView(ref as React.RefObject<Element>, { once: true, margin: '-10%' });
+  const prefersReducedMotion = useReducedMotion();
   const isPercent = value.includes('%');
   const isNeg = value.startsWith('−');
   const isK = value.toLowerCase().endsWith('k');
   const num = parseFloat(value.replace(/[^0-9.]/g, ''));
+  const suffix = isPercent ? '%' : isK ? 'k' : '';
+  const startValue = useMemo(() => {
+    if (!Number.isFinite(num) || num <= 0) return 0;
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) {
+      hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+    }
+    const r = (hash % 1000) / 1000;
+    const minRatio = 0.25;
+    const maxRatio = 0.6;
+    const ratio = minRatio + r * (maxRatio - minRatio);
+    return num * ratio;
+  }, [num, value]);
 
   const fmt = useCallback((v: number) => {
     if (num >= 1000) return Math.round(v).toLocaleString();
@@ -104,26 +118,32 @@ function StatNumber({ value, duration = 1.2 }: { value: string; duration?: numbe
     return Math.round(v).toString();
   }, [num, isK]);
 
-  const [display, setDisplay] = useState(fmt(num));
   const startedRef = useRef(false);
 
   useEffect(() => {
-    if (!inView || startedRef.current) return;
+    const node = ref.current;
+    if (!node || !inView || startedRef.current) return;
     startedRef.current = true;
-    if (document.visibilityState !== 'visible') { setDisplay(fmt(num)); return; }
-    setDisplay(fmt(0));
-    const controls = animate(0, num, {
-      duration,
-      ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
-      onUpdate: (v: number) => setDisplay(fmt(v)),
+    const setText = (v: number) => {
+      node.textContent = `${isNeg ? '−' : ''}${fmt(v)}${suffix}`;
+    };
+    if (prefersReducedMotion || document.visibilityState !== 'visible') {
+      setText(num);
+      return;
+    }
+    setText(startValue);
+    const clampedDuration = Math.min(Math.max(1.8, duration), 2);
+    const controls = animate(startValue, num, {
+      duration: clampedDuration,
+      ease: [0.16, 1, 0.3, 1] as [number, number, number, number],
+      onUpdate: (v: number) => setText(v),
     });
     return () => controls.stop();
-  }, [inView, num, duration, fmt]);
+  }, [inView, num, duration, fmt, isNeg, suffix, prefersReducedMotion, startValue]);
 
-  const suffix = isPercent ? '%' : isK ? 'k' : '';
   return (
     <span ref={ref} className="serif">
-      {isNeg ? '−' : ''}{display}{suffix}
+      {isNeg ? '−' : ''}{fmt(startValue)}{suffix}
     </span>
   );
 }
