@@ -17,6 +17,7 @@ import {
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
 import CiStatusBadge from './ci-status-badge';
+import ExportCsvButton from './export-csv-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -142,12 +143,15 @@ export default async function MaintainerPage({
             href={withParam('verified', '', searchParams)}
             active={!searchParams.verified}
           />
-          <Link
-            href={`/maintainer/issues?install=${activeInstallId}`}
-            className="ml-auto rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
-          >
-            Issue triage →
-          </Link>
+          <div className="ml-auto flex items-center gap-2">
+            <ExportCsvButton installationId={activeInstallId} filters={filters} />
+            <Link
+              href={`/maintainer/issues?install=${activeInstallId}`}
+              className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
+            >
+              Issue triage →
+            </Link>
+          </div>
           <Link
             href={`/maintainer/community?install=${activeInstallId}`}
             className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
