@@ -212,6 +212,7 @@ export async function getMaintainerPrQueue(args: {
       state: r.state as 'open' | 'closed' | 'merged',
       draft: r.draft,
       authorLogin: r.author_login,
+      authorUserId: r.author_user_id,
       authorLevel: author?.level ?? null,
       authorXp: author?.xp ?? null,
       authorMergedPrs: author?.mergedPrs ?? null,
