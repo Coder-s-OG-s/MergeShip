@@ -6,14 +6,7 @@ import { NavItems } from './nav-items';
 import { LogoutButton } from './logout-button';
 import { CommandPalette } from '@/components/command-palette';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
-import type { Metadata } from 'next';
 import { ThemeToggle } from './theme-toggle';
-
-export const metadata: Metadata = {
-  icons: {
-    icon: '/favicon.svg',
-  },
-};
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = getServerSupabase();
