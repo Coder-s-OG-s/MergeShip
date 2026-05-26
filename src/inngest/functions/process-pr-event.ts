@@ -170,12 +170,11 @@ async function linkPrToClaim(
     .is('linked_pr_url', null);
 
   for (const claim of claims ?? []) {
-    const issuesField = claim['issues'] as unknown as {
-      repo_full_name: string;
-      github_issue_number: number;
-    };
-    const issue = issuesField;
-    if (!issue) continue;
+    const raw = (claim as unknown as { issues: unknown }).issues;
+    const issue = Array.isArray(raw)
+      ? (raw[0] as { repo_full_name?: string; github_issue_number?: number } | undefined)
+      : (raw as { repo_full_name?: string; github_issue_number?: number } | undefined);
+    if (!issue?.repo_full_name || typeof issue.github_issue_number !== 'number') continue;
     if (issue.repo_full_name === repo && issueRefs.includes(issue.github_issue_number)) {
       await sb.from('recommendations').update({ linked_pr_url: prUrl }).eq('id', claim.id);
       return { linked: true, recId: claim.id };
