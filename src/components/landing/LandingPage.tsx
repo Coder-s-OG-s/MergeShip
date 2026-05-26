@@ -491,6 +491,23 @@ function Problem() {
 
 function HowItWorks() {
   const [active, setActive] = useState(0);
+  const handleTabClick = (index: number) => {
+    setActive(index);
+    const element = document.getElementById('how');
+    if (element) {
+      const offset = 64; // height of the navbar
+      const bodyRect = document.body.getBoundingClientRect().top;
+      const elementRect = element.getBoundingClientRect().top;
+      const elementPosition = elementRect - bodyRect;
+      const offsetPosition = elementPosition - offset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth',
+      });
+    }
+  };
+
   const flows = [
     {
       name: 'CONTRIBUTOR FLOW',
@@ -526,7 +543,7 @@ function HowItWorks() {
       <div className="how-grid" id="how">
         <div className="how-index">
           {flows.map((f, i) => (
-            <button key={i} className={`how-index-item${active === i ? ' active' : ''}`} onClick={() => setActive(i)}>
+            <button key={i} className={`how-index-item${active === i ? ' active' : ''}`} onClick={() => handleTabClick(i)}>
               {f.name}
             </button>
           ))}
