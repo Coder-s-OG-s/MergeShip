@@ -179,6 +179,36 @@ export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 
+  // Security: verify the authenticated user actually authored this PR.
+  const sessionRes = await sb.auth.getSession();
+  const token = sessionRes.data.session?.provider_token;
+  if (!token) return err('no_github_token', 'reconnect your GitHub account');
+
+  const match = trimmed.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/);
+  if (!match)
+    return err('invalid_url', 'paste a full https://github.com/<owner>/<repo>/pull/<n> URL');
+  const [, owner, repo, number] = match;
+
+  const ghRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!ghRes.ok)
+    return err('github_fetch_failed', 'could not fetch PR from GitHub — check the URL');
+
+  const prData = (await ghRes.json()) as { user?: { login?: string } };
+  const prAuthorLogin = prData.user?.login?.toLowerCase();
+
+  const { data: profile } = await service
+    .from('profiles')
+    .select('github_handle')
+    .eq('id', user.id)
+    .single();
+  const userHandle = profile?.github_handle?.toLowerCase();
+
+  if (!prAuthorLogin || !userHandle || prAuthorLogin !== userHandle) {
+    return err('not_your_pr', 'you can only link PRs you authored');
+  }
+
   // Only allow linking to a claim the user owns.
   const { data, error: updateErr } = await service
     .from('recommendations')
