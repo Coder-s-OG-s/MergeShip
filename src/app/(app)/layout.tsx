@@ -7,6 +7,7 @@ import { LogoutButton } from './logout-button';
 import { CommandPalette } from '@/components/command-palette';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
 import type { Metadata } from 'next';
+import { ThemeToggle } from './theme-toggle';
 
 export const metadata: Metadata = {
   icons: {
@@ -83,6 +84,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </div>
             </div>
           </div>
+          <ThemeToggle />
           <LogoutButton />
         </div>
       </aside>

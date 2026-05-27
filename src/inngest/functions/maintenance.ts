@@ -93,7 +93,9 @@ export const streakDetect = inngest.createFunction(
 
 /**
  * Expire stale recommendations.
- * recommendations.expires_at < now AND status='open' → 'expired'.
+ * recommendations.expires_at < now AND status IN ('open','claimed') → 'expired'.
+ * Including 'claimed' ensures abandoned claims are freed so users are not
+ * permanently locked out of the 3-claim limit.
  */
 export const recsExpire = inngest.createFunction(
   { id: 'recs-expire' },
@@ -107,7 +109,7 @@ export const recsExpire = inngest.createFunction(
         .from('recommendations')
         .update({ status: 'expired' })
         .lt('expires_at', now)
-        .eq('status', 'open')
+        .in('status', ['open', 'claimed'])
         .select('id');
       return { expired: data?.length ?? 0 };
     });
