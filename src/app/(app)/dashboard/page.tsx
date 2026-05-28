@@ -1,26 +1,19 @@
 import { Suspense } from 'react';
-import { getRecommendations } from '@/app/actions/recommendations';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { SyncButton } from './sync-button';
-import { GitHubPRsPanel } from './github-prs-panel';
-import RecCards from './rec-cards';
 import LevelUpBanner from './level-up-banner';
 import { redirect } from 'next/navigation';
-import { isOk } from '@/lib/result';
-import { xpToNextLevel, xpForLevel } from '@/lib/xp/curve';
-import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
-import { ArrowRight, TrendingUp, Box } from 'lucide-react';
-import type { GitHubPR } from '@/app/actions/github-sync';
+
+// Component imports
+import StatsRow, { StatsSkeleton } from './stats-row';
+import ActiveIssuesSection, { RecsSkeleton } from './active-issues';
+import GitHubPRsWrapper, { PrsSkeleton } from './github-prs-wrapper';
+import LeaderboardSnapshot, { LeaderboardSkeleton } from './leaderboard-snapshot';
+import MenteesSection, { MenteesSkeleton } from './mentees-section';
 
 export const dynamic = 'force-dynamic';
-
-type DashboardCache = {
-  merges: number | null;
-  streak: number | null;
-  syncedAt: string | null;
-};
 
 export default async function DashboardPage() {
   const sb = getServerSupabase();
@@ -36,113 +29,12 @@ export default async function DashboardPage() {
   const service = getServiceSupabase();
   if (!service) return <NotConfigured />;
 
+  // Fetch only the profile info we need for the page shell header and subcomponents
   const { data: profile } = await service
     .from('profiles')
-    .select(
-      'github_handle, xp, level, audit_completed, github_total_merges, github_streak, github_stats_synced_at',
-    )
+    .select('github_handle, xp, level, github_total_merges, github_streak, github_stats_synced_at')
     .eq('id', user.id)
     .maybeSingle();
-
-  const xp = profile?.xp ?? 0;
-  const level = profile?.level ?? 0;
-  const { needed, next } = xpToNextLevel(xp);
-  const nextLevel = next ?? level;
-
-  // Read stats from Redis cache, fall back to profile data
-  const cacheKey = `gh:dashboard:${user.id}`;
-  let dashCache = await cacheGet<DashboardCache>(cacheKey);
-
-  if (!dashCache) {
-    dashCache = {
-      merges: (profile?.github_total_merges as number | null) ?? null,
-      streak: (profile?.github_streak as number | null) ?? null,
-      syncedAt: (profile?.github_stats_synced_at as string | null) ?? null,
-    };
-    await cacheSet(cacheKey, dashCache, 300);
-  }
-
-  // Query pull_requests directly (populated by webhooks)
-  const { data: prsData } = await service
-    .from('pull_requests')
-    .select(
-      'id, github_pr_id, repo_full_name, number, title, state, url, github_created_at, merged_at',
-    )
-    .eq('author_user_id', user.id)
-    .order('github_created_at', { ascending: false });
-
-  const prs = (prsData ?? []) as GitHubPR[];
-
-  // Active Issues: claimed recommendations only
-  const { data: claimedRecs } = await service
-    .from('recommendations')
-    .select(
-      `
-      id,
-      status,
-      xp_reward,
-      linked_pr_url,
-      difficulty,
-      issues (
-        title,
-        repo_full_name,
-        url
-      )
-    `,
-    )
-    .eq('user_id', user.id)
-    .eq('status', 'claimed')
-    .limit(2);
-
-  const claimedPrUrls = (claimedRecs ?? [])
-    .map((r: any) => r.linked_pr_url)
-    .filter(Boolean) as string[];
-
-  const recsResult = await getRecommendations();
-  let recs: any[] = [];
-  if (isOk(recsResult)) {
-    recs = recsResult.data;
-  }
-
-  // Mentor points
-  const { data: mentorEvents } = await service
-    .from('xp_events')
-    .select('xp_delta')
-    .eq('user_id', user.id)
-    .in('source', ['review', 'help_review']);
-  const mentorPoints = mentorEvents?.reduce((acc, e) => acc + (e.xp_delta || 0), 0) || 0;
-
-  // Leaderboard
-  const { data: leaders } = await service
-    .from('profiles')
-    .select('github_handle, xp')
-    .order('xp', { ascending: false })
-    .limit(4);
-
-  // Mentees
-  const { data: menteesData } = await service
-    .from('help_requests')
-    .select('id, pr_url, status, user_id')
-    .eq('resolved_by', user.id)
-    .in('status', ['open', 'escalated'])
-    .limit(2);
-
-  let enrichedMentees: any[] = [];
-  if (menteesData && menteesData.length > 0) {
-    const userIds = menteesData.map((m: any) => m.user_id);
-    const { data: menteeProfiles } = await service
-      .from('profiles')
-      .select('id, github_handle')
-      .in('id', userIds);
-    enrichedMentees = menteesData.map((m: any) => {
-      const p = menteeProfiles?.find((p) => p.id === m.user_id);
-      return { ...m, github_handle: p?.github_handle || 'Unknown' };
-    });
-  }
-
-  const merges = dashCache.merges;
-  const streak = dashCache.streak;
-  const syncedAt = dashCache.syncedAt;
 
   return (
     <div className="min-h-screen bg-[#111318] px-4 py-8 font-mono text-white sm:px-6 md:px-12 md:py-12">
@@ -159,9 +51,10 @@ export default async function DashboardPage() {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            <SyncButton lastSyncedAt={syncedAt} />
+            <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} userId={user.id} />
           </div>
         </header>
+
         {/* Stats Row */}
         <Suspense fallback={<StatsSkeleton />}>
           <div className="mb-12 grid grid-cols-1 gap-6 sm:grid-cols-2 md:mb-16 md:gap-12 lg:grid-cols-4">
@@ -229,6 +122,7 @@ export default async function DashboardPage() {
               </div>
             </div>
           </div>
+          <StatsRow userId={user.id} profile={profile} />
         </Suspense>
 
         {/* Main Columns */}
@@ -342,6 +236,24 @@ export default async function DashboardPage() {
                 )}
               </div>
             </section>
+          <div className="space-y-16">
+            <Suspense fallback={<RecsSkeleton />}>
+              <ActiveIssuesSection />
+            </Suspense>
+
+            <Suspense fallback={<MenteesSkeleton />}>
+              <MenteesSection userId={user.id} />
+            </Suspense>
+          </div>
+
+          {/* Right Column */}
+          <div className="space-y-16">
+            <Suspense fallback={<PrsSkeleton />}>
+              <GitHubPRsWrapper userId={user.id} githubHandle={profile?.github_handle ?? ''} />
+            </Suspense>
+            <Suspense fallback={<LeaderboardSkeleton />}>
+              <LeaderboardSnapshot githubHandle={profile?.github_handle ?? ''} />
+            </Suspense>
           </div>
         </div>
 
@@ -363,14 +275,6 @@ export default async function DashboardPage() {
       </div>
     </div>
   );
-}
-
-function levelProgressPct(xp: number, level: number): number {
-  const floor = xpForLevel(level);
-  const ceiling = xpForLevel(level + 1);
-  if (ceiling <= floor) return 100;
-  const pct = ((xp - floor) / (ceiling - floor)) * 100;
-  return Math.max(0, Math.min(100, pct));
 }
 
 function NotConfigured() {
