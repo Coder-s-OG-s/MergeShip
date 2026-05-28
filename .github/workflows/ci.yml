@@ -47,6 +47,7 @@ jobs:
     if: failure() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
+      issues: write
       pull-requests: write
     steps:
       - name: Post failure comment
