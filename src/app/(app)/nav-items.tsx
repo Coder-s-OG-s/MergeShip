@@ -58,7 +58,7 @@ export function NavItems({
                 : 'text-zinc-400 hover:bg-[#161b22]/50 hover:text-white'
             }`}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-4 w-4 text-amber-400" />
             {item.name}
           </Link>
         );
