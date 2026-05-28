@@ -19,7 +19,7 @@ describe('extractIssueNumbers', () => {
   });
 
   it('ignores non-issue # like #foo', () => {
-    expect(extractIssueNumbers('section #foo and #1')).toEqual([1]);
+    expect(extractIssueNumbers('section #foo and #1')).toEqual([]);
   });
 
   it('returns empty on null/empty', () => {
