@@ -10,12 +10,12 @@ describe('extractIssueNumbers', () => {
     expect(extractIssueNumbers('fixes #45 and resolves #67')).toEqual([45, 67]);
   });
 
-  it('finds bare "#7" references', () => {
-    expect(extractIssueNumbers('related to #7')).toEqual([7]);
+  it('ignores bare "#7" references', () => {
+    expect(extractIssueNumbers('related to #7')).toEqual([]);
   });
 
   it('dedupes repeated numbers', () => {
-    expect(extractIssueNumbers('#5 #5 closes #5')).toEqual([5]);
+    expect(extractIssueNumbers('closes #5 fixes #5')).toEqual([5]);
   });
 
   it('ignores non-issue # like #foo', () => {

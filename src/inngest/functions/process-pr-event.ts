@@ -49,13 +49,13 @@ type PrPayload = {
   };
 };
 
-const ISSUE_REF = /(?:close[sd]?|fixe[sd]?|resolve[sd]?)\s+#(\d+)|#(\d+)/gi;
+const ISSUE_REF = /(?:close[sd]?|fixe[sd]?|resolve[sd]?)\s+#(\d+)/gi;
 
 export function extractIssueNumbers(text: string | null | undefined): number[] {
   if (!text) return [];
   const found = new Set<number>();
   for (const m of text.matchAll(ISSUE_REF)) {
-    const n = parseInt(m[1] ?? m[2] ?? '', 10);
+    const n = parseInt(m[1] ?? '', 10);
     if (Number.isFinite(n)) found.add(n);
   }
   return [...found];
