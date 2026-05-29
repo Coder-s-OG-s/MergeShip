@@ -18,7 +18,7 @@ export default async function CommunityPage({
 }: {
   searchParams: { install?: string };
 }) {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return null;
   const {
     data: { user },

@@ -5,6 +5,7 @@ import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
   getMaintainerPrQueue,
+  getMaintainerAnalyticsTrends,
   getRepoHealthOverview,
   getStaleIssues,
   getFlaggedAccounts,
@@ -12,6 +13,7 @@ import {
   type FlaggedAccountRow,
   type MaintainerInstall,
   type MaintainerPrRow,
+  type MaintainerAnalyticsTrends,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
@@ -19,6 +21,7 @@ import {
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
 import CiStatusBadge from './ci-status-badge';
+import AnalyticsTrends from './analytics-trends';
 import ExportCsvButton from './export-csv-button';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +37,7 @@ export default async function MaintainerPage({
 }: {
   searchParams: { install?: string; state?: string; verified?: string };
 }) {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) {
     return <NotConfigured />;
   }
@@ -77,6 +80,10 @@ export default async function MaintainerPage({
     filters,
   });
   const rows: MaintainerPrRow[] = isOk(queueRes) ? queueRes.data.rows : [];
+  const trendsRes = await getMaintainerAnalyticsTrends({ installationId: activeInstallId });
+  const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
+    ? trendsRes.data
+    : { weekly: [], levelDistribution: [] };
   const repoHealthRes = await getRepoHealthOverview();
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
@@ -169,6 +176,7 @@ export default async function MaintainerPage({
         <p className="mb-4 text-xs text-zinc-500">
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
+        <AnalyticsTrends data={analyticsTrends} />
         {flaggedAccounts.length > 0 && (
           <section className="mb-8 rounded-2xl border border-amber-900/60 bg-amber-950/20 p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
