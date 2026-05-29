@@ -31,7 +31,7 @@ function escapeIlike(input: string): string {
 }
 
 export async function searchGlobal(query: string): Promise<Result<SearchResult>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('no_supabase', 'Database connection not available');
 
   const {

@@ -34,7 +34,7 @@ export type RecCard = {
 };
 
 export async function getRecommendations(): Promise<Result<RecCard[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -94,7 +94,7 @@ export async function getRecommendations(): Promise<Result<RecCard[]>> {
 }
 
 export async function claimRecommendation(recId: number): Promise<Result<{ id: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -156,7 +156,7 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
 const PR_URL_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
 
 export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<{ id: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -199,7 +199,7 @@ export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<
 export async function skipRecommendation(
   recId: number,
 ): Promise<Result<{ id: number; replacement: RecCard | null }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -300,7 +300,7 @@ async function pickReplacement(args: {
 }
 
 export async function unlinkPrFromRec(recId: number): Promise<Result<{ id: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -326,7 +326,7 @@ export async function unlinkPrFromRec(recId: number): Promise<Result<{ id: numbe
 }
 
 export async function unclaimRecommendation(recId: number): Promise<Result<{ id: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');

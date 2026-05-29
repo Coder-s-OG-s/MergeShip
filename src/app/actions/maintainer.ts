@@ -75,7 +75,7 @@ const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
 const PAGE_SIZE = 25;
 
 export async function getMaintainerInstalls(): Promise<Result<MaintainerInstall[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -91,7 +91,7 @@ export async function getMaintainerPrQueue(args: {
   filters?: Partial<QueueFilters>;
   page?: number;
 }): Promise<Result<{ rows: MaintainerPrRow[]; hasMore: boolean }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -242,7 +242,7 @@ export async function getMaintainerIssueQueue(args: {
   repos?: string[];
   page?: number;
 }): Promise<Result<{ rows: MaintainerIssueRow[]; hasMore: boolean }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -359,7 +359,7 @@ export async function getMaintainerIssueQueue(args: {
 export async function refreshMaintainerBackfill(
   installationId: number,
 ): Promise<Result<{ ok: true }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -397,7 +397,7 @@ export type CommunityLink = {
 };
 
 export async function getCommunityLinks(installationId: number): Promise<Result<CommunityLink[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -435,7 +435,7 @@ export async function upsertCommunityLink(input: {
   url: string;
   label?: string;
 }): Promise<Result<{ id: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -482,7 +482,7 @@ export async function upsertCommunityLink(input: {
 }
 
 export async function deleteCommunityLink(linkId: number): Promise<Result<{ ok: true }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -521,7 +521,7 @@ export async function getPrCiStatus(
   repoFullName: string,
   prNumber: number,
 ): Promise<Result<'passing' | 'failing' | 'pending' | null>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
 
   const {
@@ -601,7 +601,7 @@ export async function getPrCiStatus(
 // in client / page code — re-exporting it here would violate Next.js's
 // 'use server' rule that only async functions may be exported.)
 export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
 
   if (!sb) {
     return err('not_configured', 'auth not configured');
@@ -690,7 +690,7 @@ export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> 
 }
 
 export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
 
   if (!sb) {
     return err('not_configured', 'auth not configured');
@@ -772,7 +772,7 @@ export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
 }
 
 export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
 
   if (!sb) {
     return err('not_configured', 'auth not configured');
@@ -826,7 +826,7 @@ export async function exportPrQueueCsv(
   installationId: number,
   filters?: Partial<QueueFilters>,
 ): Promise<Result<string>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');

@@ -53,7 +53,7 @@ function formatReason(
  * mentee context.
  */
 export default async function HelpInboxPage() {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) {
     return (
       <div className="min-h-screen px-6 py-12 text-white">

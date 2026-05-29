@@ -8,7 +8,7 @@ import { isUserMaintainer } from '@/lib/maintainer/detect';
 const MAX_RETRIES = 5;
 
 export async function POST(req: Request) {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
 
   if (!sb) {
     return NextResponse.json({ error: 'not configured' }, { status: 500 });

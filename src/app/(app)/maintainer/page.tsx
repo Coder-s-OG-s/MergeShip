@@ -32,7 +32,7 @@ export default async function MaintainerPage({
 }: {
   searchParams: { install?: string; state?: string; verified?: string };
 }) {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) {
     return <NotConfigured />;
   }

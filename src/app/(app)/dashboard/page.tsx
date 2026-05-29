@@ -16,7 +16,7 @@ import MenteesSection, { MenteesSkeleton } from './mentees-section';
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) {
     return <NotConfigured />;
   }
