@@ -51,7 +51,7 @@ export default async function DashboardPage() {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} userId={user.id} />
+            <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} />
           </div>
         </header>
 

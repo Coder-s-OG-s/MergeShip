@@ -4,19 +4,20 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { RefreshCw } from 'lucide-react';
 import { syncGitHubStats } from '@/app/actions/github-sync';
+import { useToast } from '@/components/toast';
 
 type Props = {
   lastSyncedAt: string | null;
-  userId: string;
 };
 
-export function SyncButton({ lastSyncedAt, userId }: Props) {
+export function SyncButton({ lastSyncedAt }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(false);
   const [localSyncedAt, setLocalSyncedAt] = useState(lastSyncedAt);
 
   const router = useRouter();
+  const { addToast } = useToast();
 
   const handleSync = useCallback(async () => {
     if (syncing || cooldown) return;
@@ -24,66 +25,27 @@ export function SyncButton({ lastSyncedAt, userId }: Props) {
     setSyncing(true);
     setError(null);
 
-    try {
-      const result = await syncGitHubStats();
+    const result = await syncGitHubStats();
 
-      if (!result.ok) {
-        setSyncing(false);
-        setError(result.error?.message || 'Sync failed');
-        return;
-      }
-
+    setSyncing(false);
+    if (result.ok) {
+      setLocalSyncedAt(new Date().toISOString());
       setCooldown(true);
+      setTimeout(() => setCooldown(false), 60_000);
 
-      setTimeout(() => {
-        setCooldown(false);
-      }, 60_000);
+      const { merges, streak } = result.data;
+      addToast(
+        merges > 0
+          ? `GITHUB SYNCED — ${merges} MERGE${merges !== 1 ? 'S' : ''} · ${streak}D STREAK`
+          : 'GITHUB SYNCED',
+        'success',
+      );
 
-      const start = Date.now();
-
-      const interval = setInterval(async () => {
-        try {
-          // timeout after 60s
-          if (Date.now() - start > 60_000) {
-            clearInterval(interval);
-            setSyncing(false);
-            setError('Sync timeout. Please try again.');
-            return;
-          }
-
-          const res = await fetch(`/api/sync-status?userId=${userId}`);
-
-          if (!res.ok) {
-            clearInterval(interval);
-            setSyncing(false);
-            setError('Failed to fetch sync status');
-            return;
-          }
-
-          const data = await res.json();
-
-          console.log('SYNC STATUS:', data);
-
-          if (data.status === 'completed') {
-            clearInterval(interval);
-
-            setLocalSyncedAt(new Date().toISOString());
-
-            router.refresh();
-
-            setSyncing(false);
-          }
-        } catch (err) {
-          clearInterval(interval);
-          setSyncing(false);
-          setError('Failed checking sync status');
-        }
-      }, 2000);
-    } catch (err) {
-      setSyncing(false);
-      setError('Something went wrong');
+      router.refresh();
+    } else {
+      setError(result.error?.message ?? 'Sync failed');
     }
-  }, [syncing, cooldown, router, userId]);
+  }, [syncing, cooldown, router, addToast]);
 
   return (
     <div className="flex flex-col items-end gap-1">

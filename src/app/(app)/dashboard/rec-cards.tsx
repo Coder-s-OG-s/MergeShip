@@ -9,6 +9,7 @@ import {
   type RecCard,
 } from '@/app/actions/recommendations';
 import { sendHelpRequest } from '@/app/actions/help';
+import { useToast } from '@/components/toast';
 
 const PR_URL_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
 
@@ -24,35 +25,41 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { addToast } = useToast();
 
   function handleClaim(rec: RecCard) {
     setBusyId(rec.id);
     setError(null);
-    startTransition(async () => {
-      const res = await claimRecommendation(rec.id);
-      if (res.ok) {
-        setRecs((prev) => prev.map((r) => (r.id === rec.id ? { ...r, status: 'claimed' } : r)));
-      } else {
-        setError(`${rec.title}: ${res.error.message}`);
-      }
-      setBusyId(null);
+    startTransition(() => {
+      void (async () => {
+        const res = await claimRecommendation(rec.id);
+        if (res.ok) {
+          setRecs((prev) => prev.map((r) => (r.id === rec.id ? { ...r, status: 'claimed' } : r)));
+          addToast(`+${rec.xpReward} XP — ISSUE CLAIMED`, 'success');
+        } else {
+          setError(`${rec.title}: ${res.error.message}`);
+        }
+        setBusyId(null);
+      })();
     });
   }
 
   function handleSkip(rec: RecCard) {
     setBusyId(rec.id);
     setError(null);
-    startTransition(async () => {
-      const res = await skipRecommendation(rec.id);
-      if (res.ok) {
-        setRecs((prev) => {
-          const without = prev.filter((r) => r.id !== rec.id);
-          return res.data.replacement ? [...without, res.data.replacement] : without;
-        });
-      } else {
-        setError(`${rec.title}: ${res.error.message}`);
-      }
-      setBusyId(null);
+    startTransition(() => {
+      void (async () => {
+        const res = await skipRecommendation(rec.id);
+        if (res.ok) {
+          setRecs((prev) => {
+            const without = prev.filter((r) => r.id !== rec.id);
+            return res.data.replacement ? [...without, res.data.replacement] : without;
+          });
+        } else {
+          setError(`${rec.title}: ${res.error.message}`);
+        }
+        setBusyId(null);
+      })();
     });
   }
 
@@ -149,10 +156,12 @@ function ClaimedActions({ rec, onError }: { rec: RecCard; onError: (msg: string 
   function onLink() {
     if (!isValidPrUrl) return;
     onError(null);
-    startTransition(async () => {
-      const res = await linkPrToRec(rec.id, input.trim());
-      if (res.ok) setLinked(true);
-      else onError(`${rec.title}: ${res.error.message}`);
+    startTransition(() => {
+      void (async () => {
+        const res = await linkPrToRec(rec.id, input.trim());
+        if (res.ok) setLinked(true);
+        else onError(`${rec.title}: ${res.error.message}`);
+      })();
     });
   }
 
@@ -162,10 +171,12 @@ function ClaimedActions({ rec, onError }: { rec: RecCard; onError: (msg: string 
       return;
     }
     onError(null);
-    startTransition(async () => {
-      const res = await sendHelpRequest({ recId: rec.id, prUrl: input.trim() });
-      if (res.ok) setHelpSent(true);
-      else onError(`${rec.title}: ${res.error.message}`);
+    startTransition(() => {
+      void (async () => {
+        const res = await sendHelpRequest({ recId: rec.id, prUrl: input.trim() });
+        if (res.ok) setHelpSent(true);
+        else onError(`${rec.title}: ${res.error.message}`);
+      })();
     });
   }
 
