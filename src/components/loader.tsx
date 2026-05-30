@@ -4,8 +4,10 @@ export default function Loader() {
       className="flex items-center justify-center p-6"
       role="status"
       aria-label="Loading"
+
+      
     >
-      <div className="h-10 w-10 animate-spin rounded-full border-2 border-gray-200 border-b-black" />
+      <div className="w-10 h-10 border-2 border-gray-200 rounded-full animate-spin border-b-black" />
       <span className="sr-only">Loading...</span>
     </div>
   );
