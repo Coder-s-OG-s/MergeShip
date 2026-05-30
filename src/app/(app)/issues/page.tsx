@@ -17,7 +17,7 @@ type SearchParams = {
 };
 
 export default async function IssuesPage({ searchParams }: { searchParams: SearchParams }) {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb)
     return (
       <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">Not configured</div>

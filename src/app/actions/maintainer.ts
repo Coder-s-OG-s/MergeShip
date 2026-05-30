@@ -26,6 +26,7 @@ import { getInstallOctokit } from '@/lib/github/app';
 import { cacheGet, cacheSet } from '@/lib/cache';
 
 import { classifyTriage, type IssueTriageBucket } from '@/lib/maintainer/issue-triage';
+import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
 
 export type { MaintainerInstall, MaintainerPrRow };
 
@@ -65,6 +66,8 @@ export type ContributorRow = {
   level: number;
 };
 
+export type { MaintainerAnalyticsTrends };
+
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
   'needs-triage',
   'in-progress',
@@ -75,7 +78,7 @@ const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
 const PAGE_SIZE = 25;
 
 export async function getMaintainerInstalls(): Promise<Result<MaintainerInstall[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -91,7 +94,7 @@ export async function getMaintainerPrQueue(args: {
   filters?: Partial<QueueFilters>;
   page?: number;
 }): Promise<Result<{ rows: MaintainerPrRow[]; hasMore: boolean }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -243,7 +246,7 @@ export async function getMaintainerIssueQueue(args: {
   repos?: string[];
   page?: number;
 }): Promise<Result<{ rows: MaintainerIssueRow[]; hasMore: boolean }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -360,7 +363,7 @@ export async function getMaintainerIssueQueue(args: {
 export async function refreshMaintainerBackfill(
   installationId: number,
 ): Promise<Result<{ ok: true }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -398,7 +401,7 @@ export type CommunityLink = {
 };
 
 export async function getCommunityLinks(installationId: number): Promise<Result<CommunityLink[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -436,7 +439,7 @@ export async function upsertCommunityLink(input: {
   url: string;
   label?: string;
 }): Promise<Result<{ id: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -483,7 +486,7 @@ export async function upsertCommunityLink(input: {
 }
 
 export async function deleteCommunityLink(linkId: number): Promise<Result<{ ok: true }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -522,7 +525,7 @@ export async function getPrCiStatus(
   repoFullName: string,
   prNumber: number,
 ): Promise<Result<'passing' | 'failing' | 'pending' | null>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
 
   const {
@@ -602,7 +605,7 @@ export async function getPrCiStatus(
 // in client / page code — re-exporting it here would violate Next.js's
 // 'use server' rule that only async functions may be exported.)
 export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
 
   if (!sb) {
     return err('not_configured', 'auth not configured');
@@ -691,7 +694,7 @@ export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> 
 }
 
 export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
 
   if (!sb) {
     return err('not_configured', 'auth not configured');
@@ -773,7 +776,7 @@ export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
 }
 
 export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
 
   if (!sb) {
     return err('not_configured', 'auth not configured');
@@ -823,11 +826,80 @@ export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
   );
 }
 
+export async function getMaintainerAnalyticsTrends(args: {
+  installationId: number;
+}): Promise<Result<MaintainerAnalyticsTrends>> {
+  const sb = getServerSupabase();
+
+  if (!sb) {
+    return err('not_configured', 'auth not configured');
+  }
+
+  const service = getServiceSupabase();
+
+  if (!service) {
+    return err('not_configured', 'service role missing');
+  }
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+
+  if (!user) {
+    return err('not_authenticated', 'sign in first');
+  }
+
+  const limited = await rateLimit({
+    namespace: 'maintainer:analytics',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+
+  if (repos.length === 0) {
+    return ok({ weekly: [], levelDistribution: [] });
+  }
+
+  const cacheKey = `maint:analytics-trends:${user.id}:${args.installationId}`;
+  const cached = await cacheGet<MaintainerAnalyticsTrends>(cacheKey);
+  if (cached) return ok(cached);
+
+  const { data, error } = await service.rpc('maintainer_analytics_trends', {
+    repo_names: repos,
+  });
+
+  if (error) return err('query_failed', error.message);
+
+  const trends = normaliseAnalyticsTrends(data);
+
+  await cacheSet(cacheKey, trends, 30 * 60);
+  return ok(trends);
+}
+
+function normaliseAnalyticsTrends(value: unknown): MaintainerAnalyticsTrends {
+  if (!value || typeof value !== 'object') {
+    return { weekly: [], levelDistribution: [] };
+  }
+
+  const data = value as Partial<MaintainerAnalyticsTrends>;
+  return {
+    weekly: Array.isArray(data.weekly) ? data.weekly : [],
+    levelDistribution: Array.isArray(data.levelDistribution) ? data.levelDistribution : [],
+  };
+}
+
 export async function exportPrQueueCsv(
   installationId: number,
   filters?: Partial<QueueFilters>,
 ): Promise<Result<string>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');

@@ -22,7 +22,7 @@ type BootstrapOutput = {
  * Safe to call repeatedly — UPSERTs profile and only fires audit if not yet completed.
  */
 export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured on this deployment');
 
   const {
@@ -131,7 +131,7 @@ export type ProfileUpdateData = z.infer<typeof profileUpdateSchema>;
  * Update user profile information (bio, skills, social links)
  */
 export async function updateProfile(data: ProfileUpdateData): Promise<Result<{ message: string }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) {
     return err('not_configured', 'Authentication not configured');
   }

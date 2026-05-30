@@ -34,7 +34,7 @@ export default async function MaintainerIssuesPage({
 }: {
   searchParams: { install?: string; bucket?: string };
 }) {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return <NotConfigured />;
   const {
     data: { user },
