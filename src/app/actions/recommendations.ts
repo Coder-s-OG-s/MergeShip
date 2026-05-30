@@ -351,7 +351,3 @@ export async function unclaimRecommendation(recId: number): Promise<Result<{ id:
   await cacheDel(`recs:${user.id}`);
   return ok({ id: data.id });
 }
-
-// Used by tests + the unused-export linter — keeps the type alive even if not
-// referenced from a UI yet during Phase 2 wiring.
-export type { ScoredIssue };

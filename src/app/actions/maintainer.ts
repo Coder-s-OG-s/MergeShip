@@ -28,8 +28,6 @@ import { cacheGet, cacheSet } from '@/lib/cache';
 import { classifyTriage, type IssueTriageBucket } from '@/lib/maintainer/issue-triage';
 import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
 
-export type { MaintainerInstall, MaintainerPrRow };
-
 export type MaintainerIssueRow = {
   id: number;
   repoFullName: string;
@@ -65,8 +63,6 @@ export type ContributorRow = {
   xp: number;
   level: number;
 };
-
-export type { MaintainerAnalyticsTrends };
 
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
   'needs-triage',
@@ -828,7 +824,7 @@ export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
 export async function getMaintainerAnalyticsTrends(args: {
   installationId: number;
 }): Promise<Result<MaintainerAnalyticsTrends>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
 
   if (!sb) {
     return err('not_configured', 'auth not configured');

@@ -4,9 +4,9 @@ import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
   getCommunityLinks,
-  type MaintainerInstall,
   type CommunityLink,
 } from '@/app/actions/maintainer';
+import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { COMMUNITY_KINDS } from '@/lib/maintainer/community';
 import { isOk } from '@/lib/result';
 import CommunityEditor from './editor';
