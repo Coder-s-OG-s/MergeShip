@@ -28,8 +28,6 @@ import { cacheGet, cacheSet } from '@/lib/cache';
 import { classifyTriage, type IssueTriageBucket } from '@/lib/maintainer/issue-triage';
 import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
 
-export type { MaintainerInstall, MaintainerPrRow };
-
 export type MaintainerIssueRow = {
   id: number;
   repoFullName: string;
