@@ -36,122 +36,12 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .maybeSingle();
 
-  const xp = profile?.xp ?? 0;
-  const level = profile?.level ?? 0;
-  const isNewUser = xp === 0 && (profile?.github_total_merges ?? 0) === 0;
-  const { needed, next } = xpToNextLevel(xp);
-  const nextLevel = next ?? level;
-
-  // Read stats from Redis cache, fall back to profile data
-  const cacheKey = `gh:dashboard:${user.id}`;
-  let dashCache = await cacheGet<DashboardCache>(cacheKey);
-
-  if (!dashCache) {
-    dashCache = {
-      merges: (profile?.github_total_merges as number | null) ?? null,
-      streak: (profile?.github_streak as number | null) ?? null,
-      syncedAt: (profile?.github_stats_synced_at as string | null) ?? null,
-    };
-    await cacheSet(cacheKey, dashCache, 300);
-  }
-
-  // Query pull_requests directly (populated by webhooks)
-  const { data: prsData } = await service
-    .from('pull_requests')
-    .select(
-      'id, github_pr_id, repo_full_name, number, title, state, url, github_created_at, merged_at',
-    )
-    .eq('author_user_id', user.id)
-    .order('github_created_at', { ascending: false });
-
-  const prs = (prsData ?? []) as GitHubPR[];
-
-  // Active Issues: claimed recommendations only
-  const { data: claimedRecs } = await service
-    .from('recommendations')
-    .select(
-      `
-      id,
-      status,
-      xp_reward,
-      linked_pr_url,
-      difficulty,
-      issues (
-        title,
-        repo_full_name,
-        url
-      )
-    `,
-    )
-    .eq('user_id', user.id)
-    .eq('status', 'claimed')
-    .limit(2);
-
-  const claimedPrUrls = (claimedRecs ?? [])
-    .map((r: any) => r.linked_pr_url)
-    .filter(Boolean) as string[];
-
-  const recsResult = await getRecommendations();
-  let recs: any[] = [];
-  if (isOk(recsResult)) {
-    recs = recsResult.data;
-  }
-
-  // Mentor points
-  const { data: mentorEvents } = await service
-    .from('xp_events')
-    .select('xp_delta')
-    .eq('user_id', user.id)
-    .in('source', ['review', 'help_review']);
-  const mentorPoints = mentorEvents?.reduce((acc, e) => acc + (e.xp_delta || 0), 0) || 0;
-
-  // Leaderboard
-  const { data: leaders } = await service
-    .from('profiles')
-    .select('github_handle, xp')
-    .order('xp', { ascending: false })
-    .limit(4);
-
-  // Mentees
-  const { data: menteesData } = await service
-    .from('help_requests')
-    .select('id, pr_url, status, user_id')
-    .eq('resolved_by', user.id)
-    .in('status', ['open', 'escalated'])
-    .limit(2);
-
-  let enrichedMentees: any[] = [];
-  if (menteesData && menteesData.length > 0) {
-    const userIds = menteesData.map((m: any) => m.user_id);
-    const { data: menteeProfiles } = await service
-      .from('profiles')
-      .select('id, github_handle')
-      .in('id', userIds);
-    enrichedMentees = menteesData.map((m: any) => {
-      const p = menteeProfiles?.find((p) => p.id === m.user_id);
-      return { ...m, github_handle: p?.github_handle || 'Unknown' };
-    });
-  }
-
-  const merges = dashCache.merges;
-  const streak = dashCache.streak;
-  const syncedAt = dashCache.syncedAt;
+  const isNewUser = (profile?.xp ?? 0) === 0 && (profile?.github_total_merges ?? 0) === 0;
 
   return (
     <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
       <div className="mx-auto max-w-6xl">
         <LevelUpBanner />
-        {isNewUser && (
-          <div className="mb-8 rounded-md border border-[#2d333b] bg-[#161b22] p-6">
-            <h2 className="mb-3 text-lg font-bold text-white">Getting Started</h2>
-
-            <ul className="space-y-2 text-sm text-zinc-300">
-              <li>1. Connect your GitHub</li>
-              <li>2. Browse and claim an issue</li>
-              <li>3. Submit a PR</li>
-            </ul>
-          </div>
-        )}
         {/* Header */}
         <header className="mb-12 flex flex-col justify-between gap-6 border-b border-[#2d333b] pb-6 md:flex-row md:items-end">
           <div>
@@ -171,6 +61,46 @@ export default async function DashboardPage() {
         <Suspense fallback={<StatsSkeleton />}>
           <StatsRow userId={user.id} profile={profile} />
         </Suspense>
+
+        {/* Getting Started — shown only to new users with 0 XP and 0 merges */}
+        {isNewUser && (
+          <div className="mb-12 rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+            <h2 className="mb-3 text-lg font-bold text-white">Getting Started</h2>
+            <p className="mb-4 text-sm text-zinc-400">
+              Welcome! Here&apos;s how to earn your first XP on MergeShip.
+            </p>
+            <ol className="space-y-2 text-sm text-zinc-300">
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-[10px] text-zinc-400">
+                  1
+                </span>
+                <span>
+                  Connect your GitHub account via the{' '}
+                  <a href="/settings/profile" className="text-green-400 underline">
+                    settings page
+                  </a>
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-[10px] text-zinc-400">
+                  2
+                </span>
+                <span>
+                  Browse and claim an issue from the{' '}
+                  <a href="/issues" className="text-green-400 underline">
+                    Issues page
+                  </a>
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-[10px] text-zinc-400">
+                  3
+                </span>
+                <span>Submit a PR and get it merged to earn XP</span>
+              </li>
+            </ol>
+          </div>
+        )}
 
         {/* Main Columns */}
         <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
