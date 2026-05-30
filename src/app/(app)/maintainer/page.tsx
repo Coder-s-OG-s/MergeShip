@@ -9,13 +9,13 @@ import {
   getRepoHealthOverview,
   getStaleIssues,
   getTopContributors,
-  type MaintainerInstall,
-  type MaintainerPrRow,
-  type MaintainerAnalyticsTrends,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
 } from '@/app/actions/maintainer';
+import type { MaintainerInstall } from '@/lib/maintainer/detect';
+import type { MaintainerPrRow } from '@/lib/maintainer/queue';
+import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
 import CiStatusBadge from './ci-status-badge';
