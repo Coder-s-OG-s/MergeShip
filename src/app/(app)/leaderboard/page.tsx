@@ -33,7 +33,9 @@ export default async function LeaderboardPage({
             <>
               {(() => {
                 // Current logged-in user handle from visible list
-                const currentGithubHandle = result.data.entries.find((e: any) => e.rank)?.githubHandle;
+                const currentGithubHandle = result.data.entries.find(
+                  (e: any) => e.rank,
+                )?.githubHandle;
 
                 const isUserVisible = result.data.entries.some(
                   (entry: any) => entry.githubHandle === currentGithubHandle,
