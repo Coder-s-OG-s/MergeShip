@@ -102,7 +102,7 @@ export async function getLeaderboard(
     await cacheSet(cacheKey, entries, TTL);
   }
 
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
 
   let currentUserRank: LeaderboardEntry | null = null;
 
