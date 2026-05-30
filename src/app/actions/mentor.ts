@@ -11,7 +11,7 @@ export async function verifyPrAction(opts: {
   prId?: number;
   prUrl?: string;
 }): Promise<Result<{ xpAwarded: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
 
   const {
