@@ -46,7 +46,7 @@ export type RepoOption = {
 };
 
 export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -116,7 +116,7 @@ export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
 }
 
 export async function getIssuesPage(filters: IssueFilter): Promise<Result<IssuesPageResult>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -206,7 +206,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
 }
 
 export async function claimIssue(issueId: number): Promise<Result<{ recId: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -284,7 +284,7 @@ export async function claimIssue(issueId: number): Promise<Result<{ recId: numbe
 }
 
 export async function unclaimIssue(recId: number): Promise<Result<void>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');

@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  const supabase = getServerSupabase();
+  const supabase = await getServerSupabase();
   if (!supabase) {
     return NextResponse.json(
       { error: 'auth not configured' },

@@ -22,7 +22,7 @@ export type UsageSummary = {
  */
 export async function getUsage(limit = 100): Promise<UsageSummary> {
   const empty: UsageSummary = { todayXp: 0, weekXp: 0, entries: [] };
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return empty;
   const {
     data: { user },

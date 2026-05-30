@@ -25,7 +25,7 @@ export type SyncOutput = {
 };
 
 export async function syncGitHubStats(): Promise<Result<SyncOutput>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'Auth not configured');
 
   const {

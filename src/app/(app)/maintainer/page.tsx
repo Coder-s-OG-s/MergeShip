@@ -5,11 +5,13 @@ import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
   getMaintainerPrQueue,
+  getMaintainerAnalyticsTrends,
   getRepoHealthOverview,
   getStaleIssues,
   getTopContributors,
   type MaintainerInstall,
   type MaintainerPrRow,
+  type MaintainerAnalyticsTrends,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
@@ -17,6 +19,8 @@ import {
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
 import CiStatusBadge from './ci-status-badge';
+import AnalyticsTrends from './analytics-trends';
+import ExportCsvButton from './export-csv-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +35,7 @@ export default async function MaintainerPage({
 }: {
   searchParams: { install?: string; state?: string; verified?: string };
 }) {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) {
     return <NotConfigured />;
   }
@@ -74,6 +78,10 @@ export default async function MaintainerPage({
     filters,
   });
   const rows: MaintainerPrRow[] = isOk(queueRes) ? queueRes.data.rows : [];
+  const trendsRes = await getMaintainerAnalyticsTrends({ installationId: activeInstallId });
+  const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
+    ? trendsRes.data
+    : { weekly: [], levelDistribution: [] };
   const repoHealthRes = await getRepoHealthOverview();
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
@@ -142,12 +150,15 @@ export default async function MaintainerPage({
             href={withParam('verified', '', searchParams)}
             active={!searchParams.verified}
           />
-          <Link
-            href={`/maintainer/issues?install=${activeInstallId}`}
-            className="ml-auto rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
-          >
-            Issue triage →
-          </Link>
+          <div className="ml-auto flex items-center gap-2">
+            <ExportCsvButton installationId={activeInstallId} filters={filters} />
+            <Link
+              href={`/maintainer/issues?install=${activeInstallId}`}
+              className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
+            >
+              Issue triage →
+            </Link>
+          </div>
           <Link
             href={`/maintainer/community?install=${activeInstallId}`}
             className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
@@ -159,6 +170,7 @@ export default async function MaintainerPage({
         <p className="mb-4 text-xs text-zinc-500">
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
+        <AnalyticsTrends data={analyticsTrends} />
         <div className="mb-8 grid gap-6 lg:grid-cols-3">
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>
