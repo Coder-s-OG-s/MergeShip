@@ -76,8 +76,6 @@ export type FlaggedAccountRow = {
   count: number;
 };
 
-export type { MaintainerAnalyticsTrends };
-
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
   'needs-triage',
   'in-progress',
