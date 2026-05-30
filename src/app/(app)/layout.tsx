@@ -52,11 +52,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div>
           <div className="p-8 pb-12">
             <Link href="/" className="font-serif text-2xl font-bold tracking-wider text-white">
-          <div className="p-8 pb-8">
-            <Link
-              href="/dashboard"
-              className="font-serif text-2xl font-bold tracking-wider text-white"
-            >
               MERGESHIP
             </Link>
           </div>
