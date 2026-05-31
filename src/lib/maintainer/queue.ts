@@ -18,6 +18,7 @@ export type MaintainerPrRow = {
   state: PrState;
   draft: boolean;
   authorLogin: string;
+  authorUserId: string | null;
   authorLevel: number | null; // null = not on MergeShip
   authorXp: number | null;
   authorMergedPrs: number | null;

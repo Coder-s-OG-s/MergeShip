@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
  * the App's installation.created webhook records the install and unblocks them.
  */
 export default async function InstallPage() {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) {
     return <NotConfiguredNotice />;
   }
