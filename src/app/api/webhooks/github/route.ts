@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { verifyWebhookSignature } from '@/lib/github/webhook-verify';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { inngest } from '@/inngest/client';
-
+import { rateLimit } from '@/lib/rate-limit';
 /**
  * GitHub App webhook receiver.
  *
@@ -17,6 +17,21 @@ export async function POST(req: NextRequest) {
   const secret = process.env.GITHUB_WEBHOOK_SECRET;
   if (!secret) {
     return NextResponse.json({ error: 'webhook secret not configured' }, { status: 503 });
+  }
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    req.headers.get('x-real-ip') ??
+    'unknown';
+
+  const limited = await rateLimit({
+    namespace: 'webhook',
+    key: ip,
+    limit: 100,
+    windowSec: 60,
+  });
+
+  if (!limited.ok) {
+    return NextResponse.json({ error: 'too many requests' }, { status: 429 });
   }
 
   const signature = req.headers.get('x-hub-signature-256');
