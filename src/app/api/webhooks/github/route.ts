@@ -18,21 +18,6 @@ export async function POST(req: NextRequest) {
   if (!secret) {
     return NextResponse.json({ error: 'webhook secret not configured' }, { status: 503 });
   }
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    req.headers.get('x-real-ip') ??
-    'unknown';
-
-  const limited = await rateLimit({
-    namespace: 'webhook',
-    key: ip,
-    limit: 100,
-    windowSec: 60,
-  });
-
-  if (!limited.ok) {
-    return NextResponse.json({ error: 'too many requests' }, { status: 429 });
-  }
 
   const signature = req.headers.get('x-hub-signature-256');
   const deliveryId = req.headers.get('x-github-delivery');
@@ -46,6 +31,23 @@ export async function POST(req: NextRequest) {
 
   if (!verifyWebhookSignature(raw, signature, secret)) {
     return NextResponse.json({ error: 'invalid signature' }, { status: 401 });
+  }
+
+  const payload = JSON.parse(raw);
+
+  const installationId = payload.installation?.id;
+
+  if (installationId) {
+    const limited = await rateLimit({
+      namespace: 'webhook',
+      key: String(installationId),
+      limit: 100,
+      windowSec: 60,
+    });
+
+    if (!limited.ok) {
+      return NextResponse.json({ error: 'too many requests' }, { status: 429 });
+    }
   }
 
   const payloadHash = crypto.createHash('sha256').update(raw).digest('hex');
@@ -83,7 +85,7 @@ export async function POST(req: NextRequest) {
   try {
     await inngest.send({
       name: `github/${eventType}`,
-      data: { deliveryId, eventType, payload: JSON.parse(raw) },
+      data: { deliveryId, eventType, payload },
     });
   } catch (e) {
     // Delivery row is already persisted; downstream processing can be replayed
