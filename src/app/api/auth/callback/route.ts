@@ -31,7 +31,8 @@ export async function GET(req: NextRequest) {
   if (error) {
     url.pathname = '/';
     url.searchParams.delete('code');
-    url.searchParams.set('auth_error', error.message);
+    url.searchParams.set('auth_error', 'oauth_failed');
+console.error('[auth/callback]', error.message);
     return NextResponse.redirect(url);
   }
 
