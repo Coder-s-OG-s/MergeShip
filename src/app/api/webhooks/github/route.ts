@@ -14,6 +14,8 @@ import { inngest } from '@/inngest/client';
  *   3. Emit Inngest event for async processing, return 200 fast (<1s)
  */
 export async function POST(req: NextRequest) {
+  const ip = req.ip;
+  await rateLimit({ namespace: 'webhook', key: ip, limit: 100, windowSec: 60 });
   const secret = process.env.GITHUB_WEBHOOK_SECRET;
   if (!secret) {
     return NextResponse.json({ error: 'webhook secret not configured' }, { status: 503 });
