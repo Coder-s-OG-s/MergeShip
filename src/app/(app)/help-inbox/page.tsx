@@ -1,4 +1,17 @@
-import { redirect } from 'next/navigation';
+import React from 'react';
+import { getHelpRequest } from '@/lib/help';
+
+const HelpInbox = () => {
+  const helpRequest = getHelpRequest();
+  const message = helpRequest.message.replace(/rec:\d+/g, '');
+  return (
+    <div>
+      <p>{message}</p>
+    </div>
+  );
+};
+
+export default HelpInbox;import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 
