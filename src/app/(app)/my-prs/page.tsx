@@ -111,7 +111,7 @@ async function fetchAndBackfillPRs(
 }
 
 export default async function MyPRsPage() {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb)
     return (
       <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">Not configured</div>

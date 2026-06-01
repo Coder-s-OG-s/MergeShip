@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) {
     return <>{children}</>;
   }

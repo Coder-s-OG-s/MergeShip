@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function ProfileSettingsPage() {
   // Get authenticated user
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return null;
 
   const {

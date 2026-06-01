@@ -1,4 +1,5 @@
 import type { Difficulty } from './score';
+import { RECOMMENDATION_PENALTIES } from './constants';
 
 /**
  * Recommendation pipeline — pure ranking + filtering logic.
@@ -14,14 +15,23 @@ export type ScoredIssue = {
   difficulty: Difficulty;
   xpReward: number;
   repoHealthScore: number;
-  freshnessHours: number; // hours since issue was opened/updated
+  freshnessHours: number;
   languageMatch: boolean;
+  repoLanguage: string | null;
+};
+
+export type SkipCounts = {
+  byRepo: Record<string, number>;
+  byLanguage: Record<string, number>;
 };
 
 export type RecommendOptions = {
   level: number;
   excludeIssueIds: Set<number>;
   allowFallback?: boolean;
+  mutedRepos?: readonly string[];
+  mutedLanguages?: readonly string[];
+  skipCounts?: SkipCounts;
 };
 
 export type LevelMix = { E: number; M: number; H: number };
@@ -36,13 +46,38 @@ export function mixForLevel(level: number): LevelMix {
   return { E: 0, M: 1, H: 4 };
 }
 
-function rankScore(issue: ScoredIssue): number {
-  // higher = better. repo health weighted heaviest; language match is a tiebreaker.
-  return (
+function rankScore(issue: ScoredIssue, opts: RecommendOptions): number {
+  const baseline =
     issue.repoHealthScore * 1 +
     (issue.languageMatch ? 20 : 0) +
-    Math.max(0, 30 - issue.freshnessHours / 24)
-  );
+    Math.max(0, 30 - issue.freshnessHours / 24);
+
+  let penalty = 0;
+
+  // Apply soft penalties for frequently skipped repositories and languages.
+  if (opts.skipCounts) {
+    const repoSkips = opts.skipCounts.byRepo[issue.repoFullName] ?? 0;
+    if (repoSkips >= RECOMMENDATION_PENALTIES.REPO_SKIP_THRESHOLD) {
+      penalty += RECOMMENDATION_PENALTIES.REPO_SKIP_PENALTY;
+    }
+
+    if (issue.repoLanguage) {
+      const langSkips = opts.skipCounts.byLanguage[issue.repoLanguage] ?? 0;
+      if (langSkips >= RECOMMENDATION_PENALTIES.LANGUAGE_SKIP_THRESHOLD) {
+        penalty += RECOMMENDATION_PENALTIES.LANGUAGE_SKIP_PENALTY;
+      }
+    }
+  }
+
+  // Mute-preference penalties.
+  if (opts.mutedRepos?.includes(issue.repoFullName)) {
+    penalty += RECOMMENDATION_PENALTIES.MUTED_REPO_PENALTY;
+  }
+  if (issue.repoLanguage && opts.mutedLanguages?.includes(issue.repoLanguage)) {
+    penalty += RECOMMENDATION_PENALTIES.MUTED_LANGUAGE_PENALTY;
+  }
+
+  return baseline - penalty;
 }
 
 export function filterAndRank(pool: readonly ScoredIssue[], opts: RecommendOptions): ScoredIssue[] {
@@ -58,7 +93,7 @@ export function filterAndRank(pool: readonly ScoredIssue[], opts: RecommendOptio
     if (want === 0) continue;
     const sorted = eligible
       .filter((i) => i.difficulty === tier)
-      .sort((a, b) => rankScore(b) - rankScore(a));
+      .sort((a, b) => rankScore(b, opts) - rankScore(a, opts));
     result.push(...sorted.slice(0, want));
   }
 
@@ -67,7 +102,7 @@ export function filterAndRank(pool: readonly ScoredIssue[], opts: RecommendOptio
     const seen = new Set(result.map((r) => r.id));
     const extras = eligible
       .filter((i) => !seen.has(i.id))
-      .sort((a, b) => rankScore(b) - rankScore(a));
+      .sort((a, b) => rankScore(b, opts) - rankScore(a, opts));
     const needed = totalDesired(mix) - result.length;
     result.push(...extras.slice(0, needed));
   }
