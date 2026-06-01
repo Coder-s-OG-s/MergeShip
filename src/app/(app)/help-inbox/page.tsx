@@ -1,6 +1,19 @@
 import React from 'react';
 import { getHelpRequest } from '@/lib/help';
 
+const HelpInboxPage = () => {
+  const helpRequest = getHelpRequest();
+  const message = helpRequest.message.replace(/rec:\d+/g, '');
+  return (
+    <div>
+      <p>{message}</p>
+    </div>
+  );
+};
+
+export default HelpInboxPage;import React from 'react';
+import { getHelpRequest } from '@/lib/help';
+
 const HelpInbox = () => {
   const helpRequest = getHelpRequest();
   const message = helpRequest.message.replace(/rec:\d+/g, '');
