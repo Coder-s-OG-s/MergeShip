@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { processMembershipEvent, processMemberEvent } from './process-membership-events';
-import { sb, wire, step } from './test-helpers';
+import { sb, wire, step } from './__tests__/test-helpers';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 const mockSend = vi.fn();
 vi.mock('../client', () => ({
   inngest: {
     createFunction: (_c: unknown, _t: unknown, h: Function) => h,
-    send: (...args: any[]) => mockSend(...args),
+    send: (...args: unknown[]) => mockSend(...args),
   },
 }));
 

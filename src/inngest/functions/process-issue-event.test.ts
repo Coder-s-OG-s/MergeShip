@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { processIssueEvent } from './process-issue-event';
-import { sb, wire, step } from './test-helpers';
+import { sb, wire, step } from './__tests__/test-helpers';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 

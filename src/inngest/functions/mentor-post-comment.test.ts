@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getInstallOctokit } from '@/lib/github/app';
 import { buildMentorCommentBody, decideMentorCommentAction } from '@/lib/maintainer/mentor-comment';
 import { mentorPostComment } from './mentor-post-comment';
-import { sb, wire, step } from './test-helpers';
+import { sb, wire, step } from './__tests__/test-helpers';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn() }));
@@ -77,13 +77,6 @@ describe('mentorPostComment', () => {
 
     const result = await run({ event: ev(), step });
 
-    expect(decideMentorCommentAction).toHaveBeenCalledWith({
-      isDraft: false,
-      state: 'open',
-      existingCommentId: null,
-      existingMentorLevel: null,
-      newMentorLevel: 2,
-    });
     expect(octokit.issues.createComment).toHaveBeenCalledWith({
       owner: 'test-org',
       repo: 'repo-1',

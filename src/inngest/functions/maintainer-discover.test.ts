@@ -3,7 +3,7 @@ import { getInstallOctokit } from '@/lib/github/app';
 import { decideOrgGrant, reconcileGrants } from '@/lib/maintainer/discover';
 import { cacheGet } from '@/lib/cache';
 import { maintainerDiscover } from './maintainer-discover';
-import { sb, wire } from './test-helpers';
+import { sb, wire } from './__tests__/test-helpers';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn() }));
@@ -18,7 +18,7 @@ const mockSend = vi.fn();
 vi.mock('../client', () => ({
   inngest: {
     createFunction: (_c: unknown, _t: unknown, h: Function) => h,
-    send: (...args: any[]) => mockSend(...args),
+    send: (...args: unknown[]) => mockSend(...args),
   },
 }));
 

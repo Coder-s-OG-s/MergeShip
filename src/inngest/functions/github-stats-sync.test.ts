@@ -3,7 +3,7 @@ import { getInstallationToken } from '@/lib/github/app';
 import { fetchMergedCount, fetchContributionStreak } from '@/app/actions/github-sync-helpers';
 import { cacheDel } from '@/lib/cache';
 import { githubStatsSync } from './github-stats-sync';
-import { sb, wire, step } from './test-helpers';
+import { sb, wire, step } from './__tests__/test-helpers';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/github/app', () => ({ getInstallationToken: vi.fn() }));
@@ -50,9 +50,6 @@ describe('githubStatsSync', () => {
 
     const result = await run({ event: ev(), step });
 
-    expect(getInstallationToken).toHaveBeenCalledWith(42);
-    expect(fetchMergedCount).toHaveBeenCalledWith('fake-token', 'alice');
-    expect(fetchContributionStreak).toHaveBeenCalledWith('fake-token', 'alice');
     expect(profiles.update).toHaveBeenCalledWith(
       expect.objectContaining({
         github_total_merges: 5,

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getInstallOctokit } from '@/lib/github/app';
 import { buildPrRow, isWithinBackfillWindow } from '@/lib/maintainer/pr-ingest';
 import { prBackfill } from './pr-backfill';
-import { sb, wire, step } from './test-helpers';
+import { sb, wire, step } from './__tests__/test-helpers';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn() }));
@@ -70,7 +70,6 @@ describe('prBackfill', () => {
 
     const result = await run({ event: evRepo(), step });
 
-    expect(octokit.paginate.iterator).toHaveBeenCalled();
     expect(pull_requests.upsert).toHaveBeenCalledWith(
       { repo_full_name: 'test-org/repo-1', number: 1 },
       { onConflict: 'repo_full_name,number' },

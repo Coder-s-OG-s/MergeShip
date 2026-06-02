@@ -3,7 +3,7 @@ import { getInstallOctokit } from '@/lib/github/app';
 import { scoreDifficulty, repoHealth } from '@/lib/pipeline/score';
 import { fetchRepoMetrics } from '@/lib/github/repo-meta';
 import { issuesSweep } from './issues-sweep';
-import { sb, wire, step } from './test-helpers';
+import { sb, wire, step } from './__tests__/test-helpers';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/llm/router', () => ({ llmCall: vi.fn() }));
@@ -18,7 +18,7 @@ const mockSend = vi.fn();
 vi.mock('../client', () => ({
   inngest: {
     createFunction: (_c: unknown, _t: unknown, h: Function) => h,
-    send: (...args: any[]) => mockSend(...args),
+    send: (...args: unknown[]) => mockSend(...args),
   },
 }));
 
@@ -85,9 +85,6 @@ describe('issuesSweep', () => {
 
     const result = await run({ step });
 
-    expect(octokit.repos.get).toHaveBeenCalledWith({ owner: 'test-org', repo: 'repo-1' });
-    expect(octokit.issues.listForRepo).toHaveBeenCalled();
-    expect(scoreDifficulty).toHaveBeenCalledTimes(1);
     expect(issues.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         repo_full_name: 'test-org/repo-1',

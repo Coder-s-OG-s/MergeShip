@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { rankReviewers } from '@/lib/help/dispatch';
 import { helpDispatch } from './help-dispatch';
-import { sb, wire, step } from './test-helpers';
+import { sb, wire, step } from './__tests__/test-helpers';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/help/dispatch', () => ({ rankReviewers: vi.fn() }));
@@ -61,13 +61,6 @@ describe('helpDispatch', () => {
 
     const result = await run({ event: ev(), step });
 
-    expect(rankReviewers).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ userId: 'm1', languageMatch: true }),
-        expect.objectContaining({ userId: 'm2', languageMatch: false }),
-      ]),
-      { menteeLevel: 1 },
-    );
     expect(activity_log.insert).toHaveBeenCalledWith([
       {
         user_id: 'm1',

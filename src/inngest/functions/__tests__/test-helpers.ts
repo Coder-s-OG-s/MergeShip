@@ -30,4 +30,6 @@ export const wire = (tables: Record<string, ReturnType<typeof sb>>) => {
 };
 
 // Execute the callback immediately to simulate step.run.
+// Note: This harness only mocks step.run. It does NOT mock sendEvent, sleep,
+// waitForEvent, or invoke. If future functions use those, they must be added here.
 export const step = { run: <T>(_n: string, fn: () => Promise<T>) => fn() };
