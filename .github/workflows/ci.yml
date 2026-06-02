@@ -23,16 +23,156 @@ jobs:
           cache: 'npm'
 
       - name: Install
+        id: install
         run: npm ci --no-audit --no-fund
 
       - name: Typecheck
+        id: typecheck
         run: npm run typecheck
 
       - name: Lint
+        id: lint
         run: npm run lint
 
       - name: Format check
+        id: format
         run: npm run format:check
 
       - name: Tests with coverage
+        id: tests
         run: npm run test:coverage
+
+  notify-failure:
+    needs: check
+    if: failure() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post failure comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
+            const runId = context.runId;
+
+            // Fetch the failed job's steps
+            const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+              owner, repo, run_id: runId,
+            });
+
+            const checkJob = jobs.jobs.find(j => j.name === 'check');
+            const failedStep = checkJob?.steps?.find(s => s.conclusion === 'failure');
+            const stepName = failedStep?.name ?? 'unknown';
+
+            const fixes = {
+              'Typecheck': {
+                summary: 'TypeScript found type errors.',
+                steps: [
+                  '```bash',
+                  'npm run typecheck',
+                  '```',
+                  'Read the output carefully - each error shows the file, line, and what type is wrong.',
+                  '',
+                  '**Common causes:**',
+                  '- Missing `await` on an async function',
+                  '- Wrong type passed to a prop or function argument',
+                  '- Using `.data` on a Result without checking `isOk()` first',
+                  '- `null` not handled where the type expects a value',
+                ].join('\n'),
+              },
+              'Lint': {
+                summary: 'ESLint found code style or logic issues.',
+                steps: [
+                  'Try auto-fixing first:',
+                  '```bash',
+                  'npm run lint -- --fix',
+                  '```',
+                  'Then re-run `npm run lint` to see what still needs manual attention.',
+                  '',
+                  '**Common causes:**',
+                  '- `let` used where `const` would work',
+                  '- Unused variables or imports',
+                  '- Missing dependency in a `useEffect` array',
+                  '- `console.log` left in — remove before committing',
+                ].join('\n'),
+              },
+              'Format check': {
+                summary: 'Prettier found formatting differences.',
+                steps: [
+                  'Run this to auto-fix everything:',
+                  '```bash',
+                  'npm run format',
+                  '```',
+                  'Then commit the changes. You don\'t need to format manually - just let Prettier do it.',
+                ].join('\n'),
+              },
+              'Tests with coverage': {
+                summary: 'One or more tests failed, or coverage dropped below the 80% threshold.',
+                steps: [
+                  'Run tests locally to see the failure:',
+                  '```bash',
+                  'npm test',
+                  '```',
+                  'To check coverage specifically:',
+                  '```bash',
+                  'npm run test:coverage',
+                  '```',
+                  '',
+                  '**Common causes:**',
+                  '- A function was changed but its test wasn\'t updated',
+                  '- New code added without a corresponding test (coverage drops below 80%)',
+                  '- A mock is out of date with the real implementation',
+                  '- Test relies on a specific date/time - check for flakiness',
+                ].join('\n'),
+              },
+              'Install': {
+                summary: '`npm ci` failed - dependency install issue.',
+                steps: [
+                  'Try clearing your local cache:',
+                  '```bash',
+                  'rm -rf node_modules package-lock.json',
+                  'npm install',
+                  'git add package-lock.json',
+                  '```',
+                  '',
+                  '**Common causes:**',
+                  '- `package-lock.json` is out of sync with `package.json`',
+                  '- A package was added to `package.json` manually without running `npm install`',
+                ].join('\n'),
+              },
+            };
+
+            const fix = fixes[stepName] ?? {
+              summary: `The \`${stepName}\` step failed.`,
+              steps: 'Check the [Actions tab](' +
+                `https://github.com/${owner}/${repo}/actions/runs/${runId}) for the full log.`,
+            };
+
+            const body = [
+              `## ❌ CI failed on step: \`${stepName}\``,
+              '',
+              fix.summary,
+              '',
+              '### How to fix',
+              fix.steps,
+              '',
+              `---`,
+              `[Full CI log](https://github.com/${owner}/${repo}/actions/runs/${runId})`,
+            ].join('\n');
+
+            // Check if we already commented on this PR for this run to avoid duplicates
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number: prNumber,
+            });
+            const alreadyCommented = comments.some(
+              c => c.user.login === 'github-actions[bot]' &&
+                   c.body.includes(`actions/runs/${runId}`)
+            );
+            if (alreadyCommented) return;
+
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: prNumber, body,
+            });

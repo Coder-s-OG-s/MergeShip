@@ -4,10 +4,19 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { NavItems } from './nav-items';
 import { LogoutButton } from './logout-button';
+import { CommandPalette } from '@/components/command-palette';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
+import type { Metadata } from 'next';
+import { ThemeToggle } from './theme-toggle';
+
+export const metadata: Metadata = {
+  icons: {
+    icon: '/favicon.svg',
+  },
+};
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) {
     return <>{children}</>;
   }
@@ -42,12 +51,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <aside className="flex w-64 shrink-0 flex-col justify-between border-r border-[#2d333b] bg-[#111318]">
         <div>
           <div className="p-8 pb-12">
-            <Link
-              href="/dashboard"
-              className="font-serif text-2xl font-bold tracking-wider text-white"
-            >
+            <Link href="/" className="font-serif text-2xl font-bold tracking-wider text-white">
               MERGESHIP
             </Link>
+          </div>
+
+          <div className="mb-4 px-4">
+            <CommandPalette />
           </div>
 
           <nav className="flex flex-col gap-1 px-4">
@@ -71,6 +81,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </div>
             </div>
           </div>
+          <ThemeToggle />
           <LogoutButton />
         </div>
       </aside>

@@ -18,6 +18,7 @@ export type MaintainerPrRow = {
   state: PrState;
   draft: boolean;
   authorLogin: string;
+  authorUserId: string | null;
   authorLevel: number | null; // null = not on MergeShip
   authorXp: number | null;
   authorMergedPrs: number | null;
@@ -25,6 +26,7 @@ export type MaintainerPrRow = {
   mentorReviewerHandle: string | null;
   mentorReviewerLevel: number | null;
   githubUpdatedAt: string; // ISO
+  ciStatus?: 'passing' | 'failing' | 'pending' | null;
 };
 
 export type QueueFilters = {

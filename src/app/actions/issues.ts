@@ -5,6 +5,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { cacheDel } from '@/lib/cache';
+import { repoFilterPattern } from './issues-helpers';
 
 const PAGE_SIZE = 10;
 
@@ -45,7 +46,7 @@ export type RepoOption = {
 };
 
 export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -115,7 +116,7 @@ export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
 }
 
 export async function getIssuesPage(filters: IssueFilter): Promise<Result<IssuesPageResult>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -145,8 +146,9 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
   if (filters.difficulty) {
     query = query.eq('difficulty', filters.difficulty);
   }
-  if (filters.repo) {
-    query = query.eq('repo_full_name', filters.repo);
+  const repoPattern = repoFilterPattern(filters.repo);
+  if (repoPattern) {
+    query = query.ilike('repo_full_name', repoPattern);
   }
 
   const { data, count, error } = await query;
@@ -204,7 +206,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
 }
 
 export async function claimIssue(issueId: number): Promise<Result<{ recId: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -282,7 +284,7 @@ export async function claimIssue(issueId: number): Promise<Result<{ recId: numbe
 }
 
 export async function unclaimIssue(recId: number): Promise<Result<void>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');

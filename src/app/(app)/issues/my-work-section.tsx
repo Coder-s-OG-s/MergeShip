@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { ExternalLink, Pencil, X } from 'lucide-react';
 import { linkPrToRec, unlinkPrFromRec, unclaimRecommendation } from '@/app/actions/recommendations';
+import { VerifyButton } from './verify-button';
 
 export type LinkedRec = {
   id: number;
@@ -11,6 +12,7 @@ export type LinkedRec = {
   xp_reward: number;
   issue_id: number;
   issue: { title: string; repo_full_name: string; url: string } | null;
+  pr: { id: number; author_user_id: string | null; mentor_verified: boolean; state: string } | null;
 };
 
 const STATUS_CLS: Record<string, string> = {
@@ -20,7 +22,13 @@ const STATUS_CLS: Record<string, string> = {
   reassigned: 'border-zinc-700 text-zinc-500',
 };
 
-export function MyWorkSection({ initialRecs }: { initialRecs: LinkedRec[] }) {
+export function MyWorkSection({
+  initialRecs,
+  currentUser,
+}: {
+  initialRecs: LinkedRec[];
+  currentUser: { id: string; level: number };
+}) {
   const [recs, setRecs] = useState(initialRecs);
 
   function onUnlink(id: number) {
@@ -48,6 +56,7 @@ export function MyWorkSection({ initialRecs }: { initialRecs: LinkedRec[] }) {
           <WorkItem
             key={rec.id}
             rec={rec}
+            currentUser={currentUser}
             onUnlink={() => onUnlink(rec.id)}
             onUnclaim={() => onUnclaim(rec.id)}
             onRelink={(url) => onRelinkd(rec.id, url)}
@@ -60,11 +69,13 @@ export function MyWorkSection({ initialRecs }: { initialRecs: LinkedRec[] }) {
 
 function WorkItem({
   rec,
+  currentUser,
   onUnlink,
   onUnclaim,
   onRelink,
 }: {
   rec: LinkedRec;
+  currentUser: { id: string; level: number };
   onUnlink: () => void;
   onUnclaim: () => void;
   onRelink: (url: string) => void;
@@ -178,6 +189,21 @@ function WorkItem({
           >
             <Pencil className="h-3 w-3" /> EDIT
           </button>
+
+          {rec.pr &&
+            !rec.pr.mentor_verified &&
+            rec.pr.author_user_id !== currentUser.id &&
+            currentUser.level >= 2 &&
+            rec.pr.state === 'open' && (
+              <div className="ml-2">
+                <VerifyButton prId={rec.pr.id} />
+              </div>
+            )}
+          {rec.pr?.mentor_verified && (
+            <span className="ml-2 rounded-full bg-emerald-900/40 px-2 py-0.5 text-[10px] uppercase tracking-widest text-emerald-400 ring-1 ring-emerald-700/40">
+              Verified
+            </span>
+          )}
         </div>
       )}
 
