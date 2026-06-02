@@ -164,16 +164,25 @@ jobs:
               `[Full CI log](https://github.com/${owner}/${repo}/actions/runs/${runId})`,
             ].join('\n');
 
-            // Check if we already commented on this PR for this run to avoid duplicates
-            const { data: comments } = await github.rest.issues.listComments({
-              owner, repo, issue_number: prNumber,
-            });
-            const alreadyCommented = comments.some(
-              c => c.user.login === 'github-actions[bot]' &&
-                   c.body.includes(`actions/runs/${runId}`)
-            );
-            if (alreadyCommented) return;
+            try {
+              // Check if we already commented on this PR for this run to avoid duplicates
+              const { data: comments } = await github.rest.issues.listComments({
+                owner, repo, issue_number: prNumber,
+              });
+              const alreadyCommented = comments.some(
+                c => c.user.login === 'github-actions[bot]' &&
+                     c.body.includes(`actions/runs/${runId}`)
+              );
+              if (alreadyCommented) return;
 
-            await github.rest.issues.createComment({
-              owner, repo, issue_number: prNumber, body,
-            });
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: prNumber, body,
+              });
+            } catch (error) {
+              if (error?.status === 403) {
+                core.warning('Skipping CI failure comment because the workflow token cannot write to this PR.');
+                return;
+              }
+
+              throw error;
+            }
