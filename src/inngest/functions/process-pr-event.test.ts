@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { extractIssueNumbers, processPrEvent } from './process-pr-event';
 import { insertXpEvent } from '@/lib/xp/events';
-import { sb, wire, step } from './test-helpers';
+import { sb, wire, step } from './__tests__/test-helpers';
 
 // Mock external dependencies.
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
@@ -55,16 +55,16 @@ describe('extractIssueNumbers', () => {
     expect(extractIssueNumbers('fixes #45 and resolves #67')).toEqual([45, 67]);
   });
 
-  it('finds bare "#7" references', () => {
-    expect(extractIssueNumbers('related to #7')).toEqual([7]);
+  it('ignores bare "#7" references', () => {
+    expect(extractIssueNumbers('related to #7')).toEqual([]);
   });
 
   it('dedupes repeated numbers', () => {
-    expect(extractIssueNumbers('#5 #5 closes #5')).toEqual([5]);
+    expect(extractIssueNumbers('closes #5 fixes #5')).toEqual([5]);
   });
 
   it('ignores non-issue # like #foo', () => {
-    expect(extractIssueNumbers('section #foo and #1')).toEqual([1]);
+    expect(extractIssueNumbers('section #foo and #1')).toEqual([]);
   });
 
   it('returns empty on null/empty', () => {

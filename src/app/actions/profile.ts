@@ -71,16 +71,32 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
   let auditQueued = false;
 
   if (!profile.audit_completed) {
-    const providerToken = (await sb.auth.getSession()).data.session?.provider_token;
+    // Look up an active GitHub App installation for this user. The audit
+    // function uses the installation token to call the GitHub API, so we
+    // pass only the installation ID here. OAuth tokens must never travel
+    // through Inngest because the event payload is retained in third-party
+    // infrastructure (Inngest's cloud event log) for replay and debugging.
+    //
+    // If no installation exists yet, the install webhook handler fires its
+    // own audit/run event with the installationId once the user installs the
+    // app, so nothing is lost.
+    const { data: install } = await service
+      .from('github_installations')
+      .select('id')
+      .eq('user_id', profile.id)
+      .is('uninstalled_at', null)
+      .order('installed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (providerToken) {
+    if (install?.id) {
       await inngest.send({
         name: 'audit/run',
         data: {
           userId: profile.id,
           githubHandle: profile.github_handle,
           githubId,
-          accessToken: providerToken,
+          installationId: install.id,
         },
       });
 

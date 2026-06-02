@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { verifyWebhookSignature } from '@/lib/github/webhook-verify';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { inngest } from '@/inngest/client';
-
+import { rateLimit } from '@/lib/rate-limit';
 /**
  * GitHub App webhook receiver.
  *
@@ -31,6 +31,23 @@ export async function POST(req: NextRequest) {
 
   if (!verifyWebhookSignature(raw, signature, secret)) {
     return NextResponse.json({ error: 'invalid signature' }, { status: 401 });
+  }
+
+  const payload = JSON.parse(raw);
+
+  const installationId = payload.installation?.id;
+
+  if (installationId) {
+    const limited = await rateLimit({
+      namespace: 'webhook',
+      key: String(installationId),
+      limit: 100,
+      windowSec: 60,
+    });
+
+    if (!limited.ok) {
+      return NextResponse.json({ error: 'too many requests' }, { status: 429 });
+    }
   }
 
   const payloadHash = crypto.createHash('sha256').update(raw).digest('hex');
@@ -68,7 +85,7 @@ export async function POST(req: NextRequest) {
   try {
     await inngest.send({
       name: `github/${eventType}`,
-      data: { deliveryId, eventType, payload: JSON.parse(raw) },
+      data: { deliveryId, eventType, payload },
     });
   } catch (e) {
     // Delivery row is already persisted; downstream processing can be replayed
