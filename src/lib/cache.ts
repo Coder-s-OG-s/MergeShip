@@ -13,6 +13,20 @@ interface CacheBackend {
   set(key: string, value: unknown, ttlSeconds: number): Promise<void>;
   del(key: string): Promise<void>;
   scanDel(prefix: string): Promise<void>;
+  rateLimitHit(key: string, windowSec: number, now: number): Promise<RateLimitBucket>;
+}
+
+export type RateLimitBucket = {
+  count: number;
+  resetAt: number;
+};
+
+function rateLimitResetAt(ttlSeconds: number, windowSec: number, now: number): number {
+  return now + Math.max(1, ttlSeconds > 0 ? ttlSeconds : windowSec) * 1000;
+}
+
+function blockedRateLimitBucket(windowSec: number, now: number): RateLimitBucket {
+  return { count: Number.MAX_SAFE_INTEGER, resetAt: now + windowSec * 1000 };
 }
 
 class MemoryBackend implements CacheBackend {
@@ -40,6 +54,22 @@ class MemoryBackend implements CacheBackend {
     for (const k of [...this.store.keys()]) {
       if (k.startsWith(prefix)) this.store.delete(k);
     }
+  }
+
+  async rateLimitHit(key: string, windowSec: number, now: number): Promise<RateLimitBucket> {
+    const hit = this.store.get(key);
+    const count = typeof hit?.value === 'number' ? hit.value : 0;
+    const expired = !hit || hit.expiresAt <= now || count <= 0;
+
+    if (expired) {
+      const resetAt = now + windowSec * 1000;
+      this.store.set(key, { value: 1, expiresAt: resetAt });
+      return { count: 1, resetAt };
+    }
+
+    const next = count + 1;
+    this.store.set(key, { value: next, expiresAt: hit.expiresAt });
+    return { count: next, resetAt: hit.expiresAt };
   }
 }
 
@@ -90,6 +120,18 @@ export class UpstashBackend implements CacheBackend {
       // ignore
     }
   }
+
+  async rateLimitHit(key: string, windowSec: number, now: number): Promise<RateLimitBucket> {
+    try {
+      const count = await this.redis.incr(key);
+      if (count === 1) await this.redis.expire(key, windowSec);
+      const ttl = await this.redis.ttl(key);
+      if (ttl <= 0) await this.redis.expire(key, windowSec);
+      return { count, resetAt: rateLimitResetAt(ttl, windowSec, now) };
+    } catch {
+      return blockedRateLimitBucket(windowSec, now);
+    }
+  }
 }
 
 export class IoRedisBackend implements CacheBackend {
@@ -134,6 +176,18 @@ export class IoRedisBackend implements CacheBackend {
       }
     } catch {
       // ignore
+    }
+  }
+
+  async rateLimitHit(key: string, windowSec: number, now: number): Promise<RateLimitBucket> {
+    try {
+      const count = await this.redis.incr(key);
+      if (count === 1) await this.redis.expire(key, windowSec);
+      const ttl = await this.redis.ttl(key);
+      if (ttl <= 0) await this.redis.expire(key, windowSec);
+      return { count, resetAt: rateLimitResetAt(ttl, windowSec, now) };
+    } catch {
+      return blockedRateLimitBucket(windowSec, now);
     }
   }
 }
@@ -183,4 +237,12 @@ export function cacheDel(key: string): Promise<void> {
 
 export function cacheDelByPrefix(prefix: string): Promise<void> {
   return backend.scanDel(prefix);
+}
+
+export function cacheRateLimitHit(
+  key: string,
+  windowSec: number,
+  now: number,
+): Promise<RateLimitBucket> {
+  return backend.rateLimitHit(key, windowSec, now);
 }

@@ -10,6 +10,7 @@ const row = (overrides: Partial<MaintainerPrRow>): MaintainerPrRow => ({
   state: 'open',
   draft: false,
   authorLogin: 'a',
+  authorUserId: null,
   authorLevel: null,
   authorXp: null,
   authorMergedPrs: null,

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mocks = vi.hoisted(() => {
   return {
     mockGetUser: vi.fn(),
+    mockGetSession: vi.fn(),
     mockServiceFrom: vi.fn(),
     mockCacheGet: vi.fn(),
     mockCacheSet: vi.fn(),
@@ -15,7 +16,10 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('@/lib/supabase/server', () => ({
   getServerSupabase: vi.fn(() => ({
-    auth: { getUser: mocks.mockGetUser },
+    auth: {
+      getUser: mocks.mockGetUser,
+      getSession: mocks.mockGetSession,
+    },
   })),
 }));
 
@@ -107,8 +111,18 @@ describe('Recommendations Server Actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.mockGetUser.mockResolvedValue({ data: { user: { id: 'test-user-id' } } });
+    mocks.mockGetSession.mockResolvedValue({
+      data: { session: { provider_token: 'gh-token-123' } },
+    });
     mocks.mockRateLimit.mockResolvedValue({ ok: true });
     mocks.mockServiceFrom.mockImplementation(() => createMockChain(null, null));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ user: { login: 'testuser' } }),
+      }),
+    );
   });
 
   describe('getRecommendations', () => {
@@ -311,10 +325,14 @@ describe('Recommendations Server Actions', () => {
   });
 
   describe('linkPrToRec', () => {
-    it('updates linked_pr_url when URL is valid', async () => {
-      mocks.mockServiceFrom.mockReturnValueOnce(
-        createMockChain(null, { data: { id: 1 }, error: null }),
-      );
+    it('updates linked_pr_url when URL is valid and user is PR author', async () => {
+      mocks.mockServiceFrom
+        // profiles lookup
+        .mockReturnValueOnce(
+          createMockChain(null, { data: { github_handle: 'testuser' }, error: null }),
+        )
+        // recommendations update
+        .mockReturnValueOnce(createMockChain(null, { data: { id: 1 }, error: null }));
 
       const result = await linkPrToRec(1, 'https://github.com/owner/repo/pull/123');
 
@@ -326,22 +344,51 @@ describe('Recommendations Server Actions', () => {
       const result = await linkPrToRec(1, 'https://gitlab.com/owner/repo/pull/123');
 
       expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe('invalid_url');
-      }
+      if (!result.ok) expect(result.error.code).toBe('invalid_url');
     });
 
-    it('returns not_linkable when rec is not open/claimed', async () => {
-      mocks.mockServiceFrom.mockReturnValueOnce(createMockChain(null, { data: null, error: null }));
+    it('returns not_your_pr when PR author does not match github_handle', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({ user: { login: 'someone-else' } }),
+        }),
+      );
+      mocks.mockServiceFrom.mockReturnValueOnce(
+        createMockChain(null, { data: { github_handle: 'testuser' }, error: null }),
+      );
 
       const result = await linkPrToRec(1, 'https://github.com/owner/repo/pull/123');
 
       expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe('not_linkable');
-      }
+      if (!result.ok) expect(result.error.code).toBe('not_your_pr');
     });
-  });
+
+    it('returns github_fetch_failed when GitHub API returns an error', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+
+      const result = await linkPrToRec(1, 'https://github.com/owner/repo/pull/123');
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('github_fetch_failed');
+    });
+
+    it('returns not_linkable when rec is not open/claimed', async () => {
+      mocks.mockServiceFrom
+        // profiles lookup
+        .mockReturnValueOnce(
+          createMockChain(null, { data: { github_handle: 'testuser' }, error: null }),
+        )
+        // recommendations update returns null
+        .mockReturnValueOnce(createMockChain(null, { data: null, error: null }));
+
+      const result = await linkPrToRec(1, 'https://github.com/owner/repo/pull/123');
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('not_linkable');
+    });
+  }); // end linkPrToRec
 
   describe('unlinkPrFromRec', () => {
     it('clears linked_pr_url', async () => {

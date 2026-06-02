@@ -29,6 +29,32 @@ function timeAgo(dateStr: string): string {
   const months = Math.floor(days / 30);
   return `${months} month${months > 1 ? 's' : ''} ago`;
 }
+function formatJoinDate(dateStr: string): string {
+  const joined = new Date(dateStr);
+  const now = new Date();
+
+  const diffMs = now.getTime() - joined.getTime();
+  const days = Math.floor(diffMs / 86400000);
+
+  if (days === 0) {
+    return 'Joined today';
+  }
+
+  if (days < 30) {
+    return `Joined ${days} day${days > 1 ? 's' : ''} ago`;
+  }
+
+  const months = Math.floor(days / 30);
+
+  if (months < 12) {
+    return `Joined ${months} month${months > 1 ? 's' : ''} ago`;
+  }
+
+  return `Joined ${joined.toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  })}`;
+}
 
 type Achievement = {
   id: string;
@@ -64,6 +90,7 @@ type ProfileData = {
   githubHandle: string;
   displayName: string | null;
   avatarUrl: string | null;
+  joinedAt: string;
   level: number;
   xp: number;
   prsMerged: number;
@@ -89,7 +116,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
 
   const { data: profile } = await service
     .from('profiles')
-    .select('id, github_handle, display_name, avatar_url, level, xp, github_streak')
+    .select('id, github_handle, display_name, avatar_url, level, xp, github_streak, created_at')
     .eq('github_handle', handle)
     .maybeSingle();
 
@@ -254,6 +281,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     githubHandle: profile.github_handle,
     displayName: profile.display_name,
     avatarUrl: profile.avatar_url,
+    joinedAt: profile.created_at,
     level: profile.level,
     xp: profile.xp,
     prsMerged,
@@ -382,6 +410,9 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                   <CopyButton
                     textToCopy={`${process.env.NEXT_PUBLIC_APP_URL ?? 'https://mergeship.dev'}/@${profile.githubHandle}`}
                   />
+                </p>
+                <p className="mb-3 text-[11px] uppercase tracking-widest text-zinc-600">
+                  {formatJoinDate(profile.joinedAt)}
                 </p>
                 <div className="flex flex-wrap items-center gap-4 text-[11px] uppercase tracking-widest text-zinc-400">
                   <span>

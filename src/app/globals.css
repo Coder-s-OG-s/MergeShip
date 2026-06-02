@@ -253,4 +253,4 @@ html[data-ms-theme="light"] { filter: invert(1) hue-rotate(180deg); }
 html[data-ms-theme="light"] img,
 html[data-ms-theme="light"] video,
 html[data-ms-theme="light"] [class*="bg-green"],
-html[data-ms-theme="light"] .bg-\[#134e2a\] { filter: invert(1) hue-rotate(180deg); }
+html[data-ms-theme="light"] [class*="bg-134e2a"] { filter: invert(1) hue-rotate(180deg); }

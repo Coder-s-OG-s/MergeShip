@@ -7,11 +7,11 @@ import { readSupabaseEnv } from './env';
  * Returns null if env vars are missing so callers can short-circuit
  * to a "service not configured" response instead of crashing.
  */
-export function getServerSupabase() {
+export async function getServerSupabase() {
   const env = readSupabaseEnv();
   if (!env) return null;
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   return createServerClient(env.url, env.anonKey, {
     cookies: {
       getAll() {
