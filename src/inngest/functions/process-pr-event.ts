@@ -1,7 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
-import { XP_SOURCE, xpForMerge, refIds } from '@/lib/xp/sources';
+import { XP_SOURCE, xpForMerge, refIds, XP_REWARDS } from '@/lib/xp/sources';
 import { cacheDelByPrefix } from '@/lib/cache';
 import { buildPrRow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
 
@@ -259,6 +259,11 @@ async function awardRecommendedMerge(
   if (existing?.data) {
     return { xpAwarded: false, recId: rec.id };
   }
+  const tierCap =
+    XP_REWARDS.RECOMMENDED_MERGE[difficulty as keyof typeof XP_REWARDS.RECOMMENDED_MERGE] ??
+    xpForMerge(difficulty);
+  const xpDelta = Math.min(rec.xp_reward ?? tierCap, tierCap);
+
   const inserted = await insertXpEvent({
     userId: rec.user_id,
     source: XP_SOURCE.RECOMMENDED_MERGE,
@@ -266,7 +271,7 @@ async function awardRecommendedMerge(
     refId: refIds.pr(repo, pr.number),
     repo,
     difficulty,
-    xpDelta: rec.xp_reward ?? xpForMerge(difficulty),
+    xpDelta,
   });
 
   await sb
@@ -282,7 +287,7 @@ async function awardRecommendedMerge(
     await sb.from('activity_log').insert({
       user_id: rec.user_id,
       kind: 'pr_merged',
-      detail: { recId: rec.id, repo, prNumber: pr.number, xpAwarded: rec.xp_reward } as never,
+      detail: { recId: rec.id, repo, prNumber: pr.number, xpAwarded: xpDelta } as never,
     });
   }
 

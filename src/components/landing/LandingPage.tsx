@@ -182,7 +182,7 @@ function SectionCurtain({ children, dark, className = '' }: {
         initial={{ scaleX: 0 }}
         animate={
           phase === 'wiping' ? { scaleX: [0, 1, 1, 0] } :
-          phase === 'done' ? { scaleX: 0 } : { scaleX: 0 }
+            phase === 'done' ? { scaleX: 0 } : { scaleX: 0 }
         }
         transition={{ duration: 0.9, times: [0, 0.45, 0.55, 1], ease: [0.76, 0, 0.24, 1] }}
         style={{ background: dark ? '#000' : '#111110', transformOrigin: 'left' }}
@@ -286,12 +286,24 @@ function NavAuth() {
 
 function Nav() {
   const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
 
   return (
     <nav className={`nav ${scrolled ? 'scrolled' : ''}`}>
@@ -313,7 +325,39 @@ function Nav() {
         <a className="nav-link" href="#how">How It Works</a>
         <a className="nav-link" href="#levels">Levels</a>
       </div>
+      {mobileMenuOpen && (
+        <div
+          className="mobile-overlay"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+      {mobileMenuOpen && (
+        <div className="mobile-nav">
+          <a href="#contributors" onClick={() => setMobileMenuOpen(false)}>
+            For Contributors
+          </a>
+
+          <a href="#maintainers" onClick={() => setMobileMenuOpen(false)}>
+            For Maintainers
+          </a>
+
+          <a href="#how" onClick={() => setMobileMenuOpen(false)}>
+            How It Works
+          </a>
+
+          <a href="#levels" onClick={() => setMobileMenuOpen(false)}>
+            Levels
+          </a>
+        </div>
+      )}
       <NavAuth />
+      <button
+        className="mobile-menu-btn"
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+      >
+        ☰
+      </button>
+
     </nav>
   );
 }
@@ -346,20 +390,20 @@ function Hero() {
             MergeShip changes that — level by level, PR by PR.
           </FadeUp>
           <FadeUp className="hero-ctas" delay={1.1} y={24}>
-          <Link
-            href="/dashboard"
-            className="btn"
-            onClick={(e) => {
-              const isLoggedIn = false;
-              if (!isLoggedIn) {
-                e.preventDefault();
-                alert("Please sign in first to continue.");
-                window.location.href = "/signin";
-              }
-            }}
-          >
-            Start Contributing →
-          </Link>
+            <Link
+              href="/dashboard"
+              className="btn"
+              onClick={(e) => {
+                const isLoggedIn = false;
+                if (!isLoggedIn) {
+                  e.preventDefault();
+                  alert("Please sign in first to continue.");
+                  window.location.href = "/signin";
+                }
+              }}
+            >
+              Start Contributing →
+            </Link>
             <a href="#features" className="btn-ghost">see how it works →</a>
           </FadeUp>
         </div>
@@ -523,7 +567,7 @@ function HowItWorks() {
   return (
     <SectionCurtain>
       <SectionHeader num="02" title="ONE LOGIN. INTELLIGENT ROUTING." />
-      <div className="how-grid" id="features">
+      <div className="how-grid" id="how">
         <div className="how-index">
           {flows.map((f, i) => (
             <button key={i} className={`how-index-item${active === i ? ' active' : ''}`} onClick={() => setActive(i)}>

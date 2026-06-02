@@ -13,6 +13,7 @@ import {
   Activity,
   Settings,
 } from 'lucide-react';
+import { isActiveRoute } from '@/lib/nav-utils';
 
 const CORE_NAV = [
   { name: 'DASHBOARD', href: '/dashboard', icon: LayoutDashboard },
@@ -41,19 +42,11 @@ export function NavItems({
     { name: 'USAGE', href: '/settings/usage', icon: Activity },
   ];
 
-  const isActiveRoute = (href: string) => {
-    if (href === '/') {
-      return pathname === '/';
-    }
-
-    return pathname === href || pathname.startsWith(`${href}/`);
-  };
-
   return (
     <>
       {items.map((item) => {
         const Icon = item.icon;
-        const isActive = isActiveRoute(item.href);
+        const isActive = isActiveRoute(item.href, pathname);
 
         return (
           <Link
