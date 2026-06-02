@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { getServerSupabase } from '@/lib/supabase/server';
 
 export async function GET(_req: Request) {
   try {
     const sb = await getServerSupabase();
-
     if (!sb) {
       return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
     }

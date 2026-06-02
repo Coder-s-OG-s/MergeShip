@@ -29,9 +29,13 @@ export async function GET(req: NextRequest) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
+    // Log the full error server-side so it is visible in Vercel logs without
+    // being exposed to the client via the redirect URL, browser history, or
+    // HTTP proxies.
+    console.error('[auth/callback] OAuth session exchange failed:', error.message);
     url.pathname = '/';
     url.searchParams.delete('code');
-    url.searchParams.set('auth_error', error.message);
+    url.searchParams.set('auth_error', 'oauth_callback_failed');
     return NextResponse.redirect(url);
   }
 

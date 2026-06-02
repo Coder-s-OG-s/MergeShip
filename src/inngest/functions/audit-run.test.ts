@@ -5,7 +5,7 @@ import { computeAuditScore } from '@/lib/xp/audit';
 import { clampAuditScoreToLevel } from '@/lib/xp/audit-clamp';
 import { pickPrimaryLanguage } from '@/lib/xp/primary-language';
 import { auditRun } from './audit-run';
-import { sb, wire, step } from './test-helpers';
+import { sb, wire, step } from './__tests__/test-helpers';
 
 // Mock external dependencies.
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
