@@ -11,6 +11,14 @@ vi.mock('../db/client', () => ({
   schema: { xpEvents: { userId: 'u', source: 's', refId: 'r' } },
 }));
 
+/* Mock drizzle-orm's sql tag so vitest doesn't load the full package
+   (which takes 4+ seconds on some machines and causes timeouts). */
+vi.mock('drizzle-orm', () => ({
+  sql: Object.assign((strings: TemplateStringsArray, ..._values: unknown[]) => ({ strings }), {
+    raw: (s: string) => s,
+  }),
+}));
+
 beforeEach(() => {
   mockReturning.mockReset();
   mockExecute.mockReset();
@@ -21,6 +29,7 @@ beforeEach(() => {
 
 describe('insertXpEvent', () => {
   it('returns true when a row is inserted', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
     mockReturning.mockResolvedValueOnce([{ id: 1 }]);
     const { insertXpEvent } = await import('./events');
     const inserted = await insertXpEvent({
@@ -38,6 +47,7 @@ describe('insertXpEvent', () => {
   });
 
   it('returns false on idempotent duplicate (no row returned)', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
     mockReturning.mockResolvedValueOnce([]);
     const { insertXpEvent } = await import('./events');
     const inserted = await insertXpEvent({

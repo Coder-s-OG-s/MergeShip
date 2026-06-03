@@ -19,7 +19,7 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 export default async function UsagePage() {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return null;
   const {
     data: { user },

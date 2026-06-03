@@ -5,9 +5,9 @@ import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
   getMaintainerIssueQueue,
-  type MaintainerInstall,
   type MaintainerIssueRow,
 } from '@/app/actions/maintainer';
+import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { isOk } from '@/lib/result';
 import type { IssueTriageBucket } from '@/lib/maintainer/issue-triage';
 
@@ -34,7 +34,7 @@ export default async function MaintainerIssuesPage({
 }: {
   searchParams: { install?: string; bucket?: string };
 }) {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return <NotConfigured />;
   const {
     data: { user },

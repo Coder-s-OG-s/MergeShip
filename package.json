@@ -6,8 +6,8 @@
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "lint:fix": "next lint --fix",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
@@ -37,13 +37,13 @@
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "drizzle-orm": "^0.36.4",
+    "drizzle-orm": "^0.45.2",
     "framer-motion": "^11.0.0",
     "groq-sdk": "^0.9.1",
     "inngest": "^3.27.0",
-    "ioredis": "^5.10.1",
+    "ioredis": "^5.11.0",
     "lucide-react": "^0.400.0",
-    "next": "14.2.5",
+    "next": "^16.2.6",
     "postgres": "^3.4.5",
     "react": "^18",
     "react-dom": "^18",
@@ -59,25 +59,30 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "@vitest/coverage-v8": "^2.1.5",
+    "@vitest/coverage-v8": "^3.2.4",
     "autoprefixer": "^10.0.1",
-    "drizzle-kit": "^0.28.1",
-    "eslint": "^8",
-    "eslint-config-next": "14.2.5",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.6",
     "husky": "^9.1.7",
     "lint-staged": "^15.2.10",
-    "postcss": "^8",
+    "postcss": "^8.5.15",
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.9",
     "smee-client": "^2.0.4",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.19.2",
     "typescript": "^5",
-    "vitest": "^2.1.5"
+    "vitest": "^3.2.4"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,md,json,yml,yaml,css}": [
       "prettier --write --ignore-unknown"
     ]
+  },
+  "overrides": {
+    "esbuild": "^0.25.0",
+    "glob": "^10.4.6",
+    "postcss": "^8.5.15"
   }
 }
