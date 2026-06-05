@@ -1,6 +1,6 @@
 export default function IssuesPageLoading() {
   return (
-    <div className="min-h-screen bg-[#0d1117] p-12 font-mono text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-6xl animate-pulse">
         <header className="mb-12 border-b border-[#2d333b] pb-6">
           <div className="mb-4 h-3 w-24 rounded bg-zinc-800" />

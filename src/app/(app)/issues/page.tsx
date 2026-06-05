@@ -20,7 +20,9 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
   const sb = await getServerSupabase();
   if (!sb)
     return (
-      <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">Not configured</div>
+      <div className="app-page">
+        <p className="app-body">Not configured</p>
+      </div>
     );
 
   const {
@@ -111,24 +113,22 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
   const repoOptions: RepoOption[] = repoResult.ok ? repoResult.data : [];
 
   return (
-    <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-12 border-b border-[#2d333b] pb-6">
-          <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
-            02 / ISSUES
-          </div>
-          <h1 className="font-serif text-4xl text-white">Browse Issues</h1>
-        </header>
+    <div className="app-page mx-auto max-w-6xl">
+      <header className="app-page-header">
+        <div>
+          <p className="app-eyebrow">02 / Issues</p>
+          <h1 className="app-title">Browse Issues</h1>
+        </div>
+      </header>
 
-        {linkedRecs.length > 0 && (
-          <MyWorkSection
-            initialRecs={linkedRecs}
-            currentUser={{ id: user.id, level: currentUserLevel }}
-          />
-        )}
+      {linkedRecs.length > 0 && (
+        <MyWorkSection
+          initialRecs={linkedRecs}
+          currentUser={{ id: user.id, level: currentUserLevel }}
+        />
+      )}
 
-        <IssuesList initialData={pageData} initialFilters={filters} repoOptions={repoOptions} />
-      </div>
+      <IssuesList initialData={pageData} initialFilters={filters} repoOptions={repoOptions} />
     </div>
   );
 }

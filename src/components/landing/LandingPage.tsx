@@ -278,14 +278,14 @@ function NavAuth() {
           fontSize: '0.72rem',
           textTransform: 'uppercase',
           letterSpacing: '0.08em',
-          color: 'var(--ink-muted)',
+          color: '#b8b3aa',
         }}>
           {user.name || user.email}
         </span>
         <Link href="/dashboard" className="btn" style={{ fontSize: '0.72rem' }}>
           Dashboard →
         </Link>
-        <button className="btn-ghost" onClick={handleLogout}>Sign Out</button>
+        <button type="button" className="btn-ghost dark" onClick={handleLogout}>Sign Out</button>
       </div>
     );
   }
@@ -327,57 +327,60 @@ function Nav() {
 
   return (
     <nav className={`nav ${scrolled ? 'scrolled' : ''}`}>
-      <div className="nav-logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="4" r="1.8" />
-          <line x1="12" y1="5.8" x2="12" y2="14" />
-          <path d="M7 14 Q12 19 17 14" />
-          <line x1="9" y1="11" x2="6" y2="11" />
-          <circle cx="5" cy="11" r="1.2" />
-          <line x1="15" y1="11" x2="18" y2="11" />
-          <circle cx="19" cy="11" r="1.2" />
-        </svg>
-        <span className="wordmark">MergeShip</span>
-      </div>
-      <div className="nav-links">
-        <a className="nav-link" href="#contributors">For Contributors</a>
-        <a className="nav-link" href="#maintainers">For Maintainers</a>
-        <a className="nav-link" href="#how">How It Works</a>
-        <a className="nav-link" href="#levels">Levels</a>
-      </div>
-      {mobileMenuOpen && (
-        <div
-          className="mobile-overlay"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
-      {mobileMenuOpen && (
-        <div className="mobile-nav">
-          <a href="#contributors" onClick={() => setMobileMenuOpen(false)}>
-            For Contributors
-          </a>
-
-          <a href="#maintainers" onClick={() => setMobileMenuOpen(false)}>
-            For Maintainers
-          </a>
-
-          <a href="#how" onClick={() => setMobileMenuOpen(false)}>
-            How It Works
-          </a>
-
-          <a href="#levels" onClick={() => setMobileMenuOpen(false)}>
-            Levels
-          </a>
+      <div className="nav-split-left">
+        <div className="nav-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="4" r="1.8" />
+            <line x1="12" y1="5.8" x2="12" y2="14" />
+            <path d="M7 14 Q12 19 17 14" />
+            <line x1="9" y1="11" x2="6" y2="11" />
+            <circle cx="5" cy="11" r="1.2" />
+            <line x1="15" y1="11" x2="18" y2="11" />
+            <circle cx="19" cy="11" r="1.2" />
+          </svg>
+          <span className="wordmark">MergeShip</span>
         </div>
-      )}
-      <NavAuth />
-      <button
-        className="mobile-menu-btn"
-        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-      >
-        ☰
-      </button>
+        <div className="nav-links">
+          <a className="nav-link" href="#contributors">For Contributors</a>
+          <a className="nav-link" href="#maintainers">For Maintainers</a>
+          <a className="nav-link" href="#how">How It Works</a>
+          <a className="nav-link" href="#levels">Levels</a>
+        </div>
+      </div>
 
+      <div className="nav-split-right">
+        {mobileMenuOpen && (
+          <div
+            className="mobile-overlay"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+        {mobileMenuOpen && (
+          <div className="mobile-nav">
+            <a href="#contributors" onClick={() => setMobileMenuOpen(false)}>
+              For Contributors
+            </a>
+            <a href="#maintainers" onClick={() => setMobileMenuOpen(false)}>
+              For Maintainers
+            </a>
+            <a href="#how" onClick={() => setMobileMenuOpen(false)}>
+              How It Works
+            </a>
+            <a href="#levels" onClick={() => setMobileMenuOpen(false)}>
+              Levels
+            </a>
+          </div>
+        )}
+        <NavAuth />
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Open menu"
+        >
+          ☰
+        </button>
+      </div>
     </nav>
   );
 }

@@ -1,6 +1,6 @@
 export default function HelpInboxPageLoading() {
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-3xl animate-pulse">
         <div>
           <div className="h-9 w-44 rounded bg-zinc-800" />

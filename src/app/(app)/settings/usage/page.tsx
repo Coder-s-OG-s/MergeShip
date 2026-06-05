@@ -30,7 +30,7 @@ export default async function UsagePage() {
   const weeklyXp = getWeeklyXp(entries);
 
   return (
-    <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-3xl">
         <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
           Settings / Usage

@@ -71,7 +71,7 @@ export default async function MaintainerIssuesPage({
   const rows: MaintainerIssueRow[] = isOk(queueRes) ? queueRes.data.rows : [];
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-5xl">
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <h1 className="font-display text-3xl font-bold">Issue triage</h1>
@@ -239,7 +239,7 @@ function relativeTime(iso: string): string {
 
 function NoInstalls() {
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-20 text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-xl">
         <h1 className="mb-3 font-display text-3xl font-bold">No installs</h1>
         <p className="text-zinc-400">Install the MergeShip App to see issues here.</p>
@@ -250,7 +250,7 @@ function NoInstalls() {
 
 function NotConfigured() {
   return (
-    <div className="min-h-screen px-6 py-20 text-white">
+    <div className="app-page">
       <p className="text-gray-400">Auth not configured.</p>
     </div>
   );

@@ -1,6 +1,6 @@
 export default function MyPRsPageLoading() {
   return (
-    <div className="flex min-h-screen bg-[#0d1117] font-mono text-white">
+    <div className="app-page flex flex-col">
       <div className="flex-1 animate-pulse overflow-y-auto px-10 py-10">
         <header className="mb-8">
           <div className="h-9 w-64 rounded bg-zinc-800" />

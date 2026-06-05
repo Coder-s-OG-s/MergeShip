@@ -2,21 +2,16 @@
 
 export default function Error({ reset }: { reset: () => void }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[#111318] px-6 text-white">
-      <div className="w-full max-w-md border border-[#2d333b] bg-[#161b22] p-10 text-center">
-        <div className="mb-3 text-[11px] uppercase tracking-[0.3em] text-zinc-500">
-          System Error
-        </div>
-
-        <h1 className="mb-4 font-serif text-3xl">Something went wrong.</h1>
-
-        <p className="mb-8 text-sm leading-6 text-zinc-400">
-          An unexpected error occurred while loading this page.
-        </p>
-
+    <div className="app-page flex min-h-[60vh] flex-col items-center justify-center">
+      <div className="app-card w-full max-w-md p-10 text-center">
+        <p className="app-eyebrow mb-3">System Error</p>
+        <h1 className="app-title-sm mb-4">Something went wrong.</h1>
+        <p className="app-body mb-8">An unexpected error occurred while loading this page.</p>
         <button
+          type="button"
           onClick={() => reset()}
-          className="border border-zinc-700 px-6 py-3 text-[11px] uppercase tracking-[0.25em] text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
+          className="border border-[#2a2a28] px-6 py-3 text-[11px] uppercase tracking-[0.1em] text-[#f2f0eb] transition hover:border-[#3a3a36] hover:bg-[#1a1a18]"
+          style={{ fontFamily: 'var(--font-dm-mono), monospace' }}
         >
           Retry
         </button>

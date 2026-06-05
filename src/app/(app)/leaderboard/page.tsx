@@ -14,7 +14,7 @@ export default async function LeaderboardPage({
   const result = await getLeaderboard(scope, scopeId, 50);
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-3xl">
         <h1 className="font-display text-3xl font-bold">Leaderboard</h1>
         <nav className="mt-4 flex flex-wrap gap-2 text-sm">
