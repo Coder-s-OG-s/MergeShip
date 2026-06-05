@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { tryGetDb } from '@/lib/db/client';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { ok, err, type Result } from '@/lib/result';
+import { getServerSupabase } from '@/lib/supabase/server';
 
 export type LeaderboardScope = 'global' | 'cohort' | 'language' | 'tag';
 
@@ -23,10 +24,15 @@ export async function getLeaderboard(
   scope: LeaderboardScope,
   scopeId: string | null,
   limit = 50,
-): Promise<Result<LeaderboardEntry[]>> {
+): Promise<
+  Result<{
+    entries: LeaderboardEntry[];
+    currentUserRank: LeaderboardEntry | null;
+  }>
+> {
   const cacheKey = `leaderboard:${scope}:${scopeId ?? 'all'}:${limit}`;
   const cached = await cacheGet<LeaderboardEntry[]>(cacheKey);
-  if (cached) return ok(cached);
+  let entries: LeaderboardEntry[] = cached ?? [];
 
   const db = tryGetDb();
   if (!db) return err('not_configured', 'database not configured');
@@ -40,15 +46,16 @@ export async function getLeaderboard(
     level: number;
   }[] = [];
 
-  if (scope === 'global') {
-    rows = (await db.execute(sql`
+  if (!cached) {
+    if (scope === 'global') {
+      rows = (await db.execute(sql`
       select id, github_handle, display_name, avatar_url, xp, level
       from profiles
       order by xp desc
       limit ${limit}
     `)) as unknown as typeof rows;
-  } else if (scope === 'cohort' && scopeId) {
-    rows = (await db.execute(sql`
+    } else if (scope === 'cohort' && scopeId) {
+      rows = (await db.execute(sql`
       select p.id, p.github_handle, p.display_name, p.avatar_url, p.xp, p.level
       from profiles p
       join cohort_members cm on cm.user_id = p.id
@@ -57,16 +64,16 @@ export async function getLeaderboard(
       order by p.xp desc
       limit ${limit}
     `)) as unknown as typeof rows;
-  } else if (scope === 'language' && scopeId) {
-    rows = (await db.execute(sql`
+    } else if (scope === 'language' && scopeId) {
+      rows = (await db.execute(sql`
       select id, github_handle, display_name, avatar_url, xp, level
       from profiles
       where primary_language = ${scopeId}
       order by xp desc
       limit ${limit}
     `)) as unknown as typeof rows;
-  } else if (scope === 'tag' && scopeId) {
-    rows = (await db.execute(sql`
+    } else if (scope === 'tag' && scopeId) {
+      rows = (await db.execute(sql`
       select p.id, p.github_handle, p.display_name, p.avatar_url, p.xp, p.level
       from profiles p
       join profile_tags pt on pt.user_id = p.id
@@ -74,25 +81,119 @@ export async function getLeaderboard(
       order by p.xp desc
       limit ${limit}
     `)) as unknown as typeof rows;
-  } else {
-    return err('invalid_scope', `scope ${scope} requires a scopeId`);
+    } else {
+      return err('invalid_scope', `scope ${scope} requires a scopeId`);
+    }
+
+    const list: typeof rows = Array.isArray(rows)
+      ? rows
+      : (rows as unknown as { rows: typeof rows }).rows;
+
+    entries = list.map((r, i) => ({
+      rank: i + 1,
+      userId: r.id,
+      githubHandle: r.github_handle,
+      displayName: r.display_name,
+      avatarUrl: r.avatar_url,
+      xp: r.xp,
+      level: r.level,
+    }));
+
+    await cacheSet(cacheKey, entries, TTL);
   }
 
-  // drizzle execute returns { rows: [...] } in some versions; normalize
-  const list: typeof rows = Array.isArray(rows)
-    ? rows
-    : (rows as unknown as { rows: typeof rows }).rows;
+  const sb = await getServerSupabase();
 
-  const entries: LeaderboardEntry[] = list.map((r, i) => ({
-    rank: i + 1,
-    userId: r.id,
-    githubHandle: r.github_handle,
-    displayName: r.display_name,
-    avatarUrl: r.avatar_url,
-    xp: r.xp,
-    level: r.level,
-  }));
+  let currentUserRank: LeaderboardEntry | null = null;
 
-  await cacheSet(cacheKey, entries, TTL);
-  return ok(entries);
+  if (sb) {
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+
+    if (user) {
+      let rankQuery: ReturnType<typeof sql> | null;
+
+      if (scope === 'global') {
+        rankQuery = sql`
+        select count(*) + 1 as rank
+        from profiles
+        where xp > (
+          select xp from profiles where id = ${user.id}
+        )
+      `;
+      } else if (scope === 'language' && scopeId) {
+        rankQuery = sql`
+        select count(*) + 1 as rank
+        from profiles
+        where primary_language = ${scopeId}
+          and xp > (
+            select xp
+from profiles
+where id = ${user.id}
+  and primary_language = ${scopeId}
+          )
+      `;
+      } else {
+        rankQuery = null;
+      }
+
+      if (rankQuery) {
+        const rankResult = (await db.execute(rankQuery)) as unknown as {
+          rank: number;
+        }[];
+
+        let userQuery: ReturnType<typeof sql> | null;
+
+        if (scope === 'global') {
+          userQuery = sql`
+    select id, github_handle, display_name, avatar_url, xp, level
+    from profiles
+    where id = ${user.id}
+    limit 1
+  `;
+        } else if (scope === 'language' && scopeId) {
+          userQuery = sql`
+    select id, github_handle, display_name, avatar_url, xp, level
+    from profiles
+    where id = ${user.id}
+      and primary_language = ${scopeId}
+    limit 1
+  `;
+        } else {
+          userQuery = null;
+        }
+
+        if (userQuery) {
+          const userRows = (await db.execute(userQuery)) as unknown as {
+            id: string;
+            github_handle: string;
+            display_name: string | null;
+            avatar_url: string | null;
+            xp: number;
+            level: number;
+          }[];
+
+          const current = userRows[0];
+
+          if (current && rankResult[0]) {
+            currentUserRank = {
+              rank: Number(rankResult[0].rank),
+              userId: current.id,
+              githubHandle: current.github_handle,
+              displayName: current.display_name,
+              avatarUrl: current.avatar_url,
+              xp: current.xp,
+              level: current.level,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return ok({
+    entries,
+    currentUserRank,
+  });
 }

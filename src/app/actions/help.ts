@@ -21,7 +21,7 @@ type HelpOutput = {
 const COOLDOWN_HOURS = 4;
 
 export async function sendHelpRequest(input: HelpInput): Promise<Result<HelpOutput>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');

@@ -20,6 +20,7 @@ import {
   streakDetect,
   recsExpire,
   activityLogCleanup,
+  flagSuspiciousXpAccounts,
   autoUnclaimStale,
 } from '@/inngest/functions/maintenance';
 import { githubStatsSync } from '@/inngest/functions/github-stats-sync';
@@ -45,6 +46,7 @@ export const { GET, POST, PUT } = serve({
     streakDetect,
     recsExpire,
     activityLogCleanup,
+    flagSuspiciousXpAccounts,
     autoUnclaimStale,
     githubStatsSync,
     mentorPostComment,

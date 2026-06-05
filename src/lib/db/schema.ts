@@ -43,6 +43,11 @@ export const profiles = pgTable(
     level: integer('level').notNull().default(0),
     auditCompleted: boolean('audit_completed').notNull().default(false),
     timezone: text('timezone'),
+    // Contributor mute preferences. Arrays of repo full names
+    // and language strings the user has marked "not interested in".
+    // Fully reversible — cleared by passing an empty array.
+    mutedRepos: text('muted_repos').array().default([]).notNull(),
+    mutedLanguages: text('muted_languages').array().default([]).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     bio: text('bio'),
@@ -149,6 +154,9 @@ export const recommendations = pgTable(
     difficulty: text('difficulty', { enum: ['E', 'M', 'H'] }).notNull(),
     xpReward: integer('xp_reward').notNull(),
     linkedPrUrl: text('linked_pr_url'),
+    // Optional free-text reason captured when a user skips a recommendation.
+    // Never required — omitting preserves existing skip behavior.
+    skipReason: text('skip_reason'),
     recommendedAt: timestamp('recommended_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     claimedAt: timestamp('claimed_at', { withTimezone: true }),
@@ -322,6 +330,35 @@ export const activityLog = pgTable(
   (t) => ({
     userTimeIdx: index('activity_log_user_time_idx').on(t.userId, t.createdAt),
     createdAtIdx: index('activity_log_created_at_idx').on(t.createdAt),
+  }),
+);
+
+export const flaggedAccounts = pgTable(
+  'flagged_accounts',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    userId: uuid('user_id').references(() => profiles.id, { onDelete: 'cascade' }),
+    reason: text('reason', {
+      enum: ['daily_xp_event_spike', 'rapid_merge_spike', 'reviewer_approval_concentration'],
+    }).notNull(),
+    severity: text('severity', { enum: ['medium', 'high'] })
+      .notNull()
+      .default('medium'),
+    status: text('status', { enum: ['open', 'reviewed', 'dismissed'] })
+      .notNull()
+      .default('open'),
+    evidence: jsonb('evidence').notNull().default({}),
+    detectedAt: timestamp('detected_at', { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (t) => ({
+    uniqUserReasonStatus: uniqueIndex('flagged_accounts_user_reason_status_unique').on(
+      t.userId,
+      t.reason,
+      t.status,
+    ),
+    statusDetectedIdx: index('flagged_accounts_status_detected_idx').on(t.status, t.detectedAt),
+    userIdx: index('flagged_accounts_user_idx').on(t.userId),
   }),
 );
 

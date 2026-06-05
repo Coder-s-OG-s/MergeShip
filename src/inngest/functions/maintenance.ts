@@ -2,6 +2,53 @@ import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_REWARDS, XP_SOURCE, refIds } from '@/lib/xp/sources';
+import {
+  detectSuspiciousPatterns,
+  type SuspiciousMergedPr,
+  type SuspiciousReview,
+  type SuspiciousXpEvent,
+} from '@/lib/xp/suspicious-patterns';
+
+const AUDIT_PAGE_SIZE = 1000;
+const AUDIT_FILTER_CHUNK_SIZE = 500;
+
+type SupabasePage<T> = {
+  data: T[] | null;
+  error: { message?: string } | null;
+};
+
+async function fetchAllAuditRows<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<SupabasePage<T>>,
+): Promise<T[]> {
+  const rows: T[] = [];
+
+  for (let from = 0; ; from += AUDIT_PAGE_SIZE) {
+    const to = from + AUDIT_PAGE_SIZE - 1;
+    const { data, error } = await buildQuery(from, to);
+    if (error) throw new Error(error.message ?? 'Supabase audit query failed');
+
+    const page = data ?? [];
+    rows.push(...page);
+
+    if (page.length < AUDIT_PAGE_SIZE) {
+      return rows;
+    }
+  }
+}
+
+async function fetchChunkedAuditRows<T, TFilter>(
+  filters: TFilter[],
+  buildQuery: (chunk: TFilter[], from: number, to: number) => PromiseLike<SupabasePage<T>>,
+): Promise<T[]> {
+  const rows: T[] = [];
+
+  for (let start = 0; start < filters.length; start += AUDIT_FILTER_CHUNK_SIZE) {
+    const chunk = filters.slice(start, start + AUDIT_FILTER_CHUNK_SIZE);
+    rows.push(...(await fetchAllAuditRows((from, to) => buildQuery(chunk, from, to))));
+  }
+
+  return rows;
+}
 
 /**
  * Daily streak detection — gives +10 XP/day to users who had any qualifying
@@ -86,6 +133,151 @@ export const activityLogCleanup = inngest.createFunction(
   },
 );
 
+/**
+ * Daily conservative fraud signal detection. This only flags accounts for
+ * maintainer review; it never changes XP, labels, or profile state.
+ */
+export const flagSuspiciousXpAccounts = inngest.createFunction(
+  { id: 'flag-suspicious-xp-accounts' },
+  { cron: '30 0 * * *' }, // 00:30 UTC daily, after streaks and cleanup
+  async ({ step }) => {
+    return await step.run('detect-and-store-flags', async () => {
+      const sb = getServiceSupabase();
+      if (!sb) throw new Error('service role missing');
+      const service = sb;
+
+      const dayEndDate = startOfUtcDay(new Date());
+      const dayStartDate = new Date(dayEndDate.getTime() - 24 * 60 * 60 * 1000);
+      const weekStartDate = new Date(dayEndDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const dayStart = dayStartDate.toISOString();
+      const dayEnd = dayEndDate.toISOString();
+      const weekStart = weekStartDate.toISOString();
+      const weekEnd = dayEnd;
+
+      const [xpRows, mergedRows, reviewRows] = await Promise.all([
+        fetchAllAuditRows<XpEventAuditRow>(
+          (from, to) =>
+            service
+              .from('xp_events')
+              .select('id, user_id, source, ref_id, repo, xp_delta, created_at')
+              .gte('created_at', dayStart)
+              .lt('created_at', dayEnd)
+              .order('created_at', { ascending: true })
+              .order('id', { ascending: true })
+              .range(from, to) as unknown as PromiseLike<SupabasePage<XpEventAuditRow>>,
+        ),
+        fetchAllAuditRows<PullRequestAuditRow>(
+          (from, to) =>
+            service
+              .from('pull_requests')
+              .select('id, repo_full_name, number, title, author_login, author_user_id, merged_at')
+              .eq('state', 'merged')
+              .gte('merged_at', dayStart)
+              .lt('merged_at', dayEnd)
+              .order('merged_at', { ascending: true })
+              .order('id', { ascending: true })
+              .range(from, to) as unknown as PromiseLike<SupabasePage<PullRequestAuditRow>>,
+        ),
+        fetchAllAuditRows<ReviewAuditRow>(
+          (from, to) =>
+            service
+              .from('pull_request_reviews')
+              .select('id, pr_id, reviewer_login, reviewer_user_id, state, submitted_at')
+              .eq('state', 'approved')
+              .gte('submitted_at', weekStart)
+              .lt('submitted_at', weekEnd)
+              .order('submitted_at', { ascending: true })
+              .order('id', { ascending: true })
+              .range(from, to) as unknown as PromiseLike<SupabasePage<ReviewAuditRow>>,
+        ),
+      ]);
+
+      const reviewPrIds = Array.from(
+        new Set(reviewRows.map((row) => Number(row.pr_id)).filter(Number.isFinite)),
+      );
+      const reviewPrRows = await fetchPullRequestsById(reviewPrIds);
+      const mergedPullRequests = mergedRows.map(mapPullRequestRow);
+      const pullRequestsById = new Map<number, SuspiciousMergedPr>();
+      for (const pr of [...mergedPullRequests, ...reviewPrRows]) {
+        pullRequestsById.set(pr.id, pr);
+      }
+
+      const candidates = detectSuspiciousPatterns({
+        xpEvents: xpRows.map(mapXpEventRow),
+        mergedPullRequests,
+        reviews: reviewRows.map(mapReviewRow),
+        pullRequestsById,
+        window: { dayStart, dayEnd, weekStart, weekEnd },
+      });
+
+      if (candidates.length === 0) {
+        return { scanned: true, inserted: 0, candidates: 0 };
+      }
+
+      const candidateUserIds = Array.from(new Set(candidates.map((candidate) => candidate.userId)));
+      const existingRows = await fetchChunkedAuditRows<FlaggedAccountAuditRow, string>(
+        candidateUserIds,
+        (chunk, from, to) =>
+          service
+            .from('flagged_accounts')
+            .select('user_id, reason')
+            .eq('status', 'open')
+            .in('user_id', chunk)
+            .order('user_id', { ascending: true })
+            .order('reason', { ascending: true })
+            .range(from, to) as unknown as PromiseLike<SupabasePage<FlaggedAccountAuditRow>>,
+      );
+
+      const existing = new Set(existingRows.map((row) => `${row.user_id}:${row.reason}`));
+      const rowsToInsert = candidates
+        .filter((candidate) => !existing.has(`${candidate.userId}:${candidate.reason}`))
+        .map((candidate) => ({
+          user_id: candidate.userId,
+          reason: candidate.reason,
+          severity: candidate.severity,
+          status: 'open',
+          evidence: candidate.evidence,
+        }));
+
+      if (rowsToInsert.length === 0) {
+        return { scanned: true, inserted: 0, candidates: candidates.length };
+      }
+
+      const { data: insertedRows, error: insertError } = await service
+        .from('flagged_accounts')
+        .insert(rowsToInsert)
+        .select('id');
+      if (insertError) throw insertError;
+
+      return {
+        scanned: true,
+        inserted: insertedRows?.length ?? 0,
+        candidates: candidates.length,
+      };
+
+      async function fetchPullRequestsById(ids: number[]) {
+        if (ids.length === 0) return [];
+
+        return (
+          await fetchChunkedAuditRows<PullRequestAuditRow, number>(
+            ids,
+            (chunk, from, to) =>
+              service
+                .from('pull_requests')
+                .select(
+                  'id, repo_full_name, number, title, author_login, author_user_id, merged_at',
+                )
+                .in('id', chunk)
+                .order('id', { ascending: true })
+                .range(from, to) as unknown as PromiseLike<SupabasePage<PullRequestAuditRow>>,
+          )
+        ).map(mapPullRequestRow);
+      }
+    });
+  },
+);
+
 const CLAIM_STALE_THRESHOLD_DAYS = 14;
 const CLAIM_WARNING_THRESHOLD_DAYS = 10;
 
@@ -163,3 +355,75 @@ export const autoUnclaimStale = inngest.createFunction(
     return { ...unclaimResult, ...warnResult };
   },
 );
+
+function startOfUtcDay(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+type XpEventAuditRow = {
+  id: number;
+  user_id: string | null;
+  source: string | null;
+  ref_id: string | null;
+  repo: string | null;
+  xp_delta: number | null;
+  created_at: string;
+};
+
+type PullRequestAuditRow = {
+  id: number;
+  repo_full_name: string;
+  number: number;
+  title: string;
+  author_login: string;
+  author_user_id: string | null;
+  merged_at: string | null;
+};
+
+type ReviewAuditRow = {
+  id: number;
+  pr_id: number;
+  reviewer_login: string;
+  reviewer_user_id: string | null;
+  state: string;
+  submitted_at: string;
+};
+
+type FlaggedAccountAuditRow = {
+  user_id: string;
+  reason: string;
+};
+
+function mapXpEventRow(row: XpEventAuditRow): SuspiciousXpEvent {
+  return {
+    userId: row.user_id,
+    source: row.source,
+    refId: row.ref_id,
+    repo: row.repo,
+    xpDelta: row.xp_delta,
+    createdAt: row.created_at,
+  };
+}
+
+function mapPullRequestRow(row: PullRequestAuditRow): SuspiciousMergedPr {
+  return {
+    id: row.id,
+    repoFullName: row.repo_full_name,
+    number: row.number,
+    title: row.title,
+    authorLogin: row.author_login,
+    authorUserId: row.author_user_id,
+    mergedAt: row.merged_at,
+  };
+}
+
+function mapReviewRow(row: ReviewAuditRow): SuspiciousReview {
+  return {
+    id: row.id,
+    prId: row.pr_id,
+    reviewerLogin: row.reviewer_login,
+    reviewerUserId: row.reviewer_user_id,
+    state: row.state,
+    submittedAt: row.submitted_at,
+  };
+}
