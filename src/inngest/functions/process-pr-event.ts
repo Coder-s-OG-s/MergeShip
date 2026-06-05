@@ -49,13 +49,13 @@ type PrPayload = {
   };
 };
 
-const ISSUE_REF = /(?:close[sd]?|fixe[sd]?|resolve[sd]?)\s+#(\d+)|#(\d+)/gi;
+const ISSUE_REF = /(?:close[sd]?|fixe[sd]?|resolve[sd]?)\s+#(\d+)/gi;
 
 export function extractIssueNumbers(text: string | null | undefined): number[] {
   if (!text) return [];
   const found = new Set<number>();
   for (const m of text.matchAll(ISSUE_REF)) {
-    const n = parseInt(m[1] ?? m[2] ?? '', 10);
+    const n = parseInt(m[1] ?? '', 10);
     if (Number.isFinite(n)) found.add(n);
   }
   return [...found];
@@ -170,12 +170,11 @@ async function linkPrToClaim(
     .is('linked_pr_url', null);
 
   for (const claim of claims ?? []) {
-    const issuesField = claim['issues'] as unknown as {
-      repo_full_name: string;
-      github_issue_number: number;
-    };
-    const issue = issuesField;
-    if (!issue) continue;
+    const raw = (claim as unknown as { issues: unknown }).issues;
+    const issue = Array.isArray(raw)
+      ? (raw[0] as { repo_full_name?: string; github_issue_number?: number } | undefined)
+      : (raw as { repo_full_name?: string; github_issue_number?: number } | undefined);
+    if (!issue?.repo_full_name || typeof issue.github_issue_number !== 'number') continue;
     if (issue.repo_full_name === repo && issueRefs.includes(issue.github_issue_number)) {
       await sb.from('recommendations').update({ linked_pr_url: prUrl }).eq('id', claim.id);
       return { linked: true, recId: claim.id };

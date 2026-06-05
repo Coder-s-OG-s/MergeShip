@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { autoUnclaimStale, flagSuspiciousXpAccounts } from './maintenance';
-import { sb, wire, step } from './test-helpers';
+import { sb, wire, step } from './__tests__/test-helpers';
 import { detectSuspiciousPatterns } from '@/lib/xp/suspicious-patterns';
 
 // Mock external dependencies.
