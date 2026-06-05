@@ -11,6 +11,7 @@ const issue = (over: Partial<ScoredIssue>): ScoredIssue => ({
   repoHealthScore: 60,
   freshnessHours: 24,
   languageMatch: false,
+  repoLanguage: null,
   ...over,
 });
 
@@ -123,5 +124,64 @@ describe('filterAndRank', () => {
       allowFallback: false,
     });
     expect(result).toEqual([]);
+  });
+
+  it('applies repository skip down-ranking', () => {
+    const issues = [
+      issue({ id: 1, repoFullName: 'skipped/repo', difficulty: 'E', repoHealthScore: 80 }),
+      issue({ id: 2, repoFullName: 'fresh/repo', difficulty: 'E', repoHealthScore: 80 }),
+    ];
+    const result = filterAndRank(issues, {
+      level: 0,
+      excludeIssueIds: new Set(),
+      skipCounts: {
+        byRepo: { 'skipped/repo': 2 },
+        byLanguage: {},
+      },
+    });
+    // id 2 (fresh) should rank above id 1 (skipped) due to penalty
+    expect(result.map((r) => r.id)).toEqual([2, 1]);
+  });
+
+  it('applies language skip down-ranking', () => {
+    const issues = [
+      issue({ id: 1, repoLanguage: 'TypeScript', difficulty: 'E', repoHealthScore: 80 }),
+      issue({ id: 2, repoLanguage: 'Python', difficulty: 'E', repoHealthScore: 80 }),
+    ];
+    const result = filterAndRank(issues, {
+      level: 0,
+      excludeIssueIds: new Set(),
+      skipCounts: {
+        byRepo: {},
+        byLanguage: { TypeScript: 3 },
+      },
+    });
+    expect(result.map((r) => r.id)).toEqual([2, 1]);
+  });
+
+  it('applies muted repository down-ranking', () => {
+    const issues = [
+      issue({ id: 1, repoFullName: 'muted/repo', difficulty: 'E', repoHealthScore: 80 }),
+      issue({ id: 2, repoFullName: 'normal/repo', difficulty: 'E', repoHealthScore: 80 }),
+    ];
+    const result = filterAndRank(issues, {
+      level: 0,
+      excludeIssueIds: new Set(),
+      mutedRepos: ['muted/repo'],
+    });
+    expect(result.map((r) => r.id)).toEqual([2, 1]);
+  });
+
+  it('applies muted language down-ranking', () => {
+    const issues = [
+      issue({ id: 1, repoLanguage: 'Java', difficulty: 'E', repoHealthScore: 80 }),
+      issue({ id: 2, repoLanguage: 'Rust', difficulty: 'E', repoHealthScore: 80 }),
+    ];
+    const result = filterAndRank(issues, {
+      level: 0,
+      excludeIssueIds: new Set(),
+      mutedLanguages: ['Java'],
+    });
+    expect(result.map((r) => r.id)).toEqual([2, 1]);
   });
 });

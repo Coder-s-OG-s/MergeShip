@@ -5,18 +5,24 @@ import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
   getMaintainerPrQueue,
+  getMaintainerAnalyticsTrends,
   getRepoHealthOverview,
   getStaleIssues,
+  getFlaggedAccounts,
   getTopContributors,
-  type MaintainerInstall,
-  type MaintainerPrRow,
+  type FlaggedAccountRow,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
 } from '@/app/actions/maintainer';
+import type { MaintainerInstall } from '@/lib/maintainer/detect';
+import type { MaintainerPrRow } from '@/lib/maintainer/queue';
+import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
 import CiStatusBadge from './ci-status-badge';
+import AnalyticsTrends from './analytics-trends';
+import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +38,7 @@ export default async function MaintainerPage({
 }: {
   searchParams: { install?: string; state?: string; verified?: string };
 }) {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) {
     return <NotConfigured />;
   }
@@ -75,6 +81,10 @@ export default async function MaintainerPage({
     filters,
   });
   const rows: MaintainerPrRow[] = isOk(queueRes) ? queueRes.data.rows : [];
+  const trendsRes = await getMaintainerAnalyticsTrends({ installationId: activeInstallId });
+  const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
+    ? trendsRes.data
+    : { weekly: [], levelDistribution: [] };
   const repoHealthRes = await getRepoHealthOverview();
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
@@ -83,6 +93,10 @@ export default async function MaintainerPage({
 
   const contributorsRes = await getTopContributors();
   const topContributors: ContributorRow[] = isOk(contributorsRes) ? contributorsRes.data : [];
+  const flaggedAccountsRes = await getFlaggedAccounts();
+  const flaggedAccounts: FlaggedAccountRow[] = isOk(flaggedAccountsRes)
+    ? flaggedAccountsRes.data
+    : [];
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -169,6 +183,51 @@ export default async function MaintainerPage({
         <p className="mb-4 text-xs text-zinc-500">
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
+        <AnalyticsTrends data={analyticsTrends} />
+        {flaggedAccounts.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-amber-900/60 bg-amber-950/20 p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-amber-100">Suspicious XP Signals</h2>
+                <p className="mt-1 text-xs text-amber-200/70">
+                  Daily detector output for maintainer review.
+                </p>
+              </div>
+              <span className="rounded-full bg-amber-900/50 px-2 py-1 text-xs text-amber-100">
+                {flaggedAccounts.length} open
+              </span>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {flaggedAccounts.map((flag) => (
+                <div key={flag.id} className="rounded-lg border border-amber-900/50 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-amber-50">@{flag.githubHandle}</p>
+                      <p className="mt-1 text-xs text-amber-200/70">
+                        Level {flag.level} · {flag.xp} XP
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        flag.severity === 'high'
+                          ? 'bg-red-900/50 text-red-200'
+                          : 'bg-amber-900/50 text-amber-100'
+                      }`}
+                    >
+                      {flag.severity}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm text-amber-100">{formatFlagReason(flag.reason)}</p>
+                  <p className="mt-1 text-xs text-amber-200/70">{flag.summary}</p>
+                  <p className="mt-2 text-xs text-amber-200/50">
+                    Detected {relativeTime(flag.detectedAt)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         <div className="mb-8 grid gap-6 lg:grid-cols-3">
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>
@@ -285,7 +344,7 @@ export default async function MaintainerPage({
                     <span>{relativeTime(r.githubUpdatedAt)}</span>
                   </div>
                 </div>
-                {r.mentorVerified && (
+                {r.mentorVerified ? (
                   <span className="shrink-0 rounded-full bg-emerald-900/40 px-2.5 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-emerald-700/40">
                     ✓ Mentor verified
                     {r.mentorReviewerHandle && (
@@ -295,6 +354,13 @@ export default async function MaintainerPage({
                       </span>
                     )}
                   </span>
+                ) : (
+                  r.authorUserId !== user.id &&
+                  r.state === 'open' && (
+                    <div className="shrink-0">
+                      <VerifyButton prId={r.id} />
+                    </div>
+                  )
                 )}
               </li>
             ))}
@@ -381,6 +447,16 @@ function NoInstalls() {
       </div>
     </div>
   );
+}
+
+function formatFlagReason(reason: string) {
+  const labels: Record<string, string> = {
+    daily_xp_event_spike: 'Daily XP event spike',
+    rapid_merge_spike: 'Rapid merge spike',
+    reviewer_approval_concentration: 'Reviewer approval concentration',
+  };
+
+  return labels[reason] ?? 'Suspicious activity';
 }
 
 function NotConfigured() {
