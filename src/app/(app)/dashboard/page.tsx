@@ -37,17 +37,28 @@ export default async function DashboardPage() {
     .maybeSingle();
 
   return (
-    <div className="app-page mx-auto max-w-6xl">
-      <LevelUpBanner />
-      <header className="app-page-header">
-        <div>
-          <p className="app-eyebrow">01 / Dashboard</p>
-          <h1 className="app-title">Welcome back, {profile?.github_handle ?? 'Contributor'}.</h1>
-        </div>
-        <div className="flex shrink-0 items-center gap-4">
-          <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} userId={user.id} />
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
+      <div className="mx-auto max-w-6xl">
+        <LevelUpBanner />
+        {/* Header */}
+        <header className="mb-12 flex flex-col justify-between gap-6 border-b border-[#2d333b] pb-6 md:flex-row md:items-end">
+          <div>
+            <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+              01 / DASHBOARD
+            </div>
+            <h1 className="font-serif text-4xl text-white">
+              Welcome back, {profile?.github_handle ?? 'Contributor'}.
+            </h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} />
+          </div>
+        </header>
+
+        {/* Stats Row */}
+        <Suspense fallback={<StatsSkeleton />}>
+          <StatsRow userId={user.id} profile={profile} />
+        </Suspense>
 
       {/* Stats Row */}
       <Suspense fallback={<StatsSkeleton />}>

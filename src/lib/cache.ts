@@ -215,8 +215,29 @@ function pickDefaultBackend(): CacheBackend {
     return new IoRedisBackend(client);
   }
 
+  // No distributed backend configured. Fall back to in-process MemoryBackend.
+  // In Vercel (and any other serverless runtime), each function invocation runs
+  // in an isolated process with its own memory, so counters are never shared
+  // across concurrent invocations. Rate limiting is effectively disabled.
+  // Set KV_REST_API_URL + KV_REST_API_TOKEN (Upstash) or REDIS_URL to enable
+  // shared, durable rate limiting.
+  if (process.env.NODE_ENV === 'production') {
+    console.error(
+      '[cache] MISCONFIGURATION: No Redis or Upstash backend is configured. ' +
+        'Falling back to MemoryBackend. Rate limiting is NOT shared across ' +
+        'serverless invocations and is effectively disabled in production. ' +
+        'Set KV_REST_API_URL + KV_REST_API_TOKEN (Upstash) or REDIS_URL.',
+    );
+  }
   return new MemoryBackend();
 }
+
+/** True when a distributed cache backend (Upstash or Redis) is configured. */
+export const isSharedCacheAvailable: boolean = (() => {
+  const hasUpstash = Boolean(process.env.KV_REST_API_URL) && Boolean(process.env.KV_REST_API_TOKEN);
+  const hasRedis = Boolean(process.env.REDIS_URL);
+  return hasUpstash || hasRedis;
+})();
 
 // Test-only hook. Resets to a fresh memory map between tests.
 export function __setMemoryCache(): void {
