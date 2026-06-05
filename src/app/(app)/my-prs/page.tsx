@@ -287,7 +287,21 @@ export default async function MyPRsPage() {
   const prsMerged = enrichedPRs.filter((pr) => pr.state === 'merged').length;
   const prsTotal = enrichedPRs.length;
   const successRate = prsTotal > 0 ? Math.round((prsMerged / prsTotal) * 100) : 0;
-  const avgReviewDays = 2.3;
+  const mergedWithDates = enrichedPRs.filter(
+    (pr) => pr.state === 'merged' && pr.github_created_at && pr.merged_at,
+  );
+  const avgReviewDays =
+    mergedWithDates.length > 0
+      ? Math.round(
+          (mergedWithDates.reduce((sum, pr) => {
+            const created = new Date(pr.github_created_at).getTime();
+            const merged = new Date(pr.merged_at!).getTime();
+            return sum + (merged - created) / (1000 * 60 * 60 * 24);
+          }, 0) /
+            mergedWithDates.length) *
+            10,
+        ) / 10
+      : null;
 
   const levelFloor = xpForLevel(level);
   const levelCeiling = xpForLevel(level + 1);
@@ -351,7 +365,7 @@ export default async function MyPRsPage() {
               Avg Review Time
             </div>
             <div className="font-sans text-[24px] font-black leading-none text-white">
-              {avgReviewDays} days
+              {avgReviewDays !== null ? `${avgReviewDays} days` : 'N/A'}
             </div>
           </div>
 
