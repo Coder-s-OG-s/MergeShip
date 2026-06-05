@@ -6,8 +6,8 @@ import { NavItems } from './nav-items';
 import { LogoutButton } from './logout-button';
 import { CommandPalette } from '@/components/command-palette';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
-import { MobileSidebarToggle } from './mobile-sidebar-toggle';
-import type { Metadata } from 'next';
+// import { MobileSidebarToggle } from './mobile-sidebar-toggle';
+// import type { Metadata } from 'next';
 import { ThemeToggle } from './theme-toggle';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
