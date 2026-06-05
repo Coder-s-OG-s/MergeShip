@@ -112,25 +112,28 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 
-  // Enforce 3-claim limit: count only non-expired claimed recs.  Expired claims
-  // are released by the hourly recsExpire cron, but we also filter here so users
-  // are never locked out between cron runs.
+  // Fast pre-check: reject early if the user is obviously at the limit.
+  // This is not authoritative — two concurrent requests can both pass it —
+  // but it avoids unnecessary write attempts under normal conditions.
   const now = new Date().toISOString();
-  const { count: claimedCount } = await service
+  const { count: preCount } = await service
     .from('recommendations')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', user.id)
     .eq('status', 'claimed')
     .gte('expires_at', now);
-  if ((claimedCount ?? 0) >= 3) {
+  if ((preCount ?? 0) >= 3) {
     return err('claim_limit', 'you already have 3 active claims - merge or close them first');
   }
 
-  // Atomic claim: UPDATE ... WHERE status='open' AND user_id=auth.uid()
-  // Zero rows affected = already claimed or doesn't exist.
+  // Optimistic atomic claim: UPDATE ... WHERE status='open'.
+  // The WHERE status='open' guard is atomic at the database level so only one
+  // concurrent request can claim a given rec. However, two requests targeting
+  // different recs can both succeed when the user is near the limit.
+  const claimedAt = new Date().toISOString();
   const { data, error: updateErr } = await service
     .from('recommendations')
-    .update({ status: 'claimed', claimed_at: new Date().toISOString() })
+    .update({ status: 'claimed', claimed_at: claimedAt })
     .eq('id', recId)
     .eq('user_id', user.id)
     .eq('status', 'open')
@@ -139,6 +142,25 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
 
   if (updateErr) return err('persist_failed', updateErr.message);
   if (!data) return err('already_claimed', 'this rec is no longer open');
+
+  // Post-claim verification: count active claims now that this write has
+  // committed. If the count exceeds 3 (two concurrent requests both slipped
+  // through the pre-check above), revert this claim immediately.
+  const { count: postCount } = await service
+    .from('recommendations')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .eq('status', 'claimed')
+    .gte('expires_at', now);
+  if ((postCount ?? 0) > 3) {
+    await service
+      .from('recommendations')
+      .update({ status: 'open', claimed_at: null })
+      .eq('id', recId)
+      .eq('user_id', user.id)
+      .eq('status', 'claimed');
+    return err('claim_limit', 'you already have 3 active claims - merge or close them first');
+  }
 
   // Invalidate cache so next dashboard load is fresh.
   await cacheDel(`recs:${user.id}`);

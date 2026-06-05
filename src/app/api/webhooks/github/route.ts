@@ -69,16 +69,16 @@ export async function POST(req: NextRequest) {
     if (insertErr.code === '23505') {
       duplicate = true;
     } else {
-      return NextResponse.json(
-        {
-          error: 'persist failed',
-          code: insertErr.code,
-          message: insertErr.message,
-          details: insertErr.details,
-          hint: insertErr.hint,
-        },
-        { status: 500 },
-      );
+      // Log the full Supabase error server-side for ops visibility.
+      // The client receives only a generic message so internal database
+      // schema details (error code, details, hint) are never exposed.
+      console.error('[webhook] failed to persist delivery', {
+        code: insertErr.code,
+        message: insertErr.message,
+        details: insertErr.details,
+        hint: insertErr.hint,
+      });
+      return NextResponse.json({ error: 'internal server error' }, { status: 500 });
     }
   }
 
