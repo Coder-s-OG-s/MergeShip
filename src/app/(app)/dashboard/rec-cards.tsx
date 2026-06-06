@@ -138,19 +138,30 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
 
               <div className="flex items-center justify-between">
                 {rec.status === 'claimed' ? (
-                  <ClaimedActions rec={rec} onError={setError} onRateLimit={handleRateLimit} />
+                  <ClaimedActions
+                    rec={rec}
+                    onError={setError}
+                    onRateLimit={handleRateLimit}
+                    isCoolingDown={cooldownUntil !== null && cooldownUntil > Date.now()}
+                  />
                 ) : (
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => handleClaim(rec)}
-                      disabled={pending && busyId === rec.id}
+                      disabled={
+                        (cooldownUntil !== null && cooldownUntil > Date.now()) ||
+                        (pending && busyId === rec.id)
+                      }
                       className="border border-zinc-600 px-4 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {busyId === rec.id ? 'CLAIMING...' : 'CLAIM'}
                     </button>
                     <button
                       onClick={() => handleSkip(rec)}
-                      disabled={pending && busyId === rec.id}
+                      disabled={
+                        (cooldownUntil !== null && cooldownUntil > Date.now()) ||
+                        (pending && busyId === rec.id)
+                      }
                       className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-400 disabled:opacity-40"
                     >
                       SKIP
@@ -173,10 +184,12 @@ function ClaimedActions({
   rec,
   onError,
   onRateLimit,
+  isCoolingDown,
 }: {
   rec: RecCard;
   onError: (msg: string | null) => void;
   onRateLimit: (resetAt?: number) => void;
+  isCoolingDown: boolean;
 }) {
   const [input, setInput] = useState('');
   const [pending, startTransition] = useTransition();
@@ -249,7 +262,7 @@ function ClaimedActions({
             {isValidPrUrl && (
               <button
                 onClick={onLink}
-                disabled={pending}
+                disabled={isCoolingDown || pending}
                 className="border border-zinc-600 px-4 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {pending ? 'LINKING...' : 'LINK PR'}
@@ -258,7 +271,7 @@ function ClaimedActions({
             {!helpSent && (
               <button
                 onClick={onHelp}
-                disabled={pending || input.trim().length === 0}
+                disabled={isCoolingDown || pending || input.trim().length === 0}
                 className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-400 disabled:opacity-40"
                 title="Request review from L2+ contributors"
               >
