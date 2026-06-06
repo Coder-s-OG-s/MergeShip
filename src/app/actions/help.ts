@@ -37,7 +37,8 @@ export async function sendHelpRequest(input: HelpInput): Promise<Result<HelpOutp
     limit: 5,
     windowSec: 60 * 60,
   });
-  if (!limited.ok) return err('rate_limited', 'too many help requests this hour', true);
+  if (!limited.ok)
+    return err('rate_limited', 'too many help requests this hour', true, limited.resetAt);
 
   const trimmed = input.prUrl.trim();
   const isGitHubUrl = PR_URL_RE.test(trimmed);

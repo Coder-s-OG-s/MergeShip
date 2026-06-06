@@ -110,7 +110,7 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
     limit: 20,
     windowSec: 60,
   });
-  if (!rateRes.ok) return err('rate_limited', 'slow down', true);
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
 
   // Fast pre-check: reject early if the user is obviously at the limit.
   // This is not authoritative — two concurrent requests can both pass it —
@@ -199,7 +199,7 @@ export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<
     limit: 10,
     windowSec: 60,
   });
-  if (!rateRes.ok) return err('rate_limited', 'slow down', true);
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
 
   // Security: verify the authenticated user actually authored this PR.
   const sessionRes = await sb.auth.getSession();
@@ -268,7 +268,7 @@ export async function skipRecommendation(
     limit: 30,
     windowSec: 60,
   });
-  if (!rateRes.ok) return err('rate_limited', 'slow down', true);
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
 
   // Atomic skip with the issue id so we know what tier to refill from.
   // Persist the optional skip_reason alongside the status change.
