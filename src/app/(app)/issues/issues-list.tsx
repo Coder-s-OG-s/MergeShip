@@ -223,6 +223,20 @@ export function IssuesList({
   const [repo, setRepo] = useState<string>(initialFilters.repo ?? '');
   const [showClaimed, setShowClaimed] = useState(initialFilters.showClaimed ?? false);
 
+  useEffect(() => {
+    setSearch(initialFilters.search ?? '');
+    setState(initialFilters.state ?? 'open');
+    setDifficulty(initialFilters.difficulty ?? '');
+    setRepo(initialFilters.repo ?? '');
+    setShowClaimed(initialFilters.showClaimed ?? false);
+  }, [
+    initialFilters.search,
+    initialFilters.state,
+    initialFilters.difficulty,
+    initialFilters.repo,
+    initialFilters.showClaimed,
+  ]);
+
   const navigate = useCallback(
     (
       overrides: Partial<{
@@ -241,21 +255,48 @@ export function IssuesList({
       const r = overrides.repo ?? repo;
       const sc = overrides.claimed ?? String(showClaimed);
       const pg = overrides.page ?? '1';
-      if (q) params.set('q', q);
-      if (st !== 'open') params.set('state', st);
-      if (diff) params.set('difficulty', diff);
-      if (r) params.set('repo', r);
+
+      if (q) {
+        params.set('q', q);
+      } else {
+        params.delete('q');
+      }
+
+      if (st && st !== 'open') {
+        params.set('state', st);
+      } else {
+        params.delete('state');
+      }
+
+      if (diff) {
+        params.set('difficulty', diff);
+      } else {
+        params.delete('difficulty');
+      }
+
+      if (r) {
+        params.set('repo', r);
+      } else {
+        params.delete('repo');
+      }
+
       if (sc === 'true') {
         params.set('claimed', 'true');
       } else {
         params.delete('claimed');
       }
-      if (pg !== '1') params.set('page', pg);
+
+      if (pg && pg !== '1') {
+        params.set('page', pg);
+      } else {
+        params.delete('page');
+      }
+
       startTransition(() => {
         router.push(`/issues${params.size > 0 ? `?${params.toString()}` : ''}`);
       });
     },
-    [router, search, state, difficulty, repo, showClaimed],
+    [router, searchParams, search, state, difficulty, repo, showClaimed],
   );
 
   const handleClaim = async (issueId: number) => {
