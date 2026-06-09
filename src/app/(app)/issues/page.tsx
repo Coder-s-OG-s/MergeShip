@@ -12,6 +12,7 @@ type SearchParams = {
   state?: string;
   difficulty?: string;
   repo?: string;
+  category?: string;
   claimed?: string;
   page?: string;
 };
@@ -31,10 +32,15 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
   const filters = {
     search: searchParams.q,
     state: (searchParams.state === 'closed' ? 'closed' : 'open') as 'open' | 'closed',
-    difficulty: (['E', 'M', 'H'].includes(searchParams.difficulty ?? '')
+    difficulty: (searchParams.difficulty ?? '')
+      .split(',')
+      .every((value) => !value || ['E', 'M', 'H'].includes(value))
       ? searchParams.difficulty
-      : undefined) as 'E' | 'M' | 'H' | undefined,
+      : undefined,
     repo: searchParams.repo,
+    category: ['bugs', 'docs', 'feature', 'tests'].includes(searchParams.category ?? '')
+      ? searchParams.category
+      : undefined,
     showClaimed: searchParams.claimed === 'true',
     page: Math.max(1, parseInt(searchParams.page ?? '1') || 1),
   };
@@ -109,17 +115,11 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
     : { issues: [], total: 0, page: 1, pageSize: 10 };
 
   const repoOptions: RepoOption[] = repoResult.ok ? repoResult.data : [];
+  const solvedIssues = linkedRecs.filter((rec) => rec.status === 'completed').length;
 
   return (
-    <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-12 border-b border-[#2d333b] pb-6">
-          <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
-            02 / ISSUES
-          </div>
-          <h1 className="font-serif text-4xl text-white">Browse Issues</h1>
-        </header>
-
+    <div className="min-h-screen bg-[#0D0E12] font-mono text-white">
+      <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-6 lg:px-8">
         {linkedRecs.length > 0 && (
           <MyWorkSection
             initialRecs={linkedRecs}
@@ -127,7 +127,13 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
           />
         )}
 
-        <IssuesList initialData={pageData} initialFilters={filters} repoOptions={repoOptions} />
+        <IssuesList
+          initialData={pageData}
+          initialFilters={filters}
+          repoOptions={repoOptions}
+          currentUserLevel={currentUserLevel}
+          solvedIssues={solvedIssues}
+        />
       </div>
     </div>
   );

@@ -12,8 +12,9 @@ const PAGE_SIZE = 10;
 export type IssueFilter = {
   search?: string;
   state?: 'open' | 'closed';
-  difficulty?: 'E' | 'M' | 'H';
+  difficulty?: 'E' | 'M' | 'H' | string;
   repo?: string;
+  category?: string;
   showClaimed?: boolean;
   page?: number;
 };
@@ -23,6 +24,7 @@ export type IssueWithStatus = {
   repoFullName: string;
   githubIssueNumber: number;
   title: string;
+  bodyExcerpt: string | null;
   difficulty: 'E' | 'M' | 'H' | null;
   xpReward: number | null;
   labels: string[] | null;
@@ -44,6 +46,24 @@ export type RepoOption = {
   label: string; // user's repo name (fork name if forked)
   value: string; // upstream repo name to filter issues by
 };
+
+const CATEGORY_LABELS: Record<string, string[]> = {
+  bugs: ['bug', 'type: bug', 'kind/bug'],
+  docs: ['docs', 'documentation', 'type: docs', 'kind/documentation'],
+  feature: ['feature', 'enhancement', 'type: feature', 'kind/feature'],
+  tests: ['test', 'tests', 'testing', 'type: tests'],
+};
+
+function splitFilterList(value?: string): string[] {
+  return [
+    ...new Set(
+      (value ?? '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
 
 export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
   const sb = await getServerSupabase();
@@ -139,7 +159,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
 
   query = query
     .select(
-      'id, repo_full_name, github_issue_number, title, difficulty, xp_reward, labels, state, url, fetched_at',
+      'id, repo_full_name, github_issue_number, title, body_excerpt, difficulty, xp_reward, labels, state, url, fetched_at',
       { count: 'exact' },
     )
     .eq('state', filters.state ?? 'open')
@@ -151,12 +171,26 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
     query = query.order('fetched_at', { ascending: false });
   }
 
-  if (filters.difficulty) {
-    query = query.eq('difficulty', filters.difficulty);
+  const difficulties = splitFilterList(filters.difficulty).filter((value) =>
+    ['E', 'M', 'H'].includes(value),
+  );
+  if (difficulties.length === 1) {
+    query = query.eq('difficulty', difficulties[0]);
+  } else if (difficulties.length > 1) {
+    query = query.in('difficulty', difficulties);
   }
-  const repoPattern = repoFilterPattern(filters.repo);
-  if (repoPattern) {
-    query = query.ilike('repo_full_name', repoPattern);
+
+  const repos = splitFilterList(filters.repo);
+  if (repos.length === 1) {
+    const repoPattern = repoFilterPattern(repos[0]);
+    if (repoPattern) query = query.ilike('repo_full_name', repoPattern);
+  } else if (repos.length > 1) {
+    query = query.in('repo_full_name', repos);
+  }
+
+  const categoryLabels = CATEGORY_LABELS[(filters.category ?? '').toLowerCase()];
+  if (categoryLabels?.length) {
+    query = query.overlaps('labels', categoryLabels);
   }
 
   const { data, count, error } = await query;
@@ -167,6 +201,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
     repo_full_name: string;
     github_issue_number: number;
     title: string;
+    body_excerpt: string | null;
     difficulty: string | null;
     xp_reward: number | null;
     labels: string[] | null;
@@ -195,6 +230,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
       repoFullName: i.repo_full_name,
       githubIssueNumber: i.github_issue_number,
       title: i.title,
+      bodyExcerpt: i.body_excerpt,
       difficulty: i.difficulty as 'E' | 'M' | 'H' | null,
       xpReward: i.xp_reward,
       labels: i.labels,
