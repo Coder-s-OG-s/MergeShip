@@ -1,112 +1,87 @@
-import Link from 'next/link';
-import { getLeaderboard } from '@/app/actions/leaderboard';
+import { getLeaderboard, type LeaderboardScope } from '@/app/actions/leaderboard';
 import { isOk } from '@/lib/result';
+import { getServerSupabase } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/service';
+import { redirect } from 'next/navigation';
+import { LeaderboardClient } from './leaderboard-client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function LeaderboardPage({
   searchParams,
 }: {
-  searchParams: { scope?: string; id?: string };
+  searchParams: Promise<{ scope?: string; id?: string }> | { scope?: string; id?: string };
 }) {
-  const scope = (searchParams.scope as 'global' | 'cohort' | 'language' | 'tag') ?? 'global';
-  const scopeId = searchParams.id ?? null;
+  const resolvedParams = searchParams instanceof Promise ? await searchParams : searchParams;
+  const scope = (resolvedParams.scope as LeaderboardScope) ?? 'global';
+  const scopeId = resolvedParams.id ?? null;
+
+  const sb = await getServerSupabase();
+  if (!sb) {
+    return <NotConfigured />;
+  }
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) redirect('/');
+
+  const service = getServiceSupabase();
+  if (!service) return <NotConfigured />;
+
+  // Fetch the logged-in user's profile details
+  const { data: profile } = await service
+    .from('profiles')
+    .select('github_handle, xp')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const currentUser = profile
+    ? {
+        id: user.id,
+        githubHandle: profile.github_handle,
+        xp: profile.xp,
+      }
+    : null;
+
   const result = await getLeaderboard(scope, scopeId, 50);
 
+  if (!isOk(result)) {
+    return (
+      <div className="min-h-screen bg-[#0D0E12] px-6 py-20 font-mono text-white">
+        <div className="mx-auto max-w-xl rounded-sm border border-zinc-800 bg-zinc-950 p-8">
+          <h1 className="mb-4 font-serif text-3xl font-bold text-red-500">
+            Error Loading Leaderboard
+          </h1>
+          <p className="text-zinc-400">{result.error?.message || 'Something went wrong.'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { entries, currentUserRank, rivalAbove, rivalBelow, totalContributors, totalXpShipped } =
+    result.data;
+
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
-      <div className="mx-auto max-w-3xl">
-        <h1 className="font-display text-3xl font-bold">Leaderboard</h1>
-        <nav className="mt-4 flex flex-wrap gap-2 text-sm">
-          <Link
-            href="/leaderboard?scope=global"
-            className={`rounded-lg px-3 py-1 ${scope === 'global' ? 'bg-zinc-800' : 'text-zinc-400 hover:text-white'}`}
-          >
-            Global
-          </Link>
-        </nav>
+    <LeaderboardClient
+      entries={entries}
+      currentUserRank={currentUserRank}
+      rivalAbove={rivalAbove}
+      rivalBelow={rivalBelow}
+      totalContributors={totalContributors}
+      totalXpShipped={totalXpShipped}
+      currentScope={scope}
+      currentUser={currentUser}
+    />
+  );
+}
 
-        <ul className="mt-6 divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900">
-          {isOk(result) && result.data.entries.length === 0 ? (
-            <li className="p-6 text-zinc-400">No entries yet.</li>
-          ) : isOk(result) ? (
-            <>
-              {(() => {
-                // Current logged-in user handle from visible list
-                const currentGithubHandle = result.data.entries.find(
-                  (e: any) => e.rank,
-                )?.githubHandle;
-
-                const isUserVisible = result.data.entries.some(
-                  (entry: any) => entry.githubHandle === currentGithubHandle,
-                );
-
-                return (
-                  <>
-                    {result.data.entries.map((entry: any) => {
-                      const isMe = entry.githubHandle === currentGithubHandle;
-
-                      return (
-                        <li
-                          key={entry.userId}
-                          className={`flex items-center gap-4 p-4 ${
-                            isMe ? 'bg-purple-950/30 text-purple-300' : ''
-                          }`}
-                        >
-                          <span className="w-8 text-zinc-500">#{entry.rank}</span>
-
-                          {entry.avatarUrl && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={entry.avatarUrl}
-                              alt=""
-                              className="h-8 w-8 rounded-full"
-                              referrerPolicy="no-referrer"
-                            />
-                          )}
-
-                          <Link href={`/@${entry.githubHandle}`} className="flex-1 hover:underline">
-                            <span className="font-medium">@{entry.githubHandle}</span>
-
-                            {entry.displayName && (
-                              <span className="ml-2 text-sm text-zinc-500">
-                                {entry.displayName}
-                              </span>
-                            )}
-
-                            {isMe && <span className="ml-2 text-xs text-purple-400">(YOU)</span>}
-                          </Link>
-
-                          <span className="text-sm tabular-nums">L{entry.level}</span>
-
-                          <span className="w-20 text-right tabular-nums">
-                            {entry.xp.toLocaleString()} XP
-                          </span>
-                        </li>
-                      );
-                    })}
-
-                    {!isUserVisible && (
-                      <>
-                        <li className="border-t border-zinc-700 px-4 pb-2 pt-4">
-                          <span className="text-xs font-semibold tracking-wide text-zinc-500">
-                            YOUR RANK
-                          </span>
-                        </li>
-
-                        <li className="flex items-center gap-4 bg-purple-950/20 p-4 text-purple-300">
-                          <span className="text-sm">Your rank is outside visible leaderboard.</span>
-                        </li>
-                      </>
-                    )}
-                  </>
-                );
-              })()}
-            </>
-          ) : (
-            <li className="p-6 text-rose-400">Couldn&apos;t load: {result.error.message}</li>
-          )}
-        </ul>
+function NotConfigured() {
+  return (
+    <div className="min-h-screen bg-[#0D0E12] px-6 py-20 font-mono text-white">
+      <div className="mx-auto max-w-xl rounded-sm border border-zinc-800 bg-zinc-950 p-8">
+        <h1 className="mb-4 font-serif text-3xl font-bold">Leaderboard not configured</h1>
+        <p className="text-zinc-500">Authentication system isn&apos;t fully loaded.</p>
       </div>
     </div>
   );

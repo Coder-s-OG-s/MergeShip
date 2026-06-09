@@ -7,6 +7,7 @@ import { LogoutButton } from './logout-button';
 import { CommandPalette } from '@/components/command-palette';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
 import { ThemeToggle } from './theme-toggle';
+import { DeployAgentButton } from './deploy-agent-button';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = await getServerSupabase();
@@ -20,15 +21,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   let handle: string | null = null;
   let level = 0;
+  let xp = 0;
+  let rank = 0;
   const service = getServiceSupabase();
   if (service) {
     const { data: profile } = await service
       .from('profiles')
-      .select('github_handle, level')
+      .select('github_handle, level, xp')
       .eq('id', user.id)
       .maybeSingle();
     handle = profile?.github_handle ?? null;
     level = profile?.level ?? 0;
+    xp = profile?.xp ?? 0;
+
+    const { count: higherXpCount } = await service
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .gt('xp', xp);
+    rank = (higherXpCount ?? 0) + 1;
   }
 
   let isMaintainer = false;
@@ -53,9 +63,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <CommandPalette />
           </div>
 
-          <nav className="flex flex-col gap-1 px-4">
+          <nav className="mb-4 flex flex-col gap-1 px-4">
             <NavItems profileHref={`/@${handle}`} level={level} isMaintainer={isMaintainer} />
           </nav>
+          <div className="px-4">
+            <DeployAgentButton />
+          </div>
         </div>
 
         <div className="border-t border-[#2d333b] p-6">
@@ -71,6 +84,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </div>
               <div className="truncate text-[11px] tracking-wider text-zinc-500">
                 L{level} PRACTITIONER
+              </div>
+              <div className="mt-1 truncate text-[10px] font-bold tracking-widest text-[#00FF87]">
+                RANK #{rank} • {xp.toLocaleString()} XP
               </div>
             </div>
           </div>
