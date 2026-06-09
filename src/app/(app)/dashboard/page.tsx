@@ -61,9 +61,9 @@ export default async function DashboardPage() {
         </Suspense>
 
         {/* Main Columns */}
-        <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
           {/* Left Column */}
-          <div className="space-y-16">
+          <div className="space-y-8 lg:col-span-3">
             <Suspense fallback={<RecsSkeleton />}>
               <ActiveIssuesSection />
             </Suspense>
@@ -73,11 +73,14 @@ export default async function DashboardPage() {
             </Suspense>
           </div>
 
-          {/* Right Column */}
-          <div className="space-y-16">
+          {/* Center Content */}
+          <div className="space-y-8 lg:col-span-6">
             <Suspense fallback={<PrsSkeleton />}>
               <GitHubPRsWrapper userId={user.id} githubHandle={profile?.github_handle ?? ''} />
             </Suspense>
+          </div>
+          {/* Right Sidebar */}
+          <div className="space-y-8 lg:col-span-3">
             <Suspense fallback={<LeaderboardSkeleton />}>
               <LeaderboardSnapshot githubHandle={profile?.github_handle ?? ''} />
             </Suspense>
