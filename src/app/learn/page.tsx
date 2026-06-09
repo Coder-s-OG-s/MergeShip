@@ -56,11 +56,10 @@ const curriculum: CourseDay[] = [
         xp: 20,
         readTime: '15m',
         intro:
-          "Git is a distributed version control system. Imagine it as a highly detailed time machine for your codebase. It does not just save files; it takes snapshots of your entire project at specific points in time.",
+          'Git is a distributed version control system. Imagine it as a highly detailed time machine for your codebase. It does not just save files; it takes snapshots of your entire project at specific points in time.',
         concept:
           'Git tracks changes, not just files. When you commit, you are recording what was added, modified, or deleted since the last snapshot.',
-        body:
-          'To start using Git in a project, initialize a repository. This creates a hidden .git folder that stores all tracking data.',
+        body: 'To start using Git in a project, initialize a repository. This creates a hidden .git folder that stores all tracking data.',
         code: '# Navigate to your project folder\ncd my-awesome-project\n\n# Initialize the Git repository\ngit init',
       },
       {
@@ -72,8 +71,7 @@ const curriculum: CourseDay[] = [
           'The working tree, staging area, and repository are the three places your changes move through before becoming permanent history.',
         concept:
           'The staging area lets you choose exactly which changes belong in the next commit.',
-        body:
-          'Use status often. It is the fastest way to understand what Git sees and what is ready to be committed.',
+        body: 'Use status often. It is the fastest way to understand what Git sees and what is ready to be committed.',
         code: '# See changed files\ngit status\n\n# Stage a specific file\ngit add README.md\n\n# Stage all current changes\ngit add .',
       },
       {
@@ -83,10 +81,8 @@ const curriculum: CourseDay[] = [
         readTime: '25m',
         intro:
           'Commits are named snapshots. A strong commit message explains why a change exists, not only what files moved.',
-        concept:
-          'Small, focused commits make review, rollback, and collaboration much easier.',
-        body:
-          'After staging your files, commit them with a clear message that future you and maintainers can scan quickly.',
+        concept: 'Small, focused commits make review, rollback, and collaboration much easier.',
+        body: 'After staging your files, commit them with a clear message that future you and maintainers can scan quickly.',
         code: '# Commit staged changes\ngit commit -m "Add onboarding notes"\n\n# View recent history\ngit log --oneline --decorate -5',
       },
       {
@@ -96,10 +92,8 @@ const curriculum: CourseDay[] = [
         readTime: '10m',
         intro:
           'Not every file belongs in source control. Generated builds, secrets, dependency folders, and local machine files should stay out of commits.',
-        concept:
-          '.gitignore keeps noisy or sensitive files from entering your project history.',
-        body:
-          'Create a .gitignore file at the project root and add patterns for files Git should ignore.',
+        concept: '.gitignore keeps noisy or sensitive files from entering your project history.',
+        body: 'Create a .gitignore file at the project root and add patterns for files Git should ignore.',
         code: '# Common JavaScript ignores\nnode_modules/\n.env.local\n.next/\ndist/\n\n# Check ignored files\ngit status --ignored',
       },
       {
@@ -109,10 +103,8 @@ const curriculum: CourseDay[] = [
         readTime: '15m',
         intro:
           'Git history is a map. Reading it well helps you understand decisions, find regressions, and prepare cleaner pull requests.',
-        concept:
-          'Logs are most useful when you filter them to the question you are asking.',
-        body:
-          'Use compact logs for scanning and file-specific logs when investigating a particular area.',
+        concept: 'Logs are most useful when you filter them to the question you are asking.',
+        body: 'Use compact logs for scanning and file-specific logs when investigating a particular area.',
         code: '# Compact branch history\ngit log --oneline --graph --decorate\n\n# History for one file\ngit log -- src/app/page.tsx',
       },
     ],
@@ -138,8 +130,10 @@ const curriculum: CourseDay[] = [
         duration: '15m',
         xp: 20,
         readTime: '15m',
-        intro: 'Switching branches lets you move between tasks while Git updates your working tree.',
-        concept: 'Commit or stash work before switching when changes conflict with the target branch.',
+        intro:
+          'Switching branches lets you move between tasks while Git updates your working tree.',
+        concept:
+          'Commit or stash work before switching when changes conflict with the target branch.',
         body: 'Use the newer switch command for clearer branch movement.',
         code: 'git switch main\n\ngit switch feature/learn-dashboard',
       },
@@ -148,7 +142,8 @@ const curriculum: CourseDay[] = [
         duration: '20m',
         xp: 30,
         readTime: '20m',
-        intro: 'Merging combines work from one branch into another while preserving project history.',
+        intro:
+          'Merging combines work from one branch into another while preserving project history.',
         concept: 'Merge from a clean target branch and resolve conflicts with intent.',
         body: 'After merging, run tests before pushing so the integration is verified locally.',
         code: 'git switch main\n\ngit merge feature/learn-dashboard\n\nnpm run test',
@@ -216,7 +211,8 @@ const curriculum: CourseDay[] = [
         duration: '20m',
         xp: 35,
         readTime: '20m',
-        intro: 'Review is collaboration. Keep responses specific and update code in focused commits.',
+        intro:
+          'Review is collaboration. Keep responses specific and update code in focused commits.',
         concept: 'Acknowledge feedback even when you choose a different approach.',
         body: 'After changes, push again and leave a short note about what changed.',
         code: 'git add src/app/learn/page.tsx\n\ngit commit -m "Refine learn module states"\n\ngit push',
@@ -264,7 +260,8 @@ const curriculum: CourseDay[] = [
         duration: '25m',
         xp: 40,
         readTime: '25m',
-        intro: 'Bisect performs a guided binary search through history to find when a bug appeared.',
+        intro:
+          'Bisect performs a guided binary search through history to find when a bug appeared.',
         concept: 'Reliable test commands make bisect extremely powerful.',
         body: 'Mark known good and bad commits, then test each commit Git checks out.',
         code: 'git bisect start\n\ngit bisect bad\n\ngit bisect good v1.0.0\n\ngit bisect reset',
@@ -428,8 +425,9 @@ export default function LearnPage() {
   const profileScore = 24 + Math.floor(totalXp / 10);
 
   const isDayComplete = (dayIndex: number) =>
-    curriculum[dayIndex]?.modules.every((_, moduleIndex) => completed[moduleKey(dayIndex, moduleIndex)]) ??
-    false;
+    curriculum[dayIndex]?.modules.every(
+      (_, moduleIndex) => completed[moduleKey(dayIndex, moduleIndex)],
+    ) ?? false;
 
   const isDayUnlocked = (dayIndex: number) => dayIndex === 0 || isDayComplete(dayIndex - 1);
 
@@ -469,7 +467,11 @@ export default function LearnPage() {
 
   const navigateModule = (direction: -1 | 1) => {
     const target = activeModuleIndex + direction;
-    if (target < 0 || target >= currentDay.modules.length || !isModuleUnlocked(activeDayIndex, target)) {
+    if (
+      target < 0 ||
+      target >= currentDay.modules.length ||
+      !isModuleUnlocked(activeDayIndex, target)
+    ) {
       return;
     }
     setActiveModuleIndex(target);
@@ -499,7 +501,10 @@ export default function LearnPage() {
       <div className="relative">
         <header className="sticky top-0 z-30 border-b border-zinc-800/90 bg-[#0D0E12]/90 px-5 py-4 backdrop-blur-xl sm:px-8">
           <div className="flex flex-wrap items-center justify-between gap-5">
-            <Link href="/" className="font-display text-2xl font-black tracking-tight text-[#00FF87]">
+            <Link
+              href="/"
+              className="font-display text-2xl font-black tracking-tight text-[#00FF87]"
+            >
               MergeShip
             </Link>
 
@@ -527,9 +532,8 @@ export default function LearnPage() {
               </div>
               <Bell className="h-5 w-5 text-zinc-300" />
               <Trophy className="h-5 w-5 text-zinc-300" />
-              <div className="flex items-center gap-2 border border-[#00FF87] px-3 py-2 text-xs font-semibold uppercase tracking-widest text-[#00FF87]">
-                <Star className="h-4 w-4" />
-                L{level} Newcomer
+              <div className="flex items-center gap-2 border border-[#00FF87] px-3 py-2 text-xs font-semibold tracking-widest text-[#00FF87] uppercase">
+                <Star className="h-4 w-4" />L{level} Newcomer
               </div>
               <img
                 src="https://github.com/github.png"
@@ -550,7 +554,7 @@ export default function LearnPage() {
                     alt="Contributor avatar"
                     className="h-16 w-16 rounded-md border border-[#00FF87] object-cover"
                   />
-                  <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-[#0D0E12] bg-[#00FF87]" />
+                  <span className="absolute -right-1 -bottom-1 h-4 w-4 rounded-full border-2 border-[#0D0E12] bg-[#00FF87]" />
                 </div>
                 <div>
                   <p className="text-xl text-zinc-100">PROFILE SCORE</p>
@@ -558,7 +562,7 @@ export default function LearnPage() {
                 </div>
               </div>
               <div className="my-6 h-px bg-zinc-700" />
-              <div className="grid grid-cols-3 gap-3 text-center text-xs uppercase tracking-widest text-zinc-300">
+              <div className="grid grid-cols-3 gap-3 text-center text-xs tracking-widest text-zinc-300 uppercase">
                 <Stat value={`${totalXp} XP`} />
                 <Stat value={`L${level}`} />
                 <Stat value={`${Math.floor(completedCount / 3)} PRs`} />
@@ -566,7 +570,7 @@ export default function LearnPage() {
             </Panel>
 
             <Panel className="p-6">
-              <h2 className="mb-7 text-sm font-bold uppercase tracking-[0.2em] text-zinc-300">
+              <h2 className="mb-7 text-sm font-bold tracking-[0.2em] text-zinc-300 uppercase">
                 Your Progress
               </h2>
               <div className="space-y-5">
@@ -601,7 +605,9 @@ export default function LearnPage() {
                         )}
                       </span>
                       <span>
-                        <span className={`block font-bold ${active ? 'text-[#00FF87]' : 'text-zinc-300'}`}>
+                        <span
+                          className={`block font-bold ${active ? 'text-[#00FF87]' : 'text-zinc-300'}`}
+                        >
                           Day {dayIndex + 1}
                         </span>
                         <span className="block text-sm text-zinc-500">{day.title}</span>
@@ -613,33 +619,38 @@ export default function LearnPage() {
             </Panel>
 
             <Panel className="p-6">
-              <h2 className="mb-6 text-sm font-bold uppercase tracking-[0.2em] text-zinc-300">
+              <h2 className="mb-6 text-sm font-bold tracking-[0.2em] text-zinc-300 uppercase">
                 Rewards Today
               </h2>
-              <Reward label={`Complete Module ${activeModuleIndex + 1}`} value={`+${currentModule.xp} XP`} />
+              <Reward
+                label={`Complete Module ${activeModuleIndex + 1}`}
+                value={`+${currentModule.xp} XP`}
+              />
               <Reward label="Pass Quiz" value="+50 XP" />
               <Reward label={`Day ${activeDayIndex + 1} Completion`} value="+200 XP" />
             </Panel>
           </aside>
 
           <div className="min-w-0 space-y-6">
-            <div className="text-sm font-bold uppercase tracking-[0.2em] text-zinc-400">
+            <div className="text-sm font-bold tracking-[0.2em] text-zinc-400 uppercase">
               Course <span className="px-2 text-zinc-600">/</span> Day {activeDayIndex + 1}{' '}
               <span className="px-2 text-zinc-600">/</span>{' '}
               <span className="text-[#00FF87]">Module {activeModuleIndex + 1}</span>
             </div>
 
             <Panel className="relative overflow-hidden p-8">
-              <div className={`absolute inset-y-0 right-0 w-1/2 bg-gradient-to-l ${currentDay.accent}`} />
-              <div className="absolute right-8 top-4 hidden h-48 w-48 rounded-full border-2 border-dashed border-[#00FF87]/25 md:block" />
-              <div className="absolute right-10 top-10 hidden h-48 w-48 md:block">
-                <div className="absolute left-10 top-28 h-px w-44 rotate-[-45deg] bg-[#00FF87]/30" />
-                <div className="absolute left-20 top-20 h-px w-40 bg-[#00FF87]/20" />
-                <div className="absolute left-24 top-28 h-6 w-6 rounded-full bg-[#00FF87]/30" />
-                <div className="absolute right-2 top-8 h-5 w-5 rounded-full bg-[#00FF87]/25" />
+              <div
+                className={`absolute inset-y-0 right-0 w-1/2 bg-gradient-to-l ${currentDay.accent}`}
+              />
+              <div className="absolute top-4 right-8 hidden h-48 w-48 rounded-full border-2 border-dashed border-[#00FF87]/25 md:block" />
+              <div className="absolute top-10 right-10 hidden h-48 w-48 md:block">
+                <div className="absolute top-28 left-10 h-px w-44 rotate-[-45deg] bg-[#00FF87]/30" />
+                <div className="absolute top-20 left-20 h-px w-40 bg-[#00FF87]/20" />
+                <div className="absolute top-28 left-24 h-6 w-6 rounded-full bg-[#00FF87]/30" />
+                <div className="absolute top-8 right-2 h-5 w-5 rounded-full bg-[#00FF87]/25" />
               </div>
               <div className="relative max-w-3xl">
-                <div className="mb-6 inline-flex border border-[#00FF87] px-4 py-2 text-sm font-bold uppercase tracking-widest text-[#00FF87]">
+                <div className="mb-6 inline-flex border border-[#00FF87] px-4 py-2 text-sm font-bold tracking-widest text-[#00FF87] uppercase">
                   Day {activeDayIndex + 1} of {curriculum.length}
                 </div>
                 <h1 className="mb-4 text-2xl font-semibold text-white">{currentDay.title}</h1>
@@ -655,7 +666,7 @@ export default function LearnPage() {
                     Module {activeModuleIndex + 1} / Estimated Time: {currentModule.readTime}
                   </p>
                 </div>
-                <span className="bg-[#00FF87] px-4 py-3 text-sm font-bold uppercase tracking-widest text-[#0D0E12]">
+                <span className="bg-[#00FF87] px-4 py-3 text-sm font-bold tracking-widest text-[#0D0E12] uppercase">
                   {completed[currentKey] ? 'Completed' : 'Active'}
                 </span>
               </div>
@@ -666,7 +677,7 @@ export default function LearnPage() {
                   <div className="flex gap-5">
                     <Lightbulb className="mt-1 h-6 w-6 shrink-0 text-yellow-300" />
                     <div>
-                      <p className="mb-2 text-base font-bold uppercase tracking-widest text-yellow-200">
+                      <p className="mb-2 text-base font-bold tracking-widest text-yellow-200 uppercase">
                         Key Concept
                       </p>
                       <p className="text-base leading-7 text-zinc-200">{currentModule.concept}</p>
@@ -686,7 +697,7 @@ export default function LearnPage() {
                     aria-label="Copy code snippet"
                   >
                     <Copy className="h-4 w-4" />
-                    <span className="text-xs uppercase tracking-widest">
+                    <span className="text-xs tracking-widest uppercase">
                       {copiedKey === currentKey ? 'Copied' : 'Copy'}
                     </span>
                   </button>
@@ -700,7 +711,7 @@ export default function LearnPage() {
                 <button
                   type="button"
                   onClick={completeModule}
-                  className="inline-flex w-full items-center justify-center gap-3 bg-[#00FF87] px-6 py-4 text-sm font-black uppercase tracking-widest text-[#0D0E12] transition hover:bg-emerald-300 sm:w-auto"
+                  className="inline-flex w-full items-center justify-center gap-3 bg-[#00FF87] px-6 py-4 text-sm font-black tracking-widest text-[#0D0E12] uppercase transition hover:bg-emerald-300 sm:w-auto"
                 >
                   {completed[currentKey] ? 'Module Complete' : 'Complete Module'}
                   <CheckCircle2 className="h-5 w-5" />
@@ -713,7 +724,7 @@ export default function LearnPage() {
                 type="button"
                 onClick={() => navigateModule(-1)}
                 disabled={activeModuleIndex === 0}
-                className="inline-flex items-center gap-3 text-sm font-bold uppercase tracking-widest text-zinc-400 transition hover:text-[#00FF87] disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex items-center gap-3 text-sm font-bold tracking-widest text-zinc-400 uppercase transition hover:text-[#00FF87] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <ChevronLeft className="h-6 w-6" />
                 Previous
@@ -748,7 +759,7 @@ export default function LearnPage() {
                   activeModuleIndex === currentDay.modules.length - 1 ||
                   !isModuleUnlocked(activeDayIndex, activeModuleIndex + 1)
                 }
-                className="inline-flex items-center gap-3 text-sm font-bold uppercase tracking-widest text-zinc-200 transition hover:text-[#00FF87] disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex items-center gap-3 text-sm font-bold tracking-widest text-zinc-200 uppercase transition hover:text-[#00FF87] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
                 <ChevronRight className="h-6 w-6" />
@@ -757,7 +768,7 @@ export default function LearnPage() {
           </div>
 
           <aside className="space-y-4 xl:sticky xl:top-28 xl:h-[calc(100vh-8rem)] xl:overflow-y-auto">
-            <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-zinc-300">
+            <h2 className="text-sm font-bold tracking-[0.2em] text-zinc-300 uppercase">
               Day {activeDayIndex + 1} Modules
             </h2>
             {currentDay.modules.map((module, moduleIndex) => {
@@ -781,7 +792,7 @@ export default function LearnPage() {
                 >
                   <div className="mb-4 flex items-start justify-between gap-4">
                     <div>
-                      <p className="mb-3 text-xs font-bold uppercase tracking-widest text-[#00FF87]">
+                      <p className="mb-3 text-xs font-bold tracking-widest text-[#00FF87] uppercase">
                         Module {moduleIndex + 1}
                       </p>
                       <h3 className="text-lg font-semibold text-zinc-100">{module.title}</h3>
@@ -807,7 +818,7 @@ export default function LearnPage() {
           </aside>
         </section>
 
-        <div className="fixed bottom-6 right-6 z-40 border border-[#00FF87] bg-[#0D0E12] px-5 py-4 shadow-[0_0_30px_rgba(0,255,135,0.18)]">
+        <div className="fixed right-6 bottom-6 z-40 border border-[#00FF87] bg-[#0D0E12] px-5 py-4 shadow-[0_0_30px_rgba(0,255,135,0.18)]">
           <div className="flex items-center gap-4">
             <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#00FF87]/15 text-[#00FF87]">
               <Zap className="h-6 w-6" />
@@ -830,14 +841,18 @@ export default function LearnPage() {
 
 function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`border border-zinc-800 bg-zinc-950/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] backdrop-blur ${className}`}>
+    <div
+      className={`border border-zinc-800 bg-zinc-950/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] backdrop-blur ${className}`}
+    >
       {children}
     </div>
   );
 }
 
 function Stat({ value }: { value: string }) {
-  return <div className="border border-zinc-700 bg-zinc-800/50 px-3 py-3 text-zinc-200">{value}</div>;
+  return (
+    <div className="border border-zinc-700 bg-zinc-800/50 px-3 py-3 text-zinc-200">{value}</div>
+  );
 }
 
 function Reward({ label, value }: { label: string; value: string }) {
