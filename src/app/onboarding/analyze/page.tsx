@@ -36,7 +36,7 @@ export default async function AnalyzePage() {
   }
 
   return (
-    <div className="hero-bg grid-bg flex min-h-screen flex-col items-center justify-center px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#111318] px-4">
       <OnboardingClient avatarUrl={avatarUrl} githubHandle={githubHandle} />
     </div>
   );
