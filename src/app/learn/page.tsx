@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Bell,
@@ -535,9 +536,11 @@ export default function LearnPage() {
               <div className="flex items-center gap-2 border border-[#00FF87] px-3 py-2 text-xs font-semibold tracking-widest text-[#00FF87] uppercase">
                 <Star className="h-4 w-4" />L{level} Newcomer
               </div>
-              <img
-                src="https://github.com/github.png"
+              <Image
+                src="/icon.png"
                 alt="Profile avatar"
+                width={40}
+                height={40}
                 className="h-10 w-10 rounded-sm border border-[#00FF87]/50 object-cover"
               />
             </div>
@@ -549,9 +552,11 @@ export default function LearnPage() {
             <Panel className="p-6">
               <div className="flex items-center gap-5">
                 <div className="relative">
-                  <img
-                    src="https://github.com/octocat.png"
+                  <Image
+                    src="/icon.png"
                     alt="Contributor avatar"
+                    width={64}
+                    height={64}
                     className="h-16 w-16 rounded-md border border-[#00FF87] object-cover"
                   />
                   <span className="absolute -right-1 -bottom-1 h-4 w-4 rounded-full border-2 border-[#0D0E12] bg-[#00FF87]" />
