@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export default async function AnalyzePage() {
   const sb = await getServerSupabase();
   if (!sb) {
-    return <NotConfigured />;
+    return <DemoRender />;
   }
 
   const {
@@ -42,13 +42,13 @@ export default async function AnalyzePage() {
   );
 }
 
-function NotConfigured() {
+function DemoRender() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-dark-900 px-6 text-white">
-      <div className="max-w-xl text-center">
-        <h1 className="mb-4 font-display text-3xl font-bold">Service not configured</h1>
-        <p className="text-gray-400">Auth is not wired up on this deployment yet.</p>
-      </div>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#111318] px-4">
+      <OnboardingClient
+        avatarUrl="https://avatars.githubusercontent.com/u/90404176?v=4"
+        githubHandle="PranavAgarkar07"
+      />
     </div>
   );
 }
