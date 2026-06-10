@@ -4,6 +4,7 @@ import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
 import { ExternalLink, ArrowLeft } from 'lucide-react';
 import { CopyButton } from '@/components/copy-button';
+import { ActivityHeatmap } from '@/components/activity-heatmap';
 
 export const revalidate = 300;
 
@@ -85,6 +86,11 @@ type ActiveTask = {
   difficulty: string | null;
 };
 
+type ActivityDay = {
+  date: string;
+  count: number;
+};
+
 type ProfileData = {
   profileId: string;
   githubHandle: string;
@@ -101,10 +107,11 @@ type ProfileData = {
   timeline: TimelineEvent[];
   orgs: OrgEntry[];
   activeTasks: ActiveTask[];
+  activityHistory: ActivityDay[];
 };
 
 async function loadProfileData(handle: string): Promise<ProfileData | null> {
-  const cacheKey = `profile:v2:${handle}`;
+  const cacheKey = `profile:v3:${handle}`;
   const cached = await cacheGet<ProfileData>(cacheKey);
   if (cached) {
     const { getPublicStreak } = await import('@/app/actions/streak');
@@ -122,6 +129,10 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
 
   if (!profile) return null;
 
+  const oneYearAgo = new Date();
+  oneYearAgo.setDate(oneYearAgo.getDate() - 365);
+  oneYearAgo.setHours(0, 0, 0, 0);
+
   // Fetch all data in parallel
   const [
     prsResult,
@@ -130,6 +141,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     claimedRecsResult,
     recentPRsResult,
     recentRecsResult,
+    activityResult,
   ] = await Promise.all([
     // Merged PRs count
     service
@@ -175,6 +187,14 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
       .in('status', ['claimed', 'completed'])
       .order('claimed_at', { ascending: false })
       .limit(5),
+
+    // Public activity from xp_events for the past year
+    service
+      .from('xp_events')
+      .select('created_at')
+      .eq('user_id', profile.id)
+      .gte('created_at', oneYearAgo.toISOString())
+      .in('source', ['recommended_merge', 'unrecommended_merge', 'help_review']),
   ]);
 
   const prsMerged = prsResult.count ?? 0;
@@ -276,6 +296,17 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
   const { getPublicStreak } = await import('@/app/actions/streak');
   const { days: streakDays } = await getPublicStreak(profile.id);
 
+  // Group events by day in UTC
+  const activityMap: Record<string, number> = {};
+  for (const event of activityResult.data ?? []) {
+    const dateStr = new Date(event.created_at).toISOString().slice(0, 10);
+    activityMap[dateStr] = (activityMap[dateStr] || 0) + 1;
+  }
+  const activityHistory = Object.entries(activityMap).map(([date, count]) => ({
+    date,
+    count,
+  }));
+
   const data: ProfileData = {
     profileId: profile.id,
     githubHandle: profile.github_handle,
@@ -292,6 +323,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     timeline,
     orgs,
     activeTasks,
+    activityHistory,
   };
 
   await cacheSet(cacheKey, data, 300);
@@ -540,6 +572,11 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Activity Heatmap */}
+            <div className="border-t border-[#21262d] pt-8">
+              <ActivityHeatmap activityHistory={profile.activityHistory} />
             </div>
           </div>
 

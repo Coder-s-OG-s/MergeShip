@@ -7,10 +7,9 @@ import { syncGitHubStats } from '@/app/actions/github-sync';
 
 type Props = {
   lastSyncedAt: string | null;
-  userId: string;
 };
 
-export function SyncButton({ lastSyncedAt, userId }: Props) {
+export function SyncButton({ lastSyncedAt }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(false);
@@ -51,7 +50,7 @@ export function SyncButton({ lastSyncedAt, userId }: Props) {
             return;
           }
 
-          const res = await fetch(`/api/sync-status?userId=${userId}`);
+          const res = await fetch('/api/sync-status');
 
           if (!res.ok) {
             clearInterval(interval);
@@ -61,8 +60,6 @@ export function SyncButton({ lastSyncedAt, userId }: Props) {
           }
 
           const data = await res.json();
-
-          console.log('SYNC STATUS:', data);
 
           if (data.status === 'completed') {
             clearInterval(interval);
@@ -83,7 +80,7 @@ export function SyncButton({ lastSyncedAt, userId }: Props) {
       setSyncing(false);
       setError('Something went wrong');
     }
-  }, [syncing, cooldown, router, userId]);
+  }, [syncing, cooldown, router]);
 
   return (
     <div className="flex flex-col items-end gap-1">

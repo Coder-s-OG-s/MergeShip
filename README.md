@@ -114,6 +114,30 @@ We maintain a high engineering bar: strict TypeScript, zero lint warnings, and 8
 - [AI Usage Policy](./docs/ai-usage-policy.md)
 - [Code of Conduct](./CODE_OF_CONDUCT.md)
 
+## Contributors
+
+Thanks to all the amazing people who contribute to **MergeShip** 🚀
+
+<p align="center">
+  <a href="https://github.com/Coder-s-OG-s/MergeShip/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=Coder-s-OG-s/MergeShip" alt="Contributors"/>
+  </a>
+</p>
+
+<br>
+
+## Project Support
+
+<p align="center">
+  <a href="https://github.com/Coder-s-OG-s/MergeShip/stargazers">
+    <img src="https://img.shields.io/github/stars/Coder-s-OG-s/MergeShip" alt="Stars">
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/Coder-s-OG-s/MergeShip/network/members">
+    <img src="https://img.shields.io/github/forks/Coder-s-OG-s/MergeShip?style=social" alt="Forks">
+  </a>
+</p>
+
 ## License
 
 This project is open-source and available under the [MIT License](LICENSE). Making open source better — for the people who build it.

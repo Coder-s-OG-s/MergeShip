@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { processInstallationEvent } from './process-installation-event';
+import {
+  processInstallationEvent,
+  processInstallationReposEvent,
+} from './process-installation-event';
 import { sb, wire, step } from './__tests__/test-helpers';
 
 // Mock external dependencies.
@@ -12,6 +15,11 @@ vi.mock('../client', () => ({
     send: (...args: unknown[]) => mockSend(...args),
   },
 }));
+
+const reposRun = processInstallationReposEvent as unknown as (ctx: {
+  event: { data: { payload: Record<string, unknown> } };
+  step: typeof step;
+}) => Promise<unknown>;
 
 // Handler references.
 const installRun = processInstallationEvent as unknown as (ctx: {
@@ -120,5 +128,29 @@ describe('processInstallationEvent', () => {
         data: expect.objectContaining({ userId: 'u1', githubHandle: 'alice', force: true }),
       }),
     );
+  });
+  it('repositories_added uses upsert to support webhook replays', async () => {
+    const repos = sb({
+      upsert: vi.fn().mockResolvedValue({ error: null }),
+    });
+
+    wire({
+      installation_repositories: repos,
+    });
+
+    await reposRun({
+      event: {
+        data: {
+          payload: {
+            action: 'added',
+            installation: { id: 100 },
+            repositories_added: [{ full_name: 'myorg/repo-a' }],
+          },
+        },
+      },
+      step,
+    });
+
+    expect(repos.upsert).toHaveBeenCalled();
   });
 });

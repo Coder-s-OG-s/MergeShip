@@ -6,6 +6,10 @@ import {
   getCommunityLinks,
   upsertCommunityLink,
   deleteCommunityLink,
+  getRepoHealthOverview,
+  getStaleIssues,
+  getTopContributors,
+  getFlaggedAccounts,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -285,5 +289,40 @@ describe('maintainer actions', () => {
       expect(res.ok).toBe(false);
       if (!res.ok) expect(res.error.code).toBe('not_found');
     });
+  });
+  it('getRepoHealthOverview returns rate_limited when rate limit exceeded', async () => {
+    vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+    const res = await getRepoHealthOverview();
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe('rate_limited');
+  });
+
+  it('getStaleIssues returns rate_limited when rate limit exceeded', async () => {
+    vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+    const res = await getStaleIssues();
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe('rate_limited');
+  });
+
+  it('getTopContributors returns rate_limited when rate limit exceeded', async () => {
+    vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+    const res = await getTopContributors();
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe('rate_limited');
+  });
+
+  it('getFlaggedAccounts returns rate_limited when rate limit exceeded', async () => {
+    vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+    const res = await getFlaggedAccounts();
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe('rate_limited');
   });
 });
