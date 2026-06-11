@@ -15,18 +15,18 @@ export default async function JourneyProgress({ xp, level }: { xp: number; level
   const pct = Math.round(levelProgressPct(xp, level));
 
   return (
-    <div className="border border-[#2d333b] bg-[#161b22] p-5">
+    <div className="border border-zinc-800 bg-[#000E12] p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-[10px] uppercase tracking-widest text-zinc-500">
           L{level} → L{nextLevel} JOURNEY
         </h3>
-        <span className="font-serif text-sm text-[#10b981]">{pct}%</span>
+        <span className="font-serif text-sm text-[#00FF87]">{pct}%</span>
       </div>
 
       {/* Progress bar */}
       <div className="mb-3 h-2 w-full overflow-hidden bg-[#0d1117]">
         <div
-          className="h-full bg-[#10b981] transition-all duration-500"
+          className="h-full bg-[#00FF87] transition-all duration-500"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -43,7 +43,7 @@ export default async function JourneyProgress({ xp, level }: { xp: number; level
 
 export function JourneyProgressSkeleton() {
   return (
-    <div className="border border-[#2d333b] bg-[#161b22] p-5">
+    <div className="border border-zinc-800 bg-[#000E12] p-5">
       <div className="mb-3 flex items-center justify-between">
         <div className="h-3 w-32 animate-pulse bg-zinc-800" />
         <div className="h-3 w-8 animate-pulse bg-zinc-800" />

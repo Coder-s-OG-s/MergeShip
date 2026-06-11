@@ -31,7 +31,7 @@ export function RightSidebar() {
       <div>
         <Link
           href="/issues"
-          className="flex w-full items-center justify-center gap-2 border border-[#10b981] bg-[#10b981]/10 px-4 py-3 text-[11px] font-bold uppercase tracking-widest text-[#10b981] transition-colors hover:bg-[#10b981]/20"
+          className="flex w-full items-center justify-center gap-2 border border-[#00FF87] bg-[#10b981]/10 px-4 py-3 text-[11px] font-bold uppercase tracking-widest text-[#00FF87] transition-colors hover:bg-[#10b981]/20"
         >
           BROWSE ISSUES <ArrowRight className="h-3.5 w-3.5" />
         </Link>
@@ -39,13 +39,13 @@ export function RightSidebar() {
 
       {/* Next Mentor Session */}
       <section>
-        <div className="mb-4 flex items-center gap-2 border-b border-[#2d333b] pb-3">
+        <div className="mb-4 flex items-center gap-2 border-b border-zinc-800 pb-3">
           <Calendar className="h-3.5 w-3.5 text-zinc-600" />
           <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">
             NEXT MENTOR SESSION
           </h2>
         </div>
-        <div className="border border-[#2d333b] bg-[#161b22] p-4">
+        <div className="border border-zinc-800 bg-[#161b22] p-4">
           <div className="mb-1 text-[12px] text-zinc-300">{NEXT_SESSION.mentor}</div>
           <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-600">
             {NEXT_SESSION.note}
@@ -69,13 +69,13 @@ export function RightSidebar() {
 
       {/* Announcements */}
       <section>
-        <div className="mb-4 flex items-center gap-2 border-b border-[#2d333b] pb-3">
+        <div className="mb-4 flex items-center gap-2 border-b border-zinc-800 pb-3">
           <Megaphone className="h-3.5 w-3.5 text-zinc-600" />
           <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">ANNOUNCEMENTS</h2>
         </div>
         <div className="space-y-0">
           {ANNOUNCEMENTS.map((a) => (
-            <div key={a.id} className="border-b border-[#2d333b] py-3 last:border-0">
+            <div key={a.id} className="border-b border-zinc-800 py-3 last:border-0">
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-[12px] text-zinc-300">{a.title}</span>
                 <span className="ml-2 shrink-0 text-[10px] uppercase tracking-widest text-zinc-600">
@@ -102,7 +102,7 @@ export function RightSidebarSkeleton() {
       <div className="space-y-3">
         <div className="h-3 w-28 animate-pulse bg-zinc-800" />
         {[1, 2].map((i) => (
-          <div key={i} className="space-y-1.5 border-b border-[#2d333b] pb-3">
+          <div key={i} className="space-y-1.5 border-b border-zinc-800 pb-3">
             <div className="h-3 w-36 animate-pulse bg-zinc-800" />
             <div className="h-3 w-full animate-pulse bg-zinc-800" />
           </div>

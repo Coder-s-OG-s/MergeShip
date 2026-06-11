@@ -45,7 +45,7 @@ export function DailyChallenge() {
 
   return (
     <section>
-      <div className="mb-4 flex items-center justify-between border-b border-[#2d333b] pb-3">
+      <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">DAILY CHALLENGE</h2>
         <span
           className={`font-mono text-[11px] uppercase tracking-widest ${done ? 'text-[#10b981]' : 'text-amber-400'}`}
@@ -54,14 +54,14 @@ export function DailyChallenge() {
         </span>
       </div>
 
-      <div className="border border-[#2d333b] bg-[#161b22] p-4">
+      <div className="border border-zinc-800 bg-[#161b22] p-4">
         <div className="mb-1 text-[13px] text-zinc-200">{CHALLENGE.title}</div>
         <div className="mb-4 text-[11px] text-zinc-500">{CHALLENGE.description}</div>
 
         {/* Progress bar */}
-        <div className="mb-2 h-1.5 w-full overflow-hidden bg-[#0d1117]">
+        <div className="mb-2 h-1.5 w-full overflow-hidden bg-[#000E12]">
           <div
-            className={`h-full transition-all duration-500 ${done ? 'bg-[#10b981]' : 'bg-amber-500'}`}
+            className={`h-full transition-all duration-500 ${done ? 'bg-[#10b981]' : 'bg-[#00FF87'}`}
             style={{ width: `${pct}%` }}
           />
         </div>

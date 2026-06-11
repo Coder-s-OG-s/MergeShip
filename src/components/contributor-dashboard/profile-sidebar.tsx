@@ -30,9 +30,9 @@ export function ProfileSidebar({ githubHandle, xp, level, trustScore = 0 }: Prop
   return (
     <aside className="space-y-6">
       {/* Avatar + Identity */}
-      <div className="border border-[#2d333b] bg-[#161b22] p-5">
+      <div className="border border-zinc-800 bg-[#000E12] p-5">
         <div className="mb-4 flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center border border-[#10b981]/40 bg-[#0d2818] font-serif text-xl text-[#10b981]">
+          <div className="flex h-14 w-14 items-center justify-center border border-[#00FF87]/40 bg-[#0d2818] font-serif text-xl text-[#00FF87]">
             {initials}
           </div>
           <div>
@@ -52,7 +52,7 @@ export function ProfileSidebar({ githubHandle, xp, level, trustScore = 0 }: Prop
 
         {/* Badges */}
         <div className="flex flex-wrap gap-2">
-          <span className="border border-[#10b981]/50 bg-[#10b981]/10 px-2 py-0.5 text-[10px] uppercase tracking-widest text-[#10b981]">
+          <span className="border border-[#00FF87]/50 bg-[#10b981]/10 px-2 py-0.5 text-[10px] uppercase tracking-widest text-[#00FF87]">
             L{level} {title}
           </span>
           <span className="border border-purple-700/50 bg-purple-900/20 px-2 py-0.5 text-[10px] uppercase tracking-widest text-purple-300">
@@ -62,7 +62,7 @@ export function ProfileSidebar({ githubHandle, xp, level, trustScore = 0 }: Prop
       </div>
 
       {/* XP Summary */}
-      <div className="border border-[#2d333b] bg-[#161b22] p-5">
+      <div className="border border-zinc-800 bg-[#000E12] p-5">
         <div className="mb-3 text-[10px] uppercase tracking-widest text-zinc-500">
           TOTAL XP EARNED
         </div>
@@ -71,7 +71,7 @@ export function ProfileSidebar({ githubHandle, xp, level, trustScore = 0 }: Prop
       </div>
 
       {/* Quick Links */}
-      <div className="border border-[#2d333b] bg-[#161b22] p-5">
+      <div className="border border-zinc-800 bg-[#000E12] p-5">
         <div className="mb-3 text-[10px] uppercase tracking-widest text-zinc-500">QUICK LINKS</div>
         <div className="space-y-2">
           {[
@@ -83,7 +83,7 @@ export function ProfileSidebar({ githubHandle, xp, level, trustScore = 0 }: Prop
             <Link
               key={link.href}
               href={link.href}
-              className="flex items-center justify-between border-b border-[#2d333b] pb-2 text-[10px] uppercase tracking-widest text-zinc-400 transition-colors last:border-0 last:pb-0 hover:text-white"
+              className="flex items-center justify-between border-b border-zinc-800 pb-2 text-[10px] uppercase tracking-widest text-zinc-400 transition-colors last:border-0 last:pb-0 hover:text-white"
             >
               {link.label}
               <span className="text-zinc-700">→</span>
@@ -98,7 +98,7 @@ export function ProfileSidebar({ githubHandle, xp, level, trustScore = 0 }: Prop
 export function ProfileSidebarSkeleton() {
   return (
     <aside className="space-y-6">
-      <div className="border border-[#2d333b] bg-[#161b22] p-5">
+      <div className="border border-zinc-800 bg-[#000E12] p-5">
         <div className="mb-4 flex items-center gap-4">
           <div className="h-14 w-14 animate-pulse bg-zinc-800" />
           <div className="space-y-2">
@@ -111,7 +111,7 @@ export function ProfileSidebarSkeleton() {
           <div className="h-5 w-16 animate-pulse bg-zinc-800" />
         </div>
       </div>
-      <div className="border border-[#2d333b] bg-[#161b22] p-5">
+      <div className="border border-zinc-800 bg-[#000E12] p-5">
         <div className="mb-3 h-3 w-24 animate-pulse bg-zinc-800" />
         <div className="h-8 w-20 animate-pulse bg-zinc-800" />
       </div>

@@ -16,7 +16,7 @@ export function CourseProgress() {
 
   return (
     <section>
-      <div className="mb-4 flex items-center justify-between border-b border-[#2d333b] pb-3">
+      <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">
           CONTRIBUTOR CURRICULUM
         </h2>
@@ -29,12 +29,12 @@ export function CourseProgress() {
         {STEPS.map((step) => (
           <div
             key={step.id}
-            className={`flex items-center gap-3 border-b border-[#2d333b] py-3 last:border-0 ${
+            className={`flex items-center gap-3 border-b border-zinc-800 py-3 last:border-0 ${
               step.done ? 'opacity-50' : ''
             }`}
           >
             {step.done ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-[#10b981]" />
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-[#00FF87]" />
             ) : (
               <Circle className="h-4 w-4 shrink-0 text-zinc-600" />
             )}
@@ -55,7 +55,7 @@ export function CourseProgress() {
       {nextStep && (
         <Link
           href="/issues"
-          className="flex w-full items-center justify-center gap-2 border border-[#10b981]/40 bg-[#10b981]/10 px-4 py-2.5 text-[10px] uppercase tracking-widest text-[#10b981] transition-colors hover:bg-[#10b981]/20"
+          className="flex w-full items-center justify-center gap-2 border border-[#00FF87]/40 bg-[#10b981]/10 px-4 py-2.5 text-[10px] uppercase tracking-widest text-[#00FF87] transition-colors hover:bg-[#10b981]/20"
         >
           CONTINUE COURSE <ArrowRight className="h-3 w-3" />
         </Link>
