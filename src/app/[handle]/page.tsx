@@ -129,10 +129,6 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
 
   if (!profile) return null;
 
-  const oneYearAgo = new Date();
-  oneYearAgo.setDate(oneYearAgo.getDate() - 365);
-  oneYearAgo.setHours(0, 0, 0, 0);
-
   // Fetch all data in parallel
   const [
     prsResult,
@@ -193,7 +189,6 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
       .from('xp_events')
       .select('created_at')
       .eq('user_id', profile.id)
-      .gte('created_at', oneYearAgo.toISOString())
       .in('source', ['recommended_merge', 'unrecommended_merge', 'help_review']),
   ]);
 
