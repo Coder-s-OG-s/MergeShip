@@ -135,13 +135,14 @@ export default function LandingPage() {
     });
   }, []);
 
-  const handleLogin = () => {
+  const handleLogin = (nextPath: string | unknown = '/dashboard') => {
     const sb = getBrowserSupabase();
     if (!sb) return;
+    const next = typeof nextPath === 'string' ? nextPath : '/dashboard';
     void sb.auth.signInWithOAuth({
       provider: 'github',
       options: {
-        redirectTo: `${window.location.origin}/api/auth/callback?next=/dashboard`,
+        redirectTo: `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(next)}`,
       },
     });
   };
@@ -162,15 +163,17 @@ export default function LandingPage() {
         </Link>
       );
     }
+
     if (localDev) {
       return (
-        <Link href="/dev/login" className={className}>
+        <Link href="/dev/login?next=/onboarding" className={className}>
           {label} <ArrowRight size={15} />
         </Link>
       );
     }
+
     return (
-      <button className={className} onClick={handleLogin}>
+      <button onClick={() => handleLogin('/onboarding')} className={className}>
         {label} <ArrowRight size={15} />
       </button>
     );
