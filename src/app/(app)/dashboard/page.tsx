@@ -162,7 +162,7 @@ export default async function DashboardPage() {
 
 function NotConfigured() {
   return (
-    <div className="min-h-screen bg-[#0d1117] px-6 py-20 text-white">
+    <div className="min-h-screen bg-[#0D0E12] px-6 py-20 text-white">
       <div className="mx-auto max-w-xl">
         <h1 className="mb-4 font-serif text-3xl font-bold">Dashboard not configured</h1>
         <p className="text-gray-400">Auth isn&apos;t wired on this deployment yet.</p>

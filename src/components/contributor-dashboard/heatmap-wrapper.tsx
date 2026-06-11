@@ -35,7 +35,15 @@ export default async function HeatmapWrapper({ userId }: { userId: string }) {
     count,
   }));
 
-  return <ActivityHeatmap activityHistory={activityHistory} />;
+  const totalAllTime = activityHistory.reduce((sum, d) => sum + d.count, 0);
+  return (
+    <div>
+      <div className="mb-2 text-[11px] uppercase tracking-widest text-zinc-500">
+        ALL-TIME CONTRIBUTIONS: <span className="text-white">{totalAllTime.toLocaleString()}</span>
+      </div>
+      <ActivityHeatmap activityHistory={activityHistory} />
+    </div>
+  );
 }
 
 export function HeatmapSkeleton() {
