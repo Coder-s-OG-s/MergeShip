@@ -298,9 +298,9 @@ function NavAuth() {
   }
 
   return (
-    <button className="btn" onClick={handleLogin}>
+    <Link href="/onboarding" className="btn">
       Get Started →
-    </button>
+    </Link>
   );
 }
 
@@ -410,18 +410,7 @@ function Hero() {
             MergeShip changes that — level by level, PR by PR.
           </FadeUp>
           <FadeUp className="hero-ctas" delay={1.1} y={24}>
-            <Link
-              href="/dashboard"
-              className="btn"
-              onClick={(e) => {
-                const isLoggedIn = false;
-                if (!isLoggedIn) {
-                  e.preventDefault();
-                  alert("Please sign in first to continue.");
-                  window.location.href = "/signin";
-                }
-              }}
-            >
+            <Link href="/onboarding" className="btn">
               Start Contributing →
             </Link>
             <a href="#features" className="btn-ghost">see how it works →</a>
@@ -453,7 +442,7 @@ function Hero() {
             and lets peer-verified PRs reach you pre-checked.
           </FadeUp>
           <FadeUp className="hero-ctas" delay={1.2} y={24}>
-            <Link href="/dashboard" className="btn btn-light">Connect Your Org →</Link>
+            <Link href="/onboarding" className="btn btn-light">Connect Your Org →</Link>
             <a href="#how" className="btn-ghost dark">see the dashboard →</a>
           </FadeUp>
         </div>
@@ -837,7 +826,7 @@ function CtaSplit() {
         <h2>Your first real contribution starts here.</h2>
         <div>
           <motion.a
-            href="/dashboard"
+            href="/onboarding"
             className="btn"
             whileHover={{ scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
@@ -852,7 +841,7 @@ function CtaSplit() {
         <h2>Connect your org. Review with confidence.</h2>
         <div>
           <motion.a
-            href="/dashboard"
+            href="/onboarding"
             className="btn btn-light"
             whileHover={{ scale: 1.02 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
