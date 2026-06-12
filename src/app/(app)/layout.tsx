@@ -21,15 +21,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   let handle: string | null = null;
   let level = 0;
+  let xp = 0;
   const service = getServiceSupabase();
   if (service) {
     const { data: profile } = await service
       .from('profiles')
-      .select('github_handle, level')
+      .select('github_handle, level, xp')
       .eq('id', user.id)
       .maybeSingle();
     handle = profile?.github_handle ?? null;
     level = profile?.level ?? 0;
+    xp = profile?.xp ?? 0;
   }
 
   let isMaintainer = false;

@@ -220,11 +220,14 @@ export const processInstallationReposEvent = inngest.createFunction(
       if (!sb) throw new Error('service role missing');
 
       if (payload.repositories_added?.length) {
-        await sb.from('installation_repositories').insert(
+        await sb.from('installation_repositories').upsert(
           payload.repositories_added.map((r) => ({
             installation_id: payload.installation.id,
             repo_full_name: r.full_name,
           })),
+          {
+            onConflict: 'installation_id,repo_full_name',
+          },
         );
         // Fan-out a per-repo backfill for each new repo so the maintainer
         // queue picks them up without waiting for the next cron tick.

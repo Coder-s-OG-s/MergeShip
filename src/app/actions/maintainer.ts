@@ -633,12 +633,16 @@ export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> 
     return err('not_authenticated', 'sign in first');
   }
 
-  await rateLimit({
+  const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
     limit: 30,
     windowSec: 60,
   });
+
+  if (!limited.ok) {
+    return err('rate_limited', 'slow down', true);
+  }
 
   if (!(await isUserMaintainer(user.id))) {
     return err('not_authorised', 'not a maintainer');
@@ -722,12 +726,16 @@ export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
     return err('not_authenticated', 'sign in first');
   }
 
-  await rateLimit({
+  const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
     limit: 30,
     windowSec: 60,
   });
+
+  if (!limited.ok) {
+    return err('rate_limited', 'slow down', true);
+  }
 
   if (!(await isUserMaintainer(user.id))) {
     return err('not_authorised', 'not a maintainer');
@@ -804,12 +812,16 @@ export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
     return err('not_authenticated', 'sign in first');
   }
 
-  await rateLimit({
+  const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
     limit: 30,
     windowSec: 60,
   });
+
+  if (!limited.ok) {
+    return err('rate_limited', 'slow down', true);
+  }
 
   if (!(await isUserMaintainer(user.id))) {
     return err('not_authorised', 'not a maintainer');
@@ -1096,12 +1108,16 @@ export async function getFlaggedAccounts(): Promise<Result<FlaggedAccountRow[]>>
     return err('not_authenticated', 'sign in first');
   }
 
-  await rateLimit({
+  const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
     limit: 30,
     windowSec: 60,
   });
+
+  if (!limited.ok) {
+    return err('rate_limited', 'slow down', true);
+  }
 
   if (!(await isUserMaintainer(user.id))) {
     return err('not_authorised', 'not a maintainer');

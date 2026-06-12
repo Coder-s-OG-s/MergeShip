@@ -196,10 +196,12 @@ describe('Recommendations Server Actions', () => {
     });
 
     it('returns rate_limited error if limit exceeded', async () => {
-      mocks.mockRateLimit.mockResolvedValueOnce({ ok: false });
+      mocks.mockRateLimit.mockResolvedValueOnce({ ok: false, remaining: 0, resetAt: 1234567890 });
       const result = await getRecommendations();
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.error.code).toBe('rate_limited');
+      if (!result.ok) {
+        expect(result.error.code).toBe('rate_limited');
+      }
     });
   });
 

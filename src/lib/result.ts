@@ -9,14 +9,20 @@ export type AppError = {
   code: string;
   message: string;
   retryable: boolean;
+  resetAt?: number;
 };
 
 export function ok<T>(data: T): Result<T> {
   return { ok: true, data };
 }
 
-export function err(code: string, message: string, retryable = false): Result<never> {
-  return { ok: false, error: { code, message, retryable } };
+export function err(
+  code: string,
+  message: string,
+  retryable = false,
+  resetAt?: number,
+): Result<never> {
+  return { ok: false, error: { code, message, retryable, resetAt } };
 }
 
 export function isOk<T>(r: Result<T>): r is { ok: true; data: T } {
