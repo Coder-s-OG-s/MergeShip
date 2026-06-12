@@ -108,6 +108,7 @@ type ProfileData = {
   orgs: OrgEntry[];
   activeTasks: ActiveTask[];
   activityHistory: ActivityDay[];
+  allTimeContributions: number;
 };
 
 async function loadProfileData(handle: string): Promise<ProfileData | null> {
@@ -184,7 +185,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
       .order('claimed_at', { ascending: false })
       .limit(5),
 
-    // Public activity from xp_events for the past year
+    // All-time public activity from xp_events (no date filter) for all-time contribution count
     service
       .from('xp_events')
       .select('created_at')
@@ -291,11 +292,13 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
   const { getPublicStreak } = await import('@/app/actions/streak');
   const { days: streakDays } = await getPublicStreak(profile.id);
 
-  // Group events by day in UTC
+  // Group all events by day in UTC (all-time)
   const activityMap: Record<string, number> = {};
+  let allTimeContributions = 0;
   for (const event of activityResult.data ?? []) {
     const dateStr = new Date(event.created_at).toISOString().slice(0, 10);
     activityMap[dateStr] = (activityMap[dateStr] || 0) + 1;
+    allTimeContributions++;
   }
   const activityHistory = Object.entries(activityMap).map(([date, count]) => ({
     date,
@@ -319,6 +322,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     orgs,
     activeTasks,
     activityHistory,
+    allTimeContributions,
   };
 
   await cacheSet(cacheKey, data, 300);
@@ -571,7 +575,10 @@ export default async function PublicProfile({ params }: { params: { handle: stri
 
             {/* Activity Heatmap */}
             <div className="border-t border-[#21262d] pt-8">
-              <ActivityHeatmap activityHistory={profile.activityHistory} />
+              <ActivityHeatmap
+                activityHistory={profile.activityHistory}
+                allTimeContributions={profile.allTimeContributions}
+              />
             </div>
           </div>
 
