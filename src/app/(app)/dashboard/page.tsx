@@ -79,7 +79,10 @@ export default async function DashboardPage() {
               <GitHubPRsWrapper userId={user.id} githubHandle={profile?.github_handle ?? ''} />
             </Suspense>
             <Suspense fallback={<LeaderboardSkeleton />}>
-              <LeaderboardSnapshot githubHandle={profile?.github_handle ?? ''} />
+              <LeaderboardSnapshot
+                githubHandle={profile?.github_handle ?? ''}
+                userLevel={profile?.level ?? 1}
+              />
             </Suspense>
           </div>
         </div>

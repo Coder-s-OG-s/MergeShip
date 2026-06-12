@@ -1,13 +1,21 @@
 import { getServiceSupabase } from '@/lib/supabase/service';
 
-export default async function LeaderboardSnapshot({ githubHandle }: { githubHandle: string }) {
+// 1. Add userLevel to the props
+export default async function LeaderboardSnapshot({
+  githubHandle,
+  userLevel,
+}: {
+  githubHandle: string;
+  userLevel: number;
+}) {
   const service = getServiceSupabase();
   if (!service) return null;
 
-  // Leaderboard
+  // 2. Update the query to filter by the user's level (tier)
   const { data: leaders } = await service
     .from('profiles')
     .select('github_handle, xp')
+    .eq('level', userLevel) // Filter by the user's level
     .order('xp', { ascending: false })
     .limit(4);
 
@@ -15,9 +23,12 @@ export default async function LeaderboardSnapshot({ githubHandle }: { githubHand
     <section>
       <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">
-          LEADERBOARD SNAPSHOT
+          LEVEL {userLevel} LEADERBOARD
         </h2>
-        <span className="text-[11px] uppercase tracking-widest text-zinc-500">GLOBAL</span>
+        {/* Changed label from GLOBAL to COHORT/LEVEL */}
+        <span className="text-[11px] uppercase tracking-widest text-emerald-500">
+          LEVEL {userLevel}
+        </span>
       </div>
 
       <div className="text-xs uppercase tracking-widest">
@@ -27,7 +38,7 @@ export default async function LeaderboardSnapshot({ githubHandle }: { githubHand
             return (
               <div
                 key={leader.github_handle}
-                className={`flex justify-between border-b border-[#2d333b] py-3.5 ${isMe ? '-mx-3 bg-[#3b0764]/40 px-3 text-purple-300' : 'text-zinc-400'}`}
+                className={`flex justify-between border-b border-[#2d333b] py-3.5 ${isMe ? '-mx-3 bg-emerald-900/20 px-3 text-emerald-300' : 'text-zinc-400'}`}
               >
                 <div className="flex gap-5">
                   <span className={`w-6 ${isMe ? 'opacity-50' : 'text-zinc-600'}`}>
@@ -41,7 +52,7 @@ export default async function LeaderboardSnapshot({ githubHandle }: { githubHand
           })
         ) : (
           <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
-            BE THE FIRST ON THE BOARD — MERGE A PR TO EARN XP
+            No other contributors at this level yet.
           </div>
         )}
       </div>
@@ -56,7 +67,7 @@ export function LeaderboardSkeleton() {
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">
           LEADERBOARD SNAPSHOT
         </h2>
-        <span className="text-[11px] uppercase tracking-widest text-zinc-500">GLOBAL</span>
+        <span className="text-[11px] uppercase tracking-widest text-zinc-500">LOADING</span>
       </div>
       <div className="space-y-4">
         {[1, 2, 3, 4].map((i) => (

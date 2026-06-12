@@ -51,16 +51,32 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
           </div>
         ) : (
           <div className="space-y-6">
-            {filtered.map((pr) => (
+            {filtered.map((pr: any) => (
               <div key={pr.id} className="border-b border-[#2d333b] pb-6 last:border-0">
                 <Link href={pr.url} target="_blank" rel="noopener noreferrer">
                   <h3 className="mb-1 text-[15px] text-white hover:underline">{pr.title}</h3>
                 </Link>
-                <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500">
-                  #{pr.number} · {pr.repo_full_name} · {formatDate(pr.github_created_at)}
+                <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-widest text-zinc-500">
+                  <span>#{pr.number}</span>
+                  <span>·</span>
+                  <span>{pr.repo_full_name}</span>
+                  <span>·</span>
+                  <span>{formatDate(pr.github_created_at)}</span>
+                  {pr.additions !== undefined && (
+                    <>
+                      <span>·</span>
+                      <span className="text-emerald-500">+{pr.additions}</span>
+                      <span className="text-red-500">-{pr.deletions}</span>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <StateBadge state={pr.state} />
+                  {pr.review_status && (
+                    <span className="border border-zinc-600 px-2 py-0.5 text-[10px] uppercase tracking-widest text-zinc-300">
+                      {pr.review_status.replace('_', ' ')}
+                    </span>
+                  )}
                   {claimedSet.has(pr.url) && (
                     <span className="border border-purple-700 bg-purple-900/30 px-2 py-0.5 text-[10px] uppercase tracking-widest text-purple-300">
                       CLAIMED
