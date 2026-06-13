@@ -6,20 +6,39 @@ import LevelUpBanner from './level-up-banner';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
-// Component imports
+// Existing dashboard components
 import StatsRow, { StatsSkeleton } from './stats-row';
 import ActiveIssuesSection, { RecsSkeleton } from './active-issues';
 import GitHubPRsWrapper, { PrsSkeleton } from './github-prs-wrapper';
 import LeaderboardSnapshot, { LeaderboardSkeleton } from './leaderboard-snapshot';
 import MenteesSection, { MenteesSkeleton } from './mentees-section';
 
+// New contributor-dashboard components
+import {
+  ProfileSidebar,
+  ProfileSidebarSkeleton,
+} from '@/components/contributor-dashboard/profile-sidebar';
+import JourneyProgress, {
+  JourneyProgressSkeleton,
+} from '@/components/contributor-dashboard/journey-progress';
+import RecentActivity, {
+  RecentActivitySkeleton,
+} from '@/components/contributor-dashboard/recent-activity';
+import HeatmapWrapper, {
+  HeatmapSkeleton,
+} from '@/components/contributor-dashboard/heatmap-wrapper';
+import { DailyChallenge } from '@/components/contributor-dashboard/daily-challenge';
+import { CourseProgress } from '@/components/contributor-dashboard/course-progress';
+import {
+  RightSidebar,
+  RightSidebarSkeleton,
+} from '@/components/contributor-dashboard/right-sidebar';
+
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
   const sb = await getServerSupabase();
-  if (!sb) {
-    return <NotConfigured />;
-  }
+  if (!sb) return <NotConfigured />;
 
   const {
     data: { user },
@@ -29,30 +48,32 @@ export default async function DashboardPage() {
   const service = getServiceSupabase();
   if (!service) return <NotConfigured />;
 
-  // Fetch only the profile info we need for the page shell header and subcomponents
   const { data: profile } = await service
     .from('profiles')
     .select('github_handle, xp, level, github_total_merges, github_streak, github_stats_synced_at')
     .eq('id', user.id)
     .maybeSingle();
 
+  const xp = profile?.xp ?? 0;
+  const level = profile?.level ?? 0;
+  const githubHandle = profile?.github_handle ?? 'Contributor';
+
   return (
-    <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
-      <div className="mx-auto max-w-6xl">
+    <div className="min-h-screen bg-[#0d1117] p-6 font-mono text-white md:p-10">
+      <div className="mx-auto max-w-[1400px]">
         <LevelUpBanner />
+
         {/* Header */}
-        <header className="mb-12 flex flex-col justify-between gap-6 border-b border-[#2d333b] pb-6 md:flex-row md:items-end">
+        <header className="mb-10 flex flex-col justify-between gap-4 border-b border-[#2d333b] pb-6 md:flex-row md:items-end">
           <div>
-            <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+            <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-500">
               01 / DASHBOARD
             </div>
-            <h1 className="font-serif text-4xl text-white">
-              Welcome back, {profile?.github_handle ?? 'Contributor'}.
+            <h1 className="font-serif text-3xl text-white md:text-4xl">
+              Welcome back, {githubHandle}.
             </h1>
           </div>
-          <div className="flex items-center gap-4">
-            <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} />
-          </div>
+          <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} />
         </header>
 
         {/* Stats Row */}
