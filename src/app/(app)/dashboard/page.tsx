@@ -81,32 +81,28 @@ export default async function DashboardPage() {
           <StatsRow userId={user.id} profile={profile} />
         </Suspense>
 
-      {/* Stats Row */}
-      <Suspense fallback={<StatsSkeleton />}>
-        <StatsRow userId={user.id} profile={profile} />
-      </Suspense>
+        {/* Main Columns */}
+        <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
+          {/* Left Column */}
+          <div className="space-y-16">
+            <Suspense fallback={<RecsSkeleton />}>
+              <ActiveIssuesSection />
+            </Suspense>
 
-      {/* Main Columns */}
-      <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
-        {/* Left Column */}
-        <div className="space-y-16">
-          <Suspense fallback={<RecsSkeleton />}>
-            <ActiveIssuesSection />
-          </Suspense>
+            <Suspense fallback={<MenteesSkeleton />}>
+              <MenteesSection userId={user.id} />
+            </Suspense>
+          </div>
 
-          <Suspense fallback={<MenteesSkeleton />}>
-            <MenteesSection userId={user.id} />
-          </Suspense>
-        </div>
-
-        {/* Right Column */}
-        <div className="space-y-16">
-          <Suspense fallback={<PrsSkeleton />}>
-            <GitHubPRsWrapper userId={user.id} githubHandle={profile?.github_handle ?? ''} />
-          </Suspense>
-          <Suspense fallback={<LeaderboardSkeleton />}>
-            <LeaderboardSnapshot githubHandle={profile?.github_handle ?? ''} />
-          </Suspense>
+          {/* Right Column */}
+          <div className="space-y-16">
+            <Suspense fallback={<PrsSkeleton />}>
+              <GitHubPRsWrapper userId={user.id} githubHandle={profile?.github_handle ?? ''} />
+            </Suspense>
+            <Suspense fallback={<LeaderboardSkeleton />}>
+              <LeaderboardSnapshot githubHandle={profile?.github_handle ?? ''} />
+            </Suspense>
+          </div>
         </div>
       </div>
 
