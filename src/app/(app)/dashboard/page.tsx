@@ -55,6 +55,10 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .maybeSingle();
 
+  const xp = profile?.xp ?? 0;
+  const level = profile?.level ?? 0;
+  const githubHandle = profile?.github_handle ?? 'Contributor';
+
   const { count: claimedCount } = await service
     .from('recommendations')
     .select('id', { count: 'exact', head: true })
