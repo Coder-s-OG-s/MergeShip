@@ -347,8 +347,9 @@ const EVENT_DOT: Record<string, string> = {
 
 const DIFFICULTY_LABEL: Record<string, string> = { E: 'L1', M: 'L2', H: 'L3' };
 
-export async function generateMetadata({ params }: { params: { handle: string } }) {
-  const handle = decodeURIComponent(params.handle).replace(/^@/, '');
+export async function generateMetadata({ params }: { params: Promise<{ handle: string }> }) {
+  const resolvedParams = await params;
+  const handle = decodeURIComponent(resolvedParams.handle).replace(/^@/, '');
 
   const profile = await loadProfileData(handle);
 
@@ -370,8 +371,9 @@ export async function generateMetadata({ params }: { params: { handle: string } 
   };
 }
 
-export default async function PublicProfile({ params }: { params: { handle: string } }) {
-  const handle = decodeURIComponent(params.handle).replace(/^@/, '');
+export default async function PublicProfile({ params }: { params: Promise<{ handle: string }> }) {
+  const resolvedParams = await params;
+  const handle = decodeURIComponent(resolvedParams.handle).replace(/^@/, '');
   const profile = await loadProfileData(handle);
   if (!profile) notFound();
 
