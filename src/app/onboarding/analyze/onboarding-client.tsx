@@ -18,9 +18,9 @@ const TASKS: Task[] = [
   { id: 1, label: 'Reading public profile', completedDuration: '0.3s' },
   { id: 2, label: 'Fetching repo history', completedDuration: '1.1s' },
   { id: 3, label: 'Counting merged PRs', completedDuration: '0.8s' },
-  { id: 4, label: 'Evaluating contribution quality', completedDuration: null },
-  { id: 5, label: 'Calculating trust score', completedDuration: null },
-  { id: 6, label: 'Assigning placement level', completedDuration: null },
+  { id: 4, label: 'Evaluating contribution quality', completedDuration: '1.4s' },
+  { id: 5, label: 'Calculating trust score', completedDuration: '0.7s' },
+  { id: 6, label: 'Assigning placement level', completedDuration: '0.5s' },
 ];
 
 const INITIAL_STATUSES: TaskStatus[] = [

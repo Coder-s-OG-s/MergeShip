@@ -36,7 +36,7 @@ export default async function AnalyzePage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[#111318] px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#0D0E12] px-4">
       <OnboardingClient avatarUrl={avatarUrl} githubHandle={githubHandle} />
     </div>
   );
@@ -44,7 +44,7 @@ export default async function AnalyzePage() {
 
 function DemoRender() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[#111318] px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#0D0E12] px-4">
       <OnboardingClient
         avatarUrl="https://avatars.githubusercontent.com/u/90404176?v=4"
         githubHandle="PranavAgarkar07"
