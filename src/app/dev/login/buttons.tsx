@@ -13,7 +13,13 @@ type Persona = {
 
 const DEV_PASSWORD = 'dev-password-only';
 
-export default function DevLoginButtons({ personas }: { personas: Persona[] }) {
+export default function DevLoginButtons({
+  personas,
+  next = '/dashboard',
+}: {
+  personas: Persona[];
+  next?: string;
+}) {
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +43,7 @@ export default function DevLoginButtons({ personas }: { personas: Persona[] }) {
       return;
     }
     router.refresh();
-    router.push('/dashboard');
+    router.push(next);
   }
 
   return (

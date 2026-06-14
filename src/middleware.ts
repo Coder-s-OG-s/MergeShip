@@ -18,6 +18,7 @@ import { readSupabaseEnv } from '@/lib/supabase/env';
 const GATE_BYPASS_PREFIXES = [
   '/install',
   '/onboarding',
+  '/docs',
   '/api/auth',
   '/api/webhooks',
   '/api/inngest',
