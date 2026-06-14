@@ -62,8 +62,6 @@ export function SyncButton({ lastSyncedAt, userId }: Props) {
 
           const data = await res.json();
 
-          console.log('SYNC STATUS:', data);
-
           if (data.status === 'completed') {
             clearInterval(interval);
 

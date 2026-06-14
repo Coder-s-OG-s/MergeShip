@@ -287,7 +287,7 @@ describe('processPrEvent - linkPrToClaim issues relation array', () => {
           },
         ],
       }),
-      update: vi.fn().mockResolvedValue({ error: null }),
+      update: vi.fn().mockReturnThis(),
     });
 
     const profilesMock = sb({
