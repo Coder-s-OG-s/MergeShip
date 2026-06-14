@@ -36,8 +36,9 @@ const TIER_LABEL: Record<'open' | 'closed' | 'merged', string> = {
 export default async function MaintainerPage({
   searchParams,
 }: {
-  searchParams: { install?: string; state?: string; verified?: string };
+  searchParams: Promise<{ install?: string; state?: string; verified?: string }>;
 }) {
+  const resolvedSearchParams = await searchParams;
   const sb = await getServerSupabase();
   if (!sb) {
     return <NotConfigured />;
@@ -58,21 +59,22 @@ export default async function MaintainerPage({
   }
 
   const activeInstallId =
-    searchParams.install && installs.find((i) => i.installationId === Number(searchParams.install))
-      ? Number(searchParams.install)
+    resolvedSearchParams.install &&
+    installs.find((i) => i.installationId === Number(resolvedSearchParams.install))
+      ? Number(resolvedSearchParams.install)
       : installs[0]!.installationId;
 
   const activeInstall = installs.find((i) => i.installationId === activeInstallId)!;
 
   const filters: { state?: ('open' | 'closed' | 'merged')[]; mentorVerified?: 'yes' | 'no' } = {};
-  if (searchParams.state) {
-    const parts = searchParams.state
+  if (resolvedSearchParams.state) {
+    const parts = resolvedSearchParams.state
       .split(',')
       .filter((s) => ['open', 'closed', 'merged'].includes(s)) as ('open' | 'closed' | 'merged')[];
     if (parts.length > 0) filters.state = parts;
   }
-  if (searchParams.verified === 'yes' || searchParams.verified === 'no') {
-    filters.mentorVerified = searchParams.verified;
+  if (resolvedSearchParams.verified === 'yes' || resolvedSearchParams.verified === 'no') {
+    filters.mentorVerified = resolvedSearchParams.verified;
   }
   if (!filters.state) filters.state = ['open']; // default
 
@@ -128,34 +130,34 @@ export default async function MaintainerPage({
         <div className="mb-4 flex flex-wrap gap-2 text-xs">
           <FilterPill
             label="Open"
-            href={withParam('state', 'open', searchParams)}
+            href={withParam('state', 'open', resolvedSearchParams)}
             active={filters.state?.includes('open') ?? false}
           />
           <FilterPill
             label="Merged"
-            href={withParam('state', 'merged', searchParams)}
+            href={withParam('state', 'merged', resolvedSearchParams)}
             active={filters.state?.includes('merged') ?? false}
           />
           <FilterPill
             label="Closed"
-            href={withParam('state', 'closed', searchParams)}
+            href={withParam('state', 'closed', resolvedSearchParams)}
             active={filters.state?.includes('closed') ?? false}
           />
           <span className="mx-2 text-zinc-700">|</span>
           <FilterPill
             label="Verified ✓"
-            href={withParam('verified', 'yes', searchParams)}
-            active={searchParams.verified === 'yes'}
+            href={withParam('verified', 'yes', resolvedSearchParams)}
+            active={resolvedSearchParams.verified === 'yes'}
           />
           <FilterPill
             label="Unverified"
-            href={withParam('verified', 'no', searchParams)}
-            active={searchParams.verified === 'no'}
+            href={withParam('verified', 'no', resolvedSearchParams)}
+            active={resolvedSearchParams.verified === 'no'}
           />
           <FilterPill
             label="All"
-            href={withParam('verified', '', searchParams)}
-            active={!searchParams.verified}
+            href={withParam('verified', '', resolvedSearchParams)}
+            active={!resolvedSearchParams.verified}
           />
           <div className="ml-auto flex items-center gap-2">
             <ExportCsvButton installationId={activeInstallId} filters={filters} />
