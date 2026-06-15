@@ -22,16 +22,50 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   let handle: string | null = null;
   let level = 0;
   let xp = 0;
+  let githubTotalMerges = 0;
+  let githubStreak = 0;
+  let openIssuesCount = 0;
+  let mentorHandle: string | null = null;
   const service = getServiceSupabase();
   if (service) {
     const { data: profile } = await service
       .from('profiles')
-      .select('github_handle, level, xp')
+      .select('github_handle, level, xp, github_total_merges, github_streak')
       .eq('id', user.id)
       .maybeSingle();
     handle = profile?.github_handle ?? null;
     level = profile?.level ?? 0;
     xp = profile?.xp ?? 0;
+    githubTotalMerges = (profile?.github_total_merges as number | null) ?? 0;
+    githubStreak = (profile?.github_streak as number | null) ?? 0;
+
+    // Count active issues
+    const { count } = await service
+      .from('recommendations')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .in('status', ['open', 'claimed']);
+    openIssuesCount = count ?? 0;
+
+    // Find assigned mentor
+    const { data: activeHelp } = await service
+      .from('help_requests')
+      .select('resolved_by')
+      .eq('user_id', user.id)
+      .in('status', ['open', 'escalated'])
+      .not('resolved_by', 'is', null)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (activeHelp?.resolved_by) {
+      const { data: mentorProfile } = await service
+        .from('profiles')
+        .select('github_handle')
+        .eq('id', activeHelp.resolved_by)
+        .maybeSingle();
+      mentorHandle = mentorProfile?.github_handle ?? null;
+    }
   }
 
   let isMaintainer = false;

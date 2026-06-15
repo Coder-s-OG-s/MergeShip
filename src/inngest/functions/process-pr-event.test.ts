@@ -270,3 +270,94 @@ describe('processPrEvent - awardRecommendedMerge XP capping', () => {
     );
   });
 });
+
+describe('processPrEvent - linkPrToClaim issues relation array', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const setupMock = (issuesArray: unknown) => {
+    const recommendationsMock = sb({
+      is: vi.fn().mockResolvedValue({
+        data: [
+          {
+            id: 1,
+            issue_id: 101,
+            issues: issuesArray,
+          },
+        ],
+      }),
+      update: vi.fn().mockReturnThis(),
+    });
+
+    const profilesMock = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'contributor-id' } }),
+    });
+
+    const pullRequestsMock = sb({
+      upsert: vi.fn().mockResolvedValue({ error: null }),
+    });
+
+    const installationRepositoriesMock = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { repo_full_name: 'owner/repo' } }),
+    });
+
+    wire({
+      recommendations: recommendationsMock,
+      profiles: profilesMock,
+      pull_requests: pullRequestsMock,
+      installation_repositories: installationRepositoriesMock,
+    });
+
+    return { recommendationsMock };
+  };
+
+  const evOpened = () => ({
+    data: {
+      payload: {
+        action: 'opened',
+        pull_request: {
+          id: 1234,
+          number: 1,
+          html_url: 'https://github.com/owner/repo/pull/1',
+          title: 'Fix issue',
+          body: 'Closes #123',
+          state: 'open',
+          draft: false,
+          merged: false,
+          merged_at: null,
+          closed_at: null,
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+          user: { login: 'contributor' },
+          base: { repo: { full_name: 'owner/repo' } },
+        },
+      },
+    },
+  });
+
+  it('handles issues relation returned as an array', async () => {
+    const { recommendationsMock } = setupMock([
+      { repo_full_name: 'owner/repo', github_issue_number: 123 },
+    ]);
+
+    await prRun({ event: evOpened(), step });
+
+    expect(recommendationsMock.update).toHaveBeenCalledWith(
+      expect.objectContaining({ linked_pr_url: 'https://github.com/owner/repo/pull/1' }),
+    );
+  });
+
+  it('handles issues relation returned as a single object', async () => {
+    const { recommendationsMock } = setupMock({
+      repo_full_name: 'owner/repo',
+      github_issue_number: 123,
+    });
+
+    await prRun({ event: evOpened(), step });
+
+    expect(recommendationsMock.update).toHaveBeenCalledWith(
+      expect.objectContaining({ linked_pr_url: 'https://github.com/owner/repo/pull/1' }),
+    );
+  });
+});

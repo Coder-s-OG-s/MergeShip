@@ -4,6 +4,7 @@ import { insertXpEvent } from '@/lib/xp/events';
 import { XP_SOURCE, xpForMerge, refIds, XP_REWARDS } from '@/lib/xp/sources';
 import { cacheDelByPrefix } from '@/lib/cache';
 import { buildPrRow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
+import { unwrapJoin } from '@/lib/supabase/inner-join';
 
 /**
  * Webhook handler for GitHub `pull_request` events.
@@ -170,10 +171,10 @@ async function linkPrToClaim(
     .is('linked_pr_url', null);
 
   for (const claim of claims ?? []) {
-    const raw = (claim as unknown as { issues: unknown }).issues;
-    const issue = Array.isArray(raw)
-      ? (raw[0] as { repo_full_name?: string; github_issue_number?: number } | undefined)
-      : (raw as { repo_full_name?: string; github_issue_number?: number } | undefined);
+    const issue = unwrapJoin<{ repo_full_name?: string; github_issue_number?: number }>(
+      (claim as unknown as { issues: unknown }).issues,
+    );
+
     if (!issue?.repo_full_name || typeof issue.github_issue_number !== 'number') continue;
     if (issue.repo_full_name === repo && issueRefs.includes(issue.github_issue_number)) {
       await sb.from('recommendations').update({ linked_pr_url: prUrl }).eq('id', claim.id);
@@ -317,10 +318,9 @@ async function tryLinkByIssueRef(
   for (const claim of claims ?? []) {
     // Supabase types the joined `issues` field as an array even for a
     // single-row !inner join. Normalise.
-    const raw = (claim as unknown as { issues: unknown }).issues;
-    const issue = Array.isArray(raw)
-      ? (raw[0] as { repo_full_name?: string; github_issue_number?: number } | undefined)
-      : (raw as { repo_full_name?: string; github_issue_number?: number } | undefined);
+    const issue = unwrapJoin<{ repo_full_name?: string; github_issue_number?: number }>(
+      (claim as unknown as { issues: unknown }).issues,
+    );
     if (!issue?.repo_full_name || typeof issue.github_issue_number !== 'number') continue;
     if (issue.repo_full_name === repo && issueRefs.includes(issue.github_issue_number)) {
       return (claim as { id: number }).id;

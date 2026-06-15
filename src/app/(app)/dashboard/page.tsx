@@ -12,6 +12,9 @@ import ActiveIssuesSection, { RecsSkeleton } from './active-issues';
 import GitHubPRsWrapper, { PrsSkeleton } from './github-prs-wrapper';
 import LeaderboardSnapshot, { LeaderboardSkeleton } from './leaderboard-snapshot';
 import MenteesSection, { MenteesSkeleton } from './mentees-section';
+import OnboardingChecklist from './onboarding-checklist';
+import TrendingRepos, { TrendingReposSkeleton } from './trending-repos';
+import RepositoryMatches, { RepositoryMatchesSkeleton } from './repository-matches';
 
 // New contributor-dashboard components
 import {
@@ -50,13 +53,36 @@ export default async function DashboardPage() {
 
   const { data: profile } = await service
     .from('profiles')
-    .select('github_handle, xp, level, github_total_merges, github_streak, github_stats_synced_at')
+    .select(
+      'github_handle, xp, level, github_total_merges, github_streak, github_stats_synced_at, primary_language',
+    )
     .eq('id', user.id)
     .maybeSingle();
 
   const xp = profile?.xp ?? 0;
   const level = profile?.level ?? 0;
   const githubHandle = profile?.github_handle ?? 'Contributor';
+
+  const { count: claimedCount } = await service
+    .from('recommendations')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .in('status', ['claimed', 'completed']);
+
+  const { count: prCount } = await service
+    .from('pull_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('author_user_id', user.id);
+
+  const githubConnected = Boolean(profile?.github_handle);
+
+  const hasClaimedIssue = (claimedCount ?? 0) > 0;
+
+  const hasSubmittedPr = (prCount ?? 0) > 0;
+
+  const showChecklist =
+    (profile?.github_total_merges ?? 0) === 0 &&
+    !(githubConnected && hasClaimedIssue && hasSubmittedPr);
 
   return (
     <div className="min-h-screen bg-[#0d1117] p-6 font-mono text-white md:p-10">
@@ -75,6 +101,14 @@ export default async function DashboardPage() {
           </div>
           <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} />
         </header>
+
+        {showChecklist && (
+          <OnboardingChecklist
+            githubConnected={githubConnected}
+            hasClaimedIssue={hasClaimedIssue}
+            hasSubmittedPr={hasSubmittedPr}
+          />
+        )}
 
         {/* Stats Row */}
         <Suspense fallback={<StatsSkeleton />}>
@@ -101,6 +135,14 @@ export default async function DashboardPage() {
             </Suspense>
             <Suspense fallback={<LeaderboardSkeleton />}>
               <LeaderboardSnapshot githubHandle={profile?.github_handle ?? ''} />
+            </Suspense>
+
+            {/* Repository Matches */}
+            <Suspense fallback={<RepositoryMatchesSkeleton />}>
+              <RepositoryMatches
+                userId={user.id}
+                primaryLanguage={profile?.primary_language ?? null}
+              />
             </Suspense>
           </div>
         </div>
