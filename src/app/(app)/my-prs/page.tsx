@@ -287,7 +287,17 @@ export default async function MyPRsPage() {
   const prsMerged = enrichedPRs.filter((pr) => pr.state === 'merged').length;
   const prsTotal = enrichedPRs.length;
   const successRate = prsTotal > 0 ? Math.round((prsMerged / prsTotal) * 100) : 0;
-  const avgReviewDays = 2.3;
+  const mergedWithDates = enrichedPRs.filter(
+    (pr) => pr.state === 'merged' && pr.github_created_at && pr.merged_at,
+  );
+  const avgMergeDays =
+    mergedWithDates.length > 0
+      ? mergedWithDates.reduce((sum, pr) => {
+          const created = new Date(pr.github_created_at).getTime();
+          const merged = new Date(pr.merged_at!).getTime();
+          return sum + (merged - created) / (1000 * 60 * 60 * 24);
+        }, 0) / mergedWithDates.length
+      : null;
 
   const levelFloor = xpForLevel(level);
   const levelCeiling = xpForLevel(level + 1);
@@ -348,10 +358,17 @@ export default async function MyPRsPage() {
 
           <div className="mb-5 border-t border-[#2d333b] pt-5">
             <div className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
-              Avg Review Time
+              Avg Time to Merge
             </div>
-            <div className="font-sans text-[24px] font-black leading-none text-white">
-              {avgReviewDays} days
+            <div className="flex items-baseline gap-1 font-sans text-[24px] font-black leading-none text-white">
+              {avgMergeDays !== null ? (
+                <>
+                  <span>{avgMergeDays.toFixed(1)}</span>
+                  <span className="text-[14px] font-medium text-zinc-400">days</span>
+                </>
+              ) : (
+                'N/A'
+              )}
             </div>
           </div>
 
