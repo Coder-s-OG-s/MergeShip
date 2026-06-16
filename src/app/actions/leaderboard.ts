@@ -16,6 +16,8 @@ export type LeaderboardEntry = {
   avatarUrl: string | null;
   xp: number;
   level: number;
+  githubTotalMerges: number;
+  githubStreak: number;
 };
 
 const TTL = 60 * 10;
@@ -44,19 +46,21 @@ export async function getLeaderboard(
     avatar_url: string | null;
     xp: number;
     level: number;
+    github_total_merges: number;
+    github_streak: number;
   }[] = [];
 
   if (!cached) {
     if (scope === 'global') {
       rows = (await db.execute(sql`
-      select id, github_handle, display_name, avatar_url, xp, level
+      select id, github_handle, display_name, avatar_url, xp, level, github_total_merges, github_streak
       from profiles
       order by xp desc
       limit ${limit}
     `)) as unknown as typeof rows;
     } else if (scope === 'cohort' && scopeId) {
       rows = (await db.execute(sql`
-      select p.id, p.github_handle, p.display_name, p.avatar_url, p.xp, p.level
+      select p.id, p.github_handle, p.display_name, p.avatar_url, p.xp, p.level, p.github_total_merges, p.github_streak
       from profiles p
       join cohort_members cm on cm.user_id = p.id
       join cohorts c on c.id = cm.cohort_id
@@ -66,7 +70,7 @@ export async function getLeaderboard(
     `)) as unknown as typeof rows;
     } else if (scope === 'language' && scopeId) {
       rows = (await db.execute(sql`
-      select id, github_handle, display_name, avatar_url, xp, level
+      select id, github_handle, display_name, avatar_url, xp, level, github_total_merges, github_streak
       from profiles
       where primary_language = ${scopeId}
       order by xp desc
@@ -74,7 +78,7 @@ export async function getLeaderboard(
     `)) as unknown as typeof rows;
     } else if (scope === 'tag' && scopeId) {
       rows = (await db.execute(sql`
-      select p.id, p.github_handle, p.display_name, p.avatar_url, p.xp, p.level
+      select p.id, p.github_handle, p.display_name, p.avatar_url, p.xp, p.level, p.github_total_merges, p.github_streak
       from profiles p
       join profile_tags pt on pt.user_id = p.id
       where pt.tag = ${scopeId}
@@ -97,6 +101,8 @@ export async function getLeaderboard(
       avatarUrl: r.avatar_url,
       xp: r.xp,
       level: r.level,
+      githubTotalMerges: r.github_total_merges,
+      githubStreak: r.github_streak,
     }));
 
     await cacheSet(cacheKey, entries, TTL);
@@ -147,14 +153,14 @@ where id = ${user.id}
 
         if (scope === 'global') {
           userQuery = sql`
-    select id, github_handle, display_name, avatar_url, xp, level
+    select id, github_handle, display_name, avatar_url, xp, level, github_total_merges, github_streak
     from profiles
     where id = ${user.id}
     limit 1
   `;
         } else if (scope === 'language' && scopeId) {
           userQuery = sql`
-    select id, github_handle, display_name, avatar_url, xp, level
+    select id, github_handle, display_name, avatar_url, xp, level, github_total_merges, github_streak
     from profiles
     where id = ${user.id}
       and primary_language = ${scopeId}
@@ -172,6 +178,8 @@ where id = ${user.id}
             avatar_url: string | null;
             xp: number;
             level: number;
+            github_total_merges: number;
+            github_streak: number;
           }[];
 
           const current = userRows[0];
@@ -185,6 +193,8 @@ where id = ${user.id}
               avatarUrl: current.avatar_url,
               xp: current.xp,
               level: current.level,
+              githubTotalMerges: current.github_total_merges,
+              githubStreak: current.github_streak,
             };
           }
         }

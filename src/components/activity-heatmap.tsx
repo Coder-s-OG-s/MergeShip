@@ -7,9 +7,10 @@ type ActivityDay = {
 
 interface ActivityHeatmapProps {
   activityHistory: ActivityDay[];
+  allTimeContributions: number;
 }
 
-export function ActivityHeatmap({ activityHistory }: ActivityHeatmapProps) {
+export function ActivityHeatmap({ activityHistory, allTimeContributions }: ActivityHeatmapProps) {
   // Convert history array to a lookup map
   const activityMap = new Map<string, number>();
   for (const item of activityHistory) {
@@ -20,15 +21,15 @@ export function ActivityHeatmap({ activityHistory }: ActivityHeatmapProps) {
   today.setHours(0, 0, 0, 0);
 
   // Display exactly 53 columns (weeks), each with 7 rows (Sunday to Saturday).
-  // Find the Sunday of the week that was 52 weeks ago.
-  const currentDayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  // Find the Sunday of the week containing today.
+  const currentDayOfWeek = today.getDay(); // 0 = Sunday
   const startOfCurrentWeek = new Date(today);
   startOfCurrentWeek.setDate(today.getDate() - currentDayOfWeek);
 
   const startDate = new Date(startOfCurrentWeek);
   startDate.setDate(startOfCurrentWeek.getDate() - 52 * 7); // 52 weeks ago Sunday
 
-  // Generate 371 days (53 weeks)
+  // Generate 371 days (53 weeks × 7 days)
   const days: { dateStr: string; count: number; isFuture: boolean; label: string }[] = [];
   const runningDate = new Date(startDate);
 
@@ -52,62 +53,132 @@ export function ActivityHeatmap({ activityHistory }: ActivityHeatmapProps) {
     runningDate.setDate(runningDate.getDate() + 1);
   }
 
-  // Calculate stats for the summary
-  const totalContributions = activityHistory.reduce((sum, item) => sum + item.count, 0);
+  // Calculate last-year contributions (for the "X Contributions" subtitle)
+  const oneYearAgo = new Date(startDate);
+  const lastYearContributions = activityHistory
+    .filter((d) => d.date >= oneYearAgo.toISOString().slice(0, 10))
+    .reduce((sum, d) => sum + d.count, 0);
 
-  function getColorClass(count: number, isFuture: boolean) {
-    if (isFuture) return 'bg-transparent cursor-default';
-    if (count === 0) return 'bg-[#161b22] border border-[#21262d] hover:border-zinc-500';
-    if (count === 1)
-      return 'bg-emerald-900/60 border border-emerald-800/40 hover:border-emerald-600';
-    if (count <= 3) return 'bg-emerald-800 border border-emerald-700/60 hover:border-emerald-500';
-    if (count <= 5) return 'bg-emerald-600 border border-emerald-500/80 hover:border-emerald-400';
-    return 'bg-emerald-400 border border-emerald-300 hover:border-white';
+  // Build month labels: for each week column (53 total), determine the month of its first day
+  // We want to place a month label at the leftmost column of each new month
+  const monthLabels: { col: number; label: string }[] = [];
+  let lastMonth = -1;
+  for (let col = 0; col < 53; col++) {
+    const colStart = new Date(startDate);
+    colStart.setDate(startDate.getDate() + col * 7);
+    const month = colStart.getMonth();
+    if (month !== lastMonth) {
+      monthLabels.push({
+        col,
+        label: colStart.toLocaleDateString('en-US', { month: 'short' }),
+      });
+      lastMonth = month;
+    }
   }
 
+  // GitHub-style green color scale
+  function getColor(count: number, isFuture: boolean): string {
+    if (isFuture) return 'bg-transparent cursor-default';
+    if (count === 0)
+      return 'bg-[#161b22] border border-[#21262d] hover:border-zinc-500 cursor-default';
+    if (count === 1) return 'bg-[#0e4429] border border-[#196c2e]/60 hover:border-[#39d353]/60';
+    if (count <= 3) return 'bg-[#006d32] border border-[#26a641]/60 hover:border-[#39d353]/80';
+    if (count <= 6) return 'bg-[#26a641] border border-[#39d353]/60 hover:border-[#39d353]';
+    return 'bg-[#39d353] border border-[#39d353]/80 hover:border-white';
+  }
+
+  // Cell size
+  const CELL = 11; // px
+  const GAP = 2; // px
+  const CELL_FULL = CELL + GAP; // 13px per cell
+
   return (
-    <div className="border border-[#21262d] bg-[#161b22]/50 p-6">
-      <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-        <div>
-          <h3 className="font-mono text-[11px] uppercase tracking-widest text-zinc-400">
-            Activity Timeline (Last Year)
-          </h3>
-          <p className="mt-1 font-serif text-lg font-bold text-white">
-            {totalContributions} Contributions
-          </p>
-        </div>
-        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-          <span>Less</span>
-          <div className="h-3 w-3 rounded-sm border border-[#21262d] bg-[#161b22]" />
-          <div className="h-3 w-3 rounded-sm border border-emerald-800/40 bg-emerald-900/60" />
-          <div className="h-3 w-3 rounded-sm border border-emerald-700/60 bg-emerald-800" />
-          <div className="h-3 w-3 rounded-sm border border-emerald-500/80 bg-emerald-600" />
-          <div className="h-3 w-3 rounded-sm border border-emerald-300 bg-emerald-400" />
-          <span>More</span>
-        </div>
-      </div>
+    <div>
+      {/* All-time count above the card — matches design */}
+      <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-zinc-500">
+        All-Time Contributions:{' '}
+        <span className="text-[#39d353]">{allTimeContributions.toLocaleString()}</span>
+      </p>
 
-      <div className="flex gap-3 overflow-x-auto pb-2 font-mono">
-        {/* Weekday labels column */}
-        <div className="grid h-[105px] select-none grid-rows-7 pr-1 text-[9px] font-bold text-zinc-600">
-          <div className="flex items-center justify-end" />
-          <div className="flex items-center justify-end">Mon</div>
-          <div className="flex items-center justify-end" />
-          <div className="flex items-center justify-end">Wed</div>
-          <div className="flex items-center justify-end" />
-          <div className="flex items-center justify-end">Fri</div>
-          <div className="flex items-center justify-end" />
+      {/* Card */}
+      <div className="border border-[#21262d] bg-[#161b22]/50 p-5">
+        {/* Header row */}
+        <div className="mb-3 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+          <div>
+            <h3 className="font-mono text-[11px] uppercase tracking-widest text-zinc-400">
+              Activity Timeline (Last Year)
+            </h3>
+            <p className="mt-1 font-serif text-lg font-bold text-white">
+              {lastYearContributions.toLocaleString()} Contributions
+            </p>
+          </div>
+          {/* Legend */}
+          <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+            <span>Less</span>
+            <div className="h-[11px] w-[11px] rounded-sm border border-[#21262d] bg-[#161b22]" />
+            <div className="h-[11px] w-[11px] rounded-sm border border-[#196c2e]/60 bg-[#0e4429]" />
+            <div className="h-[11px] w-[11px] rounded-sm border border-[#26a641]/60 bg-[#006d32]" />
+            <div className="h-[11px] w-[11px] rounded-sm border border-[#39d353]/60 bg-[#26a641]" />
+            <div className="h-[11px] w-[11px] rounded-sm border border-[#39d353]/80 bg-[#39d353]" />
+            <span>More</span>
+          </div>
         </div>
 
-        {/* Heatmap Grid */}
-        <div className="grid h-[105px] grid-flow-col grid-rows-7 gap-1">
-          {days.map((day) => (
+        <div className="overflow-x-auto pb-1">
+          <div className="inline-block font-mono">
+            {/* Month labels row */}
             <div
-              key={day.dateStr}
-              className={`h-3.5 w-3.5 rounded-sm transition-colors duration-150 ${getColorClass(day.count, day.isFuture)}`}
-              title={day.label}
-            />
-          ))}
+              className="relative mb-1 ml-8"
+              style={{ width: `${53 * CELL_FULL - GAP}px`, height: '16px' }}
+            >
+              {monthLabels.map(({ col, label }) => (
+                <span
+                  key={`${col}-${label}`}
+                  className="absolute text-[10px] uppercase tracking-widest text-zinc-500"
+                  style={{ left: `${col * CELL_FULL}px` }}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+
+            {/* Grid with weekday labels */}
+            <div className="flex gap-1.5">
+              {/* Weekday labels */}
+              <div
+                className="flex select-none flex-col justify-between text-right text-[9px] font-bold text-zinc-600"
+                style={{ width: '24px', height: `${7 * CELL_FULL - GAP}px` }}
+              >
+                <span className="invisible">Sun</span>
+                <span>Mon</span>
+                <span className="invisible">Tue</span>
+                <span>Wed</span>
+                <span className="invisible">Thu</span>
+                <span>Fri</span>
+                <span className="invisible">Sat</span>
+              </div>
+
+              {/* Heatmap Grid: column-major (each week is a column) */}
+              <div
+                className="grid grid-flow-col"
+                style={{
+                  gridTemplateRows: `repeat(7, ${CELL}px)`,
+                  gap: `${GAP}px`,
+                  width: `${53 * CELL_FULL - GAP}px`,
+                  height: `${7 * CELL_FULL - GAP}px`,
+                }}
+              >
+                {days.map((day) => (
+                  <div
+                    key={day.dateStr}
+                    className={`rounded-sm transition-colors duration-150 ${getColor(day.count, day.isFuture)}`}
+                    style={{ width: `${CELL}px`, height: `${CELL}px` }}
+                    title={day.label}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
