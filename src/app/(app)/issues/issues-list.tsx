@@ -2,6 +2,7 @@
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useState, useTransition, useCallback, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { Search, ExternalLink, ChevronLeft, ChevronRight, Copy, Check } from 'lucide-react';
 import {
   claimIssue,
@@ -95,14 +96,12 @@ function IssueCard({
         </span>
       </div>
 
-      <a
-        href={issue.url}
-        target="_blank"
-        rel="noopener noreferrer"
+      <Link
+        href={`/issues/${issue.id}`}
         className="mb-3 block font-serif text-xl leading-snug text-white hover:text-zinc-300"
       >
         {issue.title}
-      </a>
+      </Link>
 
       {issue.labels && issue.labels.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
