@@ -47,7 +47,7 @@ export default async function InstallPage() {
       .is('uninstalled_at', null)
       .order('installed_at', { ascending: false })
       .limit(1);
-    if (linkedRows && linkedRows.length > 0) redirect('/dashboard');
+    if (linkedRows && linkedRows.length > 0) redirect('/onboarding/analyze');
 
     // 2. Row exists by account_login but user_id is null or stale → link it
     //    to the current user. Covers orphans from pre-bootstrap webhooks and
@@ -92,7 +92,7 @@ export default async function InstallPage() {
           },
         });
       }
-      redirect('/dashboard');
+      redirect('/onboarding/analyze');
     }
   }
 

@@ -13,6 +13,8 @@ import GitHubPRsWrapper, { PrsSkeleton } from './github-prs-wrapper';
 import LeaderboardSnapshot, { LeaderboardSkeleton } from './leaderboard-snapshot';
 import MenteesSection, { MenteesSkeleton } from './mentees-section';
 import OnboardingChecklist from './onboarding-checklist';
+import TrendingRepos, { TrendingReposSkeleton } from './trending-repos';
+import RepositoryMatches, { RepositoryMatchesSkeleton } from './repository-matches';
 
 // New contributor-dashboard components
 import {
@@ -51,7 +53,9 @@ export default async function DashboardPage() {
 
   const { data: profile } = await service
     .from('profiles')
-    .select('github_handle, xp, level, github_total_merges, github_streak, github_stats_synced_at')
+    .select(
+      'github_handle, xp, level, github_total_merges, github_streak, github_stats_synced_at, primary_language',
+    )
     .eq('id', user.id)
     .maybeSingle();
 
@@ -112,11 +116,13 @@ export default async function DashboardPage() {
         </Suspense>
 
         {/* Three-column layout */}
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[260px_1fr_260px]">
+        <div className="grid grid-cols-1 gap-16 xl:grid-cols-3">
           {/* ── Left Sidebar ── */}
-          <Suspense fallback={<ProfileSidebarSkeleton />}>
-            <ProfileSidebar githubHandle={githubHandle} xp={xp} level={level} />
-          </Suspense>
+          <div className="space-y-12">
+            <Suspense fallback={<ProfileSidebarSkeleton />}>
+              <ProfileSidebar githubHandle={githubHandle} xp={xp} level={level} />
+            </Suspense>
+          </div>
 
           {/* ── Center Feed ── */}
           <main className="min-w-0 space-y-12">
@@ -155,6 +161,11 @@ export default async function DashboardPage() {
             <Suspense fallback={<MenteesSkeleton />}>
               <MenteesSection userId={user.id} />
             </Suspense>
+
+            {/* Trending Repos */}
+            <Suspense fallback={<TrendingReposSkeleton />}>
+              <TrendingRepos />
+            </Suspense>
           </main>
 
           {/* ── Right Sidebar ── */}
@@ -166,6 +177,14 @@ export default async function DashboardPage() {
             {/* Leaderboard */}
             <Suspense fallback={<LeaderboardSkeleton />}>
               <LeaderboardSnapshot githubHandle={githubHandle} />
+            </Suspense>
+
+            {/* Repository Matches */}
+            <Suspense fallback={<RepositoryMatchesSkeleton />}>
+              <RepositoryMatches
+                userId={user.id}
+                primaryLanguage={profile?.primary_language ?? null}
+              />
             </Suspense>
           </div>
         </div>

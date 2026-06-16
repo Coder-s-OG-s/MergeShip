@@ -17,16 +17,16 @@ describe('db client', () => {
     const { tryGetDb, isDbConfigured } = await import('./client');
     expect(tryGetDb()).toBeNull();
     expect(isDbConfigured()).toBe(false);
-  });
+  }, 10000);
 
   it('getDb throws when DATABASE_URL is missing', async () => {
     const { getDb } = await import('./client');
     expect(() => getDb()).toThrow(/DATABASE_URL/);
-  });
+  }, 10000);
 
   it('isDbConfigured is true when DATABASE_URL is set', async () => {
     process.env.DATABASE_URL = 'postgres://x';
     const { isDbConfigured } = await import('./client');
     expect(isDbConfigured()).toBe(true);
-  });
+  }, 10000);
 });

@@ -1,6 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { filterAndRank, type ScoredIssue, type SkipCounts } from '@/lib/pipeline/recommend';
+import { unwrapJoin } from '@/lib/supabase/inner-join';
 import { SKIP_HISTORY_WINDOW_DAYS } from '@/lib/pipeline/constants';
 
 /**
@@ -75,10 +76,12 @@ export const recommendationsBuild = inngest.createFunction(
       const skipHistoryMap: Record<string, SkipCounts> = {};
       for (const row of skipsData ?? []) {
         const userId = row.user_id;
-        const issue = row.issues as unknown as {
+        const issue = unwrapJoin<{
           repo_full_name: string;
           repo_language: string | null;
-        };
+        }>((row as unknown as { issues: unknown }).issues);
+
+        if (!issue?.repo_full_name) continue;
 
         if (!skipHistoryMap[userId]) {
           skipHistoryMap[userId] = { byRepo: {}, byLanguage: {} };
