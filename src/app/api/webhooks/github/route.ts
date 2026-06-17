@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { verifyWebhookSignature } from '@/lib/github/webhook-verify';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { inngest } from '@/inngest/client';
-
+import { rateLimit } from '@/lib/rate-limit';
 /**
  * GitHub App webhook receiver.
  *
@@ -33,6 +33,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid signature' }, { status: 401 });
   }
 
+  const payload = JSON.parse(raw);
+
+  const installationId = payload.installation?.id;
+
+  if (installationId) {
+    const limited = await rateLimit({
+      namespace: 'webhook',
+      key: String(installationId),
+      limit: 100,
+      windowSec: 60,
+    });
+
+    if (!limited.ok) {
+      return NextResponse.json({ error: 'too many requests' }, { status: 429 });
+    }
+  }
+
   const payloadHash = crypto.createHash('sha256').update(raw).digest('hex');
   const supabase = getServiceSupabase();
   if (!supabase) {
@@ -52,23 +69,23 @@ export async function POST(req: NextRequest) {
     if (insertErr.code === '23505') {
       duplicate = true;
     } else {
-      return NextResponse.json(
-        {
-          error: 'persist failed',
-          code: insertErr.code,
-          message: insertErr.message,
-          details: insertErr.details,
-          hint: insertErr.hint,
-        },
-        { status: 500 },
-      );
+      // Log the full Supabase error server-side for ops visibility.
+      // The client receives only a generic message so internal database
+      // schema details (error code, details, hint) are never exposed.
+      console.error('[webhook] failed to persist delivery', {
+        code: insertErr.code,
+        message: insertErr.message,
+        details: insertErr.details,
+        hint: insertErr.hint,
+      });
+      return NextResponse.json({ error: 'internal server error' }, { status: 500 });
     }
   }
 
   try {
     await inngest.send({
       name: `github/${eventType}`,
-      data: { deliveryId, eventType, payload: JSON.parse(raw) },
+      data: { deliveryId, eventType, payload },
     });
   } catch (e) {
     // Delivery row is already persisted; downstream processing can be replayed

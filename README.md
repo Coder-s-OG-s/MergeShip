@@ -59,18 +59,38 @@ The codebase follows a domain-driven design structure:
 
 Works on macOS, Linux, and Windows (WSL2). Full step-by-step in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-```bash
-git clone https://github.com/Coder-s-OG-s/MergeShip.git
-cd MergeShip
-npm install
-cp .env.example .env.local
-make supabase-start        # boots local Postgres + Auth in Docker
-# paste ANON_KEY and SERVICE_ROLE_KEY from the output into .env.local
-make db-reset              # migrations + seeded personas
-npm run dev                # http://localhost:3001
-```
-
-Open `http://localhost:3001/dev/login` and click any persona to sign in. No GitHub OAuth or external accounts required for local work.
+1. **Verify Prerequisites:** Ensure you have Node.js 20+ and Docker installed and running.
+2. **Clone the repository:**
+   ```bash
+   git clone https://github.com/Coder-s-OG-s/MergeShip.git
+   cd MergeShip
+   ```
+3. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+4. **Set up environment variables:**
+   ```bash
+   cp .env.example .env.local
+   ```
+5. **Start Supabase:** (Local Postgres + Auth Studio)
+   ```bash
+   make supabase-start
+   ```
+6. **Configure Keys:** Copy the `ANON_KEY` and `SERVICE_ROLE_KEY` from the previous command's output into your `.env.local` file.
+7. **Initialize Database:** Run migrations and auto-seed personas.
+   ```bash
+   make db-reset
+   ```
+8. **Start Redis:** (Optional, will fall back to in-memory if skipped)
+   ```bash
+   make redis-start
+   ```
+9. **Start Development Server:**
+   ```bash
+   npm run dev
+   ```
+10. **Sign In:** Open [http://localhost:3001/dev/login](http://localhost:3001/dev/login) and click any persona to sign in. No GitHub OAuth or external accounts are required for local work.
 
 For prerequisites, troubleshooting, and the full contributor workflow, read [CONTRIBUTING.md](./CONTRIBUTING.md).
 
@@ -93,6 +113,30 @@ We maintain a high engineering bar: strict TypeScript, zero lint warnings, and 8
 - [Deployment Guide](./docs/deployment.md) — production setup (Vercel + real Supabase + GitHub App)
 - [AI Usage Policy](./docs/ai-usage-policy.md)
 - [Code of Conduct](./CODE_OF_CONDUCT.md)
+
+## Contributors
+
+Thanks to all the amazing people who contribute to **MergeShip** 🚀
+
+<p align="center">
+  <a href="https://github.com/Coder-s-OG-s/MergeShip/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=Coder-s-OG-s/MergeShip" alt="Contributors"/>
+  </a>
+</p>
+
+<br>
+
+## Project Support
+
+<p align="center">
+  <a href="https://github.com/Coder-s-OG-s/MergeShip/stargazers">
+    <img src="https://img.shields.io/github/stars/Coder-s-OG-s/MergeShip" alt="Stars">
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/Coder-s-OG-s/MergeShip/network/members">
+    <img src="https://img.shields.io/github/forks/Coder-s-OG-s/MergeShip?style=social" alt="Forks">
+  </a>
+</p>
 
 ## License
 

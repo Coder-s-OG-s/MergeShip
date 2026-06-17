@@ -2,8 +2,9 @@ import { notFound } from 'next/navigation';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, ArrowLeft } from 'lucide-react';
 import { CopyButton } from '@/components/copy-button';
+import { ActivityHeatmap } from '@/components/activity-heatmap';
 
 export const revalidate = 300;
 
@@ -28,6 +29,32 @@ function timeAgo(dateStr: string): string {
   if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
   const months = Math.floor(days / 30);
   return `${months} month${months > 1 ? 's' : ''} ago`;
+}
+function formatJoinDate(dateStr: string): string {
+  const joined = new Date(dateStr);
+  const now = new Date();
+
+  const diffMs = now.getTime() - joined.getTime();
+  const days = Math.floor(diffMs / 86400000);
+
+  if (days === 0) {
+    return 'Joined today';
+  }
+
+  if (days < 30) {
+    return `Joined ${days} day${days > 1 ? 's' : ''} ago`;
+  }
+
+  const months = Math.floor(days / 30);
+
+  if (months < 12) {
+    return `Joined ${months} month${months > 1 ? 's' : ''} ago`;
+  }
+
+  return `Joined ${joined.toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  })}`;
 }
 
 type Achievement = {
@@ -59,10 +86,17 @@ type ActiveTask = {
   difficulty: string | null;
 };
 
+type ActivityDay = {
+  date: string;
+  count: number;
+};
+
 type ProfileData = {
+  profileId: string;
   githubHandle: string;
   displayName: string | null;
   avatarUrl: string | null;
+  joinedAt: string;
   level: number;
   xp: number;
   prsMerged: number;
@@ -73,19 +107,24 @@ type ProfileData = {
   timeline: TimelineEvent[];
   orgs: OrgEntry[];
   activeTasks: ActiveTask[];
+  activityHistory: ActivityDay[];
+  allTimeContributions: number;
 };
 
 async function loadProfileData(handle: string): Promise<ProfileData | null> {
-  const cacheKey = `profile:v2:${handle}`;
+  const cacheKey = `profile:v3:${handle}`;
   const cached = await cacheGet<ProfileData>(cacheKey);
-  if (cached) return cached;
-
+  if (cached) {
+    const { getPublicStreak } = await import('@/app/actions/streak');
+    const { days: streakDays } = await getPublicStreak(cached.profileId);
+    return { ...cached, streakDays };
+  }
   const service = getServiceSupabase();
   if (!service) return null;
 
   const { data: profile } = await service
     .from('profiles')
-    .select('id, github_handle, display_name, avatar_url, level, xp, github_streak')
+    .select('id, github_handle, display_name, avatar_url, level, xp, github_streak, created_at')
     .eq('github_handle', handle)
     .maybeSingle();
 
@@ -99,6 +138,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     claimedRecsResult,
     recentPRsResult,
     recentRecsResult,
+    activityResult,
   ] = await Promise.all([
     // Merged PRs count
     service
@@ -144,6 +184,13 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
       .in('status', ['claimed', 'completed'])
       .order('claimed_at', { ascending: false })
       .limit(5),
+
+    // All-time public activity from xp_events (no date filter) for all-time contribution count
+    service
+      .from('xp_events')
+      .select('created_at')
+      .eq('user_id', profile.id)
+      .in('source', ['recommended_merge', 'unrecommended_merge', 'help_review']),
   ]);
 
   const prsMerged = prsResult.count ?? 0;
@@ -245,10 +292,25 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
   const { getPublicStreak } = await import('@/app/actions/streak');
   const { days: streakDays } = await getPublicStreak(profile.id);
 
+  // Group all events by day in UTC (all-time)
+  const activityMap: Record<string, number> = {};
+  let allTimeContributions = 0;
+  for (const event of activityResult.data ?? []) {
+    const dateStr = new Date(event.created_at).toISOString().slice(0, 10);
+    activityMap[dateStr] = (activityMap[dateStr] || 0) + 1;
+    allTimeContributions++;
+  }
+  const activityHistory = Object.entries(activityMap).map(([date, count]) => ({
+    date,
+    count,
+  }));
+
   const data: ProfileData = {
+    profileId: profile.id,
     githubHandle: profile.github_handle,
     displayName: profile.display_name,
     avatarUrl: profile.avatar_url,
+    joinedAt: profile.created_at,
     level: profile.level,
     xp: profile.xp,
     prsMerged,
@@ -259,6 +321,8 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     timeline,
     orgs,
     activeTasks,
+    activityHistory,
+    allTimeContributions,
   };
 
   await cacheSet(cacheKey, data, 300);
@@ -283,8 +347,33 @@ const EVENT_DOT: Record<string, string> = {
 
 const DIFFICULTY_LABEL: Record<string, string> = { E: 'L1', M: 'L2', H: 'L3' };
 
-export default async function PublicProfile({ params }: { params: { handle: string } }) {
-  const handle = decodeURIComponent(params.handle).replace(/^@/, '');
+export async function generateMetadata({ params }: { params: Promise<{ handle: string }> }) {
+  const resolvedParams = await params;
+  const handle = decodeURIComponent(resolvedParams.handle).replace(/^@/, '');
+
+  const profile = await loadProfileData(handle);
+
+  if (!profile) {
+    return {
+      title: 'Profile not found | MergeShip',
+      description: 'This profile does not exist.',
+    };
+  }
+
+  return {
+    title: `${profile.displayName ?? profile.githubHandle} | MergeShip`,
+    description: `Level ${profile.level} • ${profile.xp} XP • ${profile.prsMerged} PRs merged`,
+    openGraph: {
+      title: `${profile.displayName ?? profile.githubHandle} | MergeShip`,
+      description: `Level ${profile.level} • ${profile.xp} XP • ${profile.prsMerged} PRs merged`,
+      images: [profile.avatarUrl ?? `https://github.com/${profile.githubHandle}.png`],
+    },
+  };
+}
+
+export default async function PublicProfile({ params }: { params: Promise<{ handle: string }> }) {
+  const resolvedParams = await params;
+  const handle = decodeURIComponent(resolvedParams.handle).replace(/^@/, '');
   const profile = await loadProfileData(handle);
   if (!profile) notFound();
 
@@ -293,12 +382,23 @@ export default async function PublicProfile({ params }: { params: { handle: stri
       {/* Top nav */}
       <nav className="border-b border-[#21262d] px-8 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <Link
-            href="/dashboard"
-            className="font-serif text-lg font-bold tracking-widest text-white"
-          >
-            MERGESHIP
-          </Link>
+          <div className="flex items-center">
+            <Link
+              href="/dashboard"
+              className="mr-4 inline-flex items-center gap-2 rounded-md px-3 py-1 text-[12px] uppercase tracking-widest text-zinc-400 transition-colors hover:bg-[#161b22] hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Link>
+
+            <Link
+              href="/dashboard"
+              className="font-serif text-lg font-bold tracking-widest text-white"
+            >
+              MERGESHIP
+            </Link>
+          </div>
+
           <Link
             href={`https://github.com/${profile.githubHandle}`}
             target="_blank"
@@ -343,6 +443,9 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                   <CopyButton
                     textToCopy={`${process.env.NEXT_PUBLIC_APP_URL ?? 'https://mergeship.dev'}/@${profile.githubHandle}`}
                   />
+                </p>
+                <p className="mb-3 text-[11px] uppercase tracking-widest text-zinc-600">
+                  {formatJoinDate(profile.joinedAt)}
                 </p>
                 <div className="flex flex-wrap items-center gap-4 text-[11px] uppercase tracking-widest text-zinc-400">
                   <span>
@@ -471,6 +574,14 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                 </div>
               </div>
             </div>
+
+            {/* Activity Heatmap */}
+            <div className="border-t border-[#21262d] pt-8">
+              <ActivityHeatmap
+                activityHistory={profile.activityHistory}
+                allTimeContributions={profile.allTimeContributions}
+              />
+            </div>
           </div>
 
           {/* Right: Orgs + Active Tasks */}
@@ -522,6 +633,7 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                           href={task.url}
                           target="_blank"
                           rel="noopener noreferrer"
+                          aria-label={`Open ${task.repoFullName} #${task.issueNumber} on GitHub`}
                           className="text-zinc-500 hover:text-zinc-300"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
