@@ -49,19 +49,22 @@ export async function getLeaderboard(
       level: number;
       github_total_merges: number;
       github_streak: number;
+      rank: string | number;
     }[] = [];
 
     if (!cached) {
       if (scope === 'global') {
         rows = (await db.execute(sql`
-        select id, github_handle, display_name, avatar_url, xp, level, github_total_merges, github_streak
+        select id, github_handle, display_name, avatar_url, xp, level, github_total_merges, github_streak,
+               dense_rank() over (order by xp desc) as rank
         from profiles
         order by xp desc
         limit ${limit}
       `)) as unknown as typeof rows;
       } else if (scope === 'cohort' && scopeId) {
         rows = (await db.execute(sql`
-        select p.id, p.github_handle, p.display_name, p.avatar_url, p.xp, p.level, p.github_total_merges, p.github_streak
+        select p.id, p.github_handle, p.display_name, p.avatar_url, p.xp, p.level, p.github_total_merges, p.github_streak,
+               dense_rank() over (order by p.xp desc) as rank
         from profiles p
         join cohort_members cm on cm.user_id = p.id
         join cohorts c on c.id = cm.cohort_id
@@ -71,7 +74,8 @@ export async function getLeaderboard(
       `)) as unknown as typeof rows;
       } else if (scope === 'language' && scopeId) {
         rows = (await db.execute(sql`
-        select id, github_handle, display_name, avatar_url, xp, level, github_total_merges, github_streak
+        select id, github_handle, display_name, avatar_url, xp, level, github_total_merges, github_streak,
+               dense_rank() over (order by xp desc) as rank
         from profiles
         where primary_language = ${scopeId}
         order by xp desc
@@ -79,7 +83,8 @@ export async function getLeaderboard(
       `)) as unknown as typeof rows;
       } else if (scope === 'tag' && scopeId) {
         rows = (await db.execute(sql`
-        select p.id, p.github_handle, p.display_name, p.avatar_url, p.xp, p.level, p.github_total_merges, p.github_streak
+        select p.id, p.github_handle, p.display_name, p.avatar_url, p.xp, p.level, p.github_total_merges, p.github_streak,
+               dense_rank() over (order by p.xp desc) as rank
         from profiles p
         join profile_tags pt on pt.user_id = p.id
         where pt.tag = ${scopeId}
@@ -94,8 +99,8 @@ export async function getLeaderboard(
         ? rows
         : (rows as unknown as { rows: typeof rows }).rows;
 
-      entries = list.map((r, i) => ({
-        rank: i + 1,
+      entries = list.map((r) => ({
+        rank: Number(r.rank),
         userId: r.id,
         githubHandle: r.github_handle,
         displayName: r.display_name,
@@ -123,23 +128,20 @@ export async function getLeaderboard(
 
         if (scope === 'global') {
           rankQuery = sql`
-          select count(*) + 1 as rank
-          from profiles
-          where xp > (
-            select xp from profiles where id = ${user.id}
+          with ranked_profiles as (
+            select id, dense_rank() over (order by xp desc) as rank
+            from profiles
           )
+          select rank from ranked_profiles where id = ${user.id}
         `;
         } else if (scope === 'language' && scopeId) {
           rankQuery = sql`
-          select count(*) + 1 as rank
-          from profiles
-          where primary_language = ${scopeId}
-            and xp > (
-              select xp
-  from profiles
-  where id = ${user.id}
-    and primary_language = ${scopeId}
-            )
+          with ranked_profiles as (
+            select id, dense_rank() over (order by xp desc) as rank
+            from profiles
+            where primary_language = ${scopeId}
+          )
+          select rank from ranked_profiles where id = ${user.id}
         `;
         } else {
           rankQuery = null;
@@ -147,7 +149,7 @@ export async function getLeaderboard(
 
         if (rankQuery) {
           const rankResult = (await db.execute(rankQuery)) as unknown as {
-            rank: number;
+            rank: string | number;
           }[];
 
           let userQuery: ReturnType<typeof sql> | null;
