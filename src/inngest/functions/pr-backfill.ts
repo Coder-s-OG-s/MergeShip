@@ -202,7 +202,7 @@ async function upsertReviews(
   // Resolve author level once to compute is_mentor retroactively.
   const { data: authorPr } = await sb
     .from('pull_requests')
-    .select('author_user_id')
+    .select('author_user_id, author_login')
     .eq('id', prRow.id)
     .maybeSingle();
   let authorLevel = 0;
@@ -232,7 +232,7 @@ async function upsertReviews(
       reviewerCache.set(login, reviewer);
     }
 
-    const isSelf = login.toLowerCase() === (authorPr?.author_user_id ?? '').toLowerCase();
+    const isSelf = login.toLowerCase() === (authorPr?.author_login ?? '').toLowerCase();
     const substantive = isSubstantive(r);
     const isMentor = !isSelf && substantive && reviewer !== null && reviewer.level > authorLevel;
 
