@@ -6,6 +6,8 @@ import { cacheGet, cacheSet, cacheDel } from '@/lib/cache';
 import { getInstallationToken } from '@/lib/github/app';
 import { PRList } from './pr-list';
 import type { GitHubPR } from '@/app/actions/github-sync';
+import { fetchAndBackfillPRs } from '@/app/actions/github-sync';
+import { SyncButton } from '../dashboard/sync-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,95 +22,6 @@ type EnrichedPR = GitHubPR & {
 type PRsCache = {
   prs: EnrichedPR[];
 };
-
-type GitHubSearchItem = {
-  id: number;
-  number: number;
-  title: string;
-  html_url: string;
-  state: string;
-  created_at: string;
-  updated_at: string;
-  pull_request?: { merged_at: string | null; url: string };
-  repository_url: string;
-};
-
-async function fetchAndBackfillPRs(
-  service: NonNullable<ReturnType<typeof getServiceSupabase>>,
-  userId: string,
-  githubHandle: string,
-  installId: number | null,
-): Promise<GitHubPR[]> {
-  const headers: Record<string, string> = {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-  };
-
-  if (installId) {
-    try {
-      const token = await getInstallationToken(installId);
-      headers['Authorization'] = `Bearer ${token}`;
-    } catch {
-      // proceed without auth — public PRs still visible
-    }
-  }
-
-  // Fetch up to 100 PRs authored by this user across all of GitHub
-  const url = `https://api.github.com/search/issues?q=is:pr+author:${encodeURIComponent(githubHandle)}&sort=created&order=desc&per_page=100`;
-  let items: GitHubSearchItem[] = [];
-  try {
-    const res = await fetch(url, { headers });
-    if (res.ok) {
-      const data = (await res.json()) as { items?: GitHubSearchItem[] };
-      items = data.items ?? [];
-    }
-  } catch {
-    return [];
-  }
-
-  if (items.length === 0) return [];
-
-  // Map to pull_requests row shape
-  const rows = items.map((item) => {
-    const repoFullName = item.repository_url.replace('https://api.github.com/repos/', '');
-    const mergedAt = item.pull_request?.merged_at ?? null;
-    const state: 'open' | 'closed' | 'merged' = mergedAt
-      ? 'merged'
-      : item.state === 'open'
-        ? 'open'
-        : 'closed';
-
-    return {
-      github_pr_id: item.id,
-      repo_full_name: repoFullName,
-      number: item.number,
-      title: item.title,
-      author_login: githubHandle,
-      author_user_id: userId,
-      state,
-      url: item.html_url,
-      github_created_at: item.created_at,
-      github_updated_at: item.updated_at ?? item.created_at,
-      merged_at: mergedAt,
-    };
-  });
-
-  // Upsert into pull_requests so webhook-future events will also exist
-  await service
-    .from('pull_requests')
-    .upsert(rows, { onConflict: 'github_pr_id', ignoreDuplicates: false });
-
-  // Re-query to get DB-assigned ids
-  const { data: saved } = await service
-    .from('pull_requests')
-    .select(
-      'id, github_pr_id, repo_full_name, number, title, state, url, github_created_at, merged_at',
-    )
-    .eq('author_user_id', userId)
-    .order('github_created_at', { ascending: false });
-
-  return (saved ?? []) as GitHubPR[];
-}
 
 export default async function MyPRsPage() {
   const sb = await getServerSupabase();
@@ -131,7 +44,7 @@ export default async function MyPRsPage() {
   // Fetch profile with XP/level
   const { data: profile } = await service
     .from('profiles')
-    .select('github_handle, xp, level, avatar_url')
+    .select('github_handle, xp, level, avatar_url, github_stats_synced_at')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -300,10 +213,13 @@ export default async function MyPRsPage() {
     <div className="flex min-h-screen bg-[#111318] font-mono text-white">
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto px-10 py-10">
-        <header className="mb-8">
+        <header className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <h1 className="font-sans text-[36px] font-black tracking-tight text-white">
             My Pull Requests
           </h1>
+          <div className="flex items-center gap-4">
+            <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} userId={user.id} />
+          </div>
         </header>
         <PRList prs={enrichedPRs} />
       </div>
