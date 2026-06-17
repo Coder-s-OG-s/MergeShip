@@ -228,10 +228,19 @@ export async function skipRecommendation(
 
   // Insert a replacement pick. Same difficulty if possible. Excludes
   // anything the user has already seen (any status).
+  const { data: profile } = await service
+    .from('profiles')
+    .select('level')
+    .eq('user_id', user.id)
+    .single();
+
+  const userLevel = profile?.level ?? 0;
+
   const replacement = await pickReplacement({
     service,
     userId: user.id,
     preferDifficulty: data.difficulty as 'E' | 'M' | 'H',
+    level: userLevel,
   });
 
   await cacheDel(`recs:${user.id}`);
@@ -242,8 +251,9 @@ async function pickReplacement(args: {
   service: NonNullable<ReturnType<typeof getServiceSupabase>>;
   userId: string;
   preferDifficulty: 'E' | 'M' | 'H';
+  level: number;
 }): Promise<RecCard | null> {
-  const { service, userId, preferDifficulty } = args;
+  const { service, userId, preferDifficulty, level } = args;
 
   const { data: seen } = await service
     .from('recommendations')
@@ -251,8 +261,13 @@ async function pickReplacement(args: {
     .eq('user_id', userId);
   const excludeIds = new Set((seen ?? []).map((r) => r.issue_id));
 
-  // Try same tier first, then any tier. Health >= 40 filter mirrors filterAndRank.
-  for (const where of [{ difficulty: preferDifficulty }, {} as Record<string, string>]) {
+  const allowedDifficulties = new Set<string>();
+  if (level >= 0) allowedDifficulties.add('E');
+  if (level >= 1) allowedDifficulties.add('M');
+  if (level >= 2) allowedDifficulties.add('H');
+
+  // Try same tier first, then any allowed tier. Health >= 40 filter mirrors filterAndRank.
+  for (const fallback of [false, true]) {
     let q = service
       .from('issues')
       .select('id, repo_full_name, github_issue_number, title, difficulty, xp_reward, url')
@@ -260,7 +275,12 @@ async function pickReplacement(args: {
       .gte('repo_health_score', 40)
       .order('scored_at', { ascending: false })
       .limit(50);
-    if (where.difficulty) q = q.eq('difficulty', where.difficulty);
+
+    if (!fallback) {
+      q = q.eq('difficulty', preferDifficulty);
+    } else {
+      q = q.in('difficulty', Array.from(allowedDifficulties));
+    }
     const { data: pool } = await q;
     const pick = (pool ?? []).find((i) => !excludeIds.has(i.id));
     if (!pick) continue;
