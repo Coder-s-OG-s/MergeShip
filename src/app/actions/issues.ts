@@ -5,6 +5,8 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { cacheDel } from '@/lib/cache';
+import { repoFilterPattern } from './issues-helpers';
+import { getInstallOctokit } from '@/lib/github/app';
 
 const PAGE_SIZE = 10;
 
@@ -65,32 +67,27 @@ export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
 
   const { data: repoRows } = await service
     .from('installation_repositories')
-    .select('repo_full_name')
+    .select('repo_full_name, installation_id')
     .in('installation_id', instIds);
 
-  const userRepos = [
-    ...new Set((repoRows ?? []).map((r: { repo_full_name: string }) => r.repo_full_name)),
-  ];
-  if (userRepos.length === 0) return ok([]);
+  const repoMap = new Map<string, number>();
+  for (const r of (repoRows ?? []) as { repo_full_name: string; installation_id: number }[]) {
+    repoMap.set(r.repo_full_name, r.installation_id);
+  }
 
-  // Get provider token so we can call GitHub API to detect forks
-  const sessionRes = await sb.auth.getSession();
-  const token = sessionRes.data.session?.provider_token;
+  const userRepos = [...repoMap.keys()];
+  if (userRepos.length === 0) return ok([]);
 
   // Resolve each repo: if it's a fork, use the upstream (parent) as the issues source
   const options = await Promise.all(
     userRepos.map(async (repo): Promise<RepoOption> => {
-      if (!token) return { label: repo, value: repo };
+      const instId = repoMap.get(repo);
+      if (!instId) return { label: repo, value: repo };
       try {
-        const res = await fetch(`https://api.github.com/repos/${repo}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
-          },
-        });
-        if (!res.ok) return { label: repo, value: repo };
-        const data = (await res.json()) as { fork?: boolean; parent?: { full_name: string } };
+        const octokit = await getInstallOctokit(instId);
+        const [owner, name] = repo.split('/');
+        if (!owner || !name) return { label: repo, value: repo };
+        const { data } = await octokit.repos.get({ owner, repo: name });
         if (data.fork && data.parent?.full_name) {
           return { label: repo, value: data.parent.full_name };
         }
