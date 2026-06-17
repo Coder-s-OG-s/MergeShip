@@ -18,7 +18,7 @@ export type LevelUpRow = {
  * marks them acknowledged so we never show the same level-up twice.
  */
 export async function getUnacknowledgedLevelUps(): Promise<Result<LevelUpRow[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -47,7 +47,7 @@ export async function getUnacknowledgedLevelUps(): Promise<Result<LevelUpRow[]>>
 }
 
 export async function acknowledgeLevelUp(levelUpId: number): Promise<Result<{ ok: true }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },

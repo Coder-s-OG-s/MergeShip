@@ -2,8 +2,7 @@
 
 Welcome. This guide gets you from `git clone` to a running local app, then walks you through opening your first PR. Should take 15-20 minutes the first time.
 
-Works the same on **macOS**, **Linux**, and **Windows (WSL2)**. Native Windows isn't supported - Supabase CLI has known issues outside WSL2.
-
+Works the same on **macOS**, **Linux**, and **Windows (WSL2)**. Native Windows isn't supported — Supabase CLI has known issues outside WSL2.
 **Got a question before you start? Join the conversation on [GitHub Discussions](https://github.com/Coder-s-OG-s/MergeShip/discussions) - introductions, setup help, feature ideas, anything.**
 
 ---
@@ -161,7 +160,6 @@ Most contributor PRs only touch `src/app/`, `src/lib/`, or `src/app/actions/`.
 3. Wait for an assignment to avoid duplicate work.
 
 **Claim limit: maximum 3 issues at a time.**
-
 If you already have 3 open issues assigned or 3 open PRs, you must get them merged or closed before picking up anything new. A bot will automatically unassign you and leave a comment if you go over the limit. This keeps issues available for others and prevents hoarding.
 
 ---
@@ -415,7 +413,7 @@ Skip unless you need to debug actual webhook delivery from GitHub. Almost no PRs
 
 1. Re-read the [Troubleshooting](#12-troubleshooting) section.
 2. Search closed issues + PRs for your error.
-3. **Post in [GitHub Discussions](https://github.com/Coder-s-OG-s/MergeShip/discussions)** - use the `Q&A` category for setup issues, `Ideas` for feature questions. Most setup questions get answered there within a day.
+3. Open a [GitHub Discussion](https://github.com/Coder-s-OG-s/MergeShip/discussions) with the `help-wanted` label.
 4. GSSoC contributors: drop in the cohort Discord channel.
 5. Tag the maintainer only after the above.
 

@@ -43,8 +43,17 @@ export const profiles = pgTable(
     level: integer('level').notNull().default(0),
     auditCompleted: boolean('audit_completed').notNull().default(false),
     timezone: text('timezone'),
+    // Contributor mute preferences. Arrays of repo full names
+    // and language strings the user has marked "not interested in".
+    // Fully reversible — cleared by passing an empty array.
+    mutedRepos: text('muted_repos').array().default([]).notNull(),
+    mutedLanguages: text('muted_languages').array().default([]).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    bio: text('bio'),
+    skills: text('skills').array(),
+    websiteUrl: text('website_url'),
+    twitterHandle: text('twitter_handle'),
   },
   (t) => ({
     xpDescIdx: index('profiles_xp_desc_idx').on(t.xp),
@@ -145,6 +154,9 @@ export const recommendations = pgTable(
     difficulty: text('difficulty', { enum: ['E', 'M', 'H'] }).notNull(),
     xpReward: integer('xp_reward').notNull(),
     linkedPrUrl: text('linked_pr_url'),
+    // Optional free-text reason captured when a user skips a recommendation.
+    // Never required — omitting preserves existing skip behavior.
+    skipReason: text('skip_reason'),
     recommendedAt: timestamp('recommended_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     claimedAt: timestamp('claimed_at', { withTimezone: true }),
@@ -321,6 +333,35 @@ export const activityLog = pgTable(
   }),
 );
 
+export const flaggedAccounts = pgTable(
+  'flagged_accounts',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    userId: uuid('user_id').references(() => profiles.id, { onDelete: 'cascade' }),
+    reason: text('reason', {
+      enum: ['daily_xp_event_spike', 'rapid_merge_spike', 'reviewer_approval_concentration'],
+    }).notNull(),
+    severity: text('severity', { enum: ['medium', 'high'] })
+      .notNull()
+      .default('medium'),
+    status: text('status', { enum: ['open', 'reviewed', 'dismissed'] })
+      .notNull()
+      .default('open'),
+    evidence: jsonb('evidence').notNull().default({}),
+    detectedAt: timestamp('detected_at', { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (t) => ({
+    uniqUserReasonStatus: uniqueIndex('flagged_accounts_user_reason_status_unique').on(
+      t.userId,
+      t.reason,
+      t.status,
+    ),
+    statusDetectedIdx: index('flagged_accounts_status_detected_idx').on(t.status, t.detectedAt),
+    userIdx: index('flagged_accounts_user_idx').on(t.userId),
+  }),
+);
+
 // ========================================================================
 // Maintainer-side tables (migration 0005)
 // ========================================================================
@@ -453,5 +494,32 @@ export const orgCommunities = pgTable(
       t.kind,
     ),
     installIdx: index('org_communities_install_idx').on(t.installationId),
+  }),
+);
+
+// ---------- failed webhook events (dead letter queue) ----------
+
+export const failedWebhookEvents = pgTable(
+  'failed_webhook_events',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+
+    deliveryId: text('delivery_id').notNull(),
+
+    eventType: text('event_type').notNull(),
+
+    source: text('source').notNull(), // e.g. github/pull_request
+
+    payload: jsonb('payload').notNull(),
+
+    error: text('error').notNull(),
+
+    retryCount: integer('retry_count').notNull().default(0),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    deliveryIdx: index('failed_webhook_delivery_idx').on(t.deliveryId),
+    eventTypeIdx: index('failed_webhook_event_type_idx').on(t.eventType),
   }),
 );

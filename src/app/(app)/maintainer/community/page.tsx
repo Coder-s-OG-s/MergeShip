@@ -4,9 +4,9 @@ import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
   getCommunityLinks,
-  type MaintainerInstall,
   type CommunityLink,
 } from '@/app/actions/maintainer';
+import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { COMMUNITY_KINDS } from '@/lib/maintainer/community';
 import { isOk } from '@/lib/result';
 import CommunityEditor from './editor';
@@ -16,9 +16,10 @@ export const dynamic = 'force-dynamic';
 export default async function CommunityPage({
   searchParams,
 }: {
-  searchParams: { install?: string };
+  searchParams: Promise<{ install?: string }>;
 }) {
-  const sb = getServerSupabase();
+  const resolvedSearchParams = await searchParams;
+  const sb = await getServerSupabase();
   if (!sb) return null;
   const {
     data: { user },
@@ -31,8 +32,9 @@ export default async function CommunityPage({
   if (installs.length === 0) redirect('/maintainer');
 
   const installId =
-    searchParams.install && installs.find((i) => i.installationId === Number(searchParams.install))
-      ? Number(searchParams.install)
+    resolvedSearchParams.install &&
+    installs.find((i) => i.installationId === Number(resolvedSearchParams.install))
+      ? Number(resolvedSearchParams.install)
       : installs[0]!.installationId;
 
   const linksRes = await getCommunityLinks(installId);

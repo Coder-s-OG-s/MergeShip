@@ -11,7 +11,9 @@ import {
   Inbox,
   Shield,
   Activity,
+  Settings,
 } from 'lucide-react';
+import { isActiveRoute } from '@/lib/nav-utils';
 
 const CORE_NAV = [
   { name: 'DASHBOARD', href: '/dashboard', icon: LayoutDashboard },
@@ -36,6 +38,7 @@ export function NavItems({
     ...(isMaintainer ? [{ name: 'MAINTAINER', href: '/maintainer', icon: Shield }] : []),
     { name: 'PROFILE', href: profileHref, icon: User },
     { name: 'LEADERBOARD', href: '/leaderboard', icon: Trophy },
+    { name: 'SETTINGS', href: '/settings/profile', icon: Settings },
     { name: 'USAGE', href: '/settings/usage', icon: Activity },
   ];
 
@@ -43,7 +46,8 @@ export function NavItems({
     <>
       {items.map((item) => {
         const Icon = item.icon;
-        const isActive = pathname.startsWith(item.href);
+        const isActive = isActiveRoute(item.href, pathname);
+
         return (
           <Link
             key={item.name}

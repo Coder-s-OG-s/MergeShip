@@ -5,9 +5,9 @@ import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
   getMaintainerIssueQueue,
-  type MaintainerInstall,
   type MaintainerIssueRow,
 } from '@/app/actions/maintainer';
+import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { isOk } from '@/lib/result';
 import type { IssueTriageBucket } from '@/lib/maintainer/issue-triage';
 
@@ -32,9 +32,10 @@ const BUCKET_COLOR: Record<IssueTriageBucket, string> = {
 export default async function MaintainerIssuesPage({
   searchParams,
 }: {
-  searchParams: { install?: string; bucket?: string };
+  searchParams: Promise<{ install?: string; bucket?: string }>;
 }) {
-  const sb = getServerSupabase();
+  const resolvedSearchParams = await searchParams;
+  const sb = await getServerSupabase();
   if (!sb) return <NotConfigured />;
   const {
     data: { user },
@@ -52,13 +53,14 @@ export default async function MaintainerIssuesPage({
   }
 
   const activeInstallId =
-    searchParams.install && installs.find((i) => i.installationId === Number(searchParams.install))
-      ? Number(searchParams.install)
+    resolvedSearchParams.install &&
+    installs.find((i) => i.installationId === Number(resolvedSearchParams.install))
+      ? Number(resolvedSearchParams.install)
       : installs[0]!.installationId;
 
   const activeInstall = installs.find((i) => i.installationId === activeInstallId)!;
 
-  const requestedBuckets = (searchParams.bucket ?? '')
+  const requestedBuckets = (resolvedSearchParams.bucket ?? '')
     .split(',')
     .filter((b): b is IssueTriageBucket => ALL_BUCKETS.includes(b as IssueTriageBucket));
   const buckets: IssueTriageBucket[] =

@@ -34,7 +34,7 @@ export type RecCard = {
 };
 
 export async function getRecommendations(): Promise<Result<RecCard[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -94,7 +94,7 @@ export async function getRecommendations(): Promise<Result<RecCard[]>> {
 }
 
 export async function claimRecommendation(recId: number): Promise<Result<{ id: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -110,23 +110,30 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
     limit: 20,
     windowSec: 60,
   });
-  if (!rateRes.ok) return err('rate_limited', 'slow down', true);
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
 
-  // Enforce 3-claim limit: count currently claimed recs before allowing a new one.
-  const { count: claimedCount } = await service
+  // Fast pre-check: reject early if the user is obviously at the limit.
+  // This is not authoritative — two concurrent requests can both pass it —
+  // but it avoids unnecessary write attempts under normal conditions.
+  const now = new Date().toISOString();
+  const { count: preCount } = await service
     .from('recommendations')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', user.id)
-    .eq('status', 'claimed');
-  if ((claimedCount ?? 0) >= 3) {
+    .eq('status', 'claimed')
+    .gte('expires_at', now);
+  if ((preCount ?? 0) >= 3) {
     return err('claim_limit', 'you already have 3 active claims - merge or close them first');
   }
 
-  // Atomic claim: UPDATE ... WHERE status='open' AND user_id=auth.uid()
-  // Zero rows affected = already claimed or doesn't exist.
+  // Optimistic atomic claim: UPDATE ... WHERE status='open'.
+  // The WHERE status='open' guard is atomic at the database level so only one
+  // concurrent request can claim a given rec. However, two requests targeting
+  // different recs can both succeed when the user is near the limit.
+  const claimedAt = new Date().toISOString();
   const { data, error: updateErr } = await service
     .from('recommendations')
-    .update({ status: 'claimed', claimed_at: new Date().toISOString() })
+    .update({ status: 'claimed', claimed_at: claimedAt })
     .eq('id', recId)
     .eq('user_id', user.id)
     .eq('status', 'open')
@@ -135,6 +142,25 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
 
   if (updateErr) return err('persist_failed', updateErr.message);
   if (!data) return err('already_claimed', 'this rec is no longer open');
+
+  // Post-claim verification: count active claims now that this write has
+  // committed. If the count exceeds 3 (two concurrent requests both slipped
+  // through the pre-check above), revert this claim immediately.
+  const { count: postCount } = await service
+    .from('recommendations')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .eq('status', 'claimed')
+    .gte('expires_at', now);
+  if ((postCount ?? 0) > 3) {
+    await service
+      .from('recommendations')
+      .update({ status: 'open', claimed_at: null })
+      .eq('id', recId)
+      .eq('user_id', user.id)
+      .eq('status', 'claimed');
+    return err('claim_limit', 'you already have 3 active claims - merge or close them first');
+  }
 
   // Invalidate cache so next dashboard load is fresh.
   await cacheDel(`recs:${user.id}`);
@@ -152,7 +178,7 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
 const PR_URL_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
 
 export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<{ id: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -173,7 +199,37 @@ export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<
     limit: 10,
     windowSec: 60,
   });
-  if (!rateRes.ok) return err('rate_limited', 'slow down', true);
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
+
+  // Security: verify the authenticated user actually authored this PR.
+  const sessionRes = await sb.auth.getSession();
+  const token = sessionRes.data.session?.provider_token;
+  if (!token) return err('no_github_token', 'reconnect your GitHub account');
+
+  const match = trimmed.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/);
+  if (!match)
+    return err('invalid_url', 'paste a full https://github.com/<owner>/<repo>/pull/<n> URL');
+  const [, owner, repo, number] = match;
+
+  const ghRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!ghRes.ok)
+    return err('github_fetch_failed', 'could not fetch PR from GitHub — check the URL');
+
+  const prData = (await ghRes.json()) as { user?: { login?: string } };
+  const prAuthorLogin = prData.user?.login?.toLowerCase();
+
+  const { data: profile } = await service
+    .from('profiles')
+    .select('github_handle')
+    .eq('id', user.id)
+    .single();
+  const userHandle = profile?.github_handle?.toLowerCase();
+
+  if (!prAuthorLogin || !userHandle || prAuthorLogin !== userHandle) {
+    return err('not_your_pr', 'you can only link PRs you authored');
+  }
 
   // Only allow linking to a claim the user owns.
   const { data, error: updateErr } = await service
@@ -194,8 +250,9 @@ export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<
 
 export async function skipRecommendation(
   recId: number,
+  skipReason?: string,
 ): Promise<Result<{ id: number; replacement: RecCard | null }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -211,12 +268,17 @@ export async function skipRecommendation(
     limit: 30,
     windowSec: 60,
   });
-  if (!rateRes.ok) return err('rate_limited', 'slow down', true);
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
 
   // Atomic skip with the issue id so we know what tier to refill from.
+  // Persist the optional skip_reason alongside the status change.
+  const updatePayload: Record<string, unknown> = { status: 'reassigned' };
+  if (skipReason?.trim()) {
+    updatePayload.skip_reason = skipReason.trim().slice(0, 500);
+  }
   const { data, error: updateErr } = await service
     .from('recommendations')
-    .update({ status: 'reassigned' })
+    .update(updatePayload)
     .eq('id', recId)
     .eq('user_id', user.id)
     .eq('status', 'open')
@@ -296,7 +358,7 @@ async function pickReplacement(args: {
 }
 
 export async function unlinkPrFromRec(recId: number): Promise<Result<{ id: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -322,7 +384,7 @@ export async function unlinkPrFromRec(recId: number): Promise<Result<{ id: numbe
 }
 
 export async function unclaimRecommendation(recId: number): Promise<Result<{ id: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -347,7 +409,3 @@ export async function unclaimRecommendation(recId: number): Promise<Result<{ id:
   await cacheDel(`recs:${user.id}`);
   return ok({ id: data.id });
 }
-
-// Used by tests + the unused-export linter — keeps the type alive even if not
-// referenced from a UI yet during Phase 2 wiring.
-export type { ScoredIssue };
