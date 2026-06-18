@@ -791,7 +791,9 @@ export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
   );
 }
 
-export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
+export async function getTopContributors(args: {
+  installationId: number;
+}): Promise<Result<ContributorRow[]>> {
   const sb = await getServerSupabase();
 
   if (!sb) {
@@ -827,9 +829,33 @@ export async function getTopContributors(): Promise<Result<ContributorRow[]>> {
     return err('not_authorised', 'not a maintainer');
   }
 
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+
+  if (repos.length === 0) {
+    return ok([]);
+  }
+
+  const { data: prs, error: prError } = await service
+    .from('pull_requests')
+    .select('author_user_id')
+    .in('repo_full_name', repos);
+
+  if (prError) {
+    return err('query_failed', prError.message);
+  }
+
+  const authorIds = Array.from(
+    new Set((prs ?? []).map((pr) => pr.author_user_id).filter((id): id is string => !!id)),
+  );
+
+  if (authorIds.length === 0) {
+    return ok([]);
+  }
+
   const { data: contributors, error } = await service
     .from('profiles')
     .select('github_handle, xp, level')
+    .in('id', authorIds)
     .order('xp', { ascending: false })
     .limit(5);
 

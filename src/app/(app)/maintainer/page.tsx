@@ -93,7 +93,7 @@ export default async function MaintainerPage({
   const staleIssuesRes = await getStaleIssues();
   const staleIssues: StaleIssueRow[] = isOk(staleIssuesRes) ? staleIssuesRes.data : [];
 
-  const contributorsRes = await getTopContributors();
+  const contributorsRes = await getTopContributors({ installationId: activeInstallId });
   const topContributors: ContributorRow[] = isOk(contributorsRes) ? contributorsRes.data : [];
   const flaggedAccountsRes = await getFlaggedAccounts();
   const flaggedAccounts: FlaggedAccountRow[] = isOk(flaggedAccountsRes)

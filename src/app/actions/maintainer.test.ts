@@ -311,7 +311,7 @@ describe('maintainer actions', () => {
   it('getTopContributors returns rate_limited when rate limit exceeded', async () => {
     vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
 
-    const res = await getTopContributors();
+    const res = await getTopContributors({ installationId: 1 });
 
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe('rate_limited');
