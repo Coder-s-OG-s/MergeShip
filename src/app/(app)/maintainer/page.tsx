@@ -95,7 +95,7 @@ export default async function MaintainerPage({
 
   const contributorsRes = await getTopContributors();
   const topContributors: ContributorRow[] = isOk(contributorsRes) ? contributorsRes.data : [];
-  const flaggedAccountsRes = await getFlaggedAccounts();
+  const flaggedAccountsRes = await getFlaggedAccounts({ installationId: activeInstallId });
   const flaggedAccounts: FlaggedAccountRow[] = isOk(flaggedAccountsRes)
     ? flaggedAccountsRes.data
     : [];

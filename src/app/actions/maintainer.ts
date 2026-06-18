@@ -1087,7 +1087,9 @@ export async function exportPrQueueCsv(
   return ok(csvLines.join('\n'));
 }
 
-export async function getFlaggedAccounts(): Promise<Result<FlaggedAccountRow[]>> {
+export async function getFlaggedAccounts(args?: {
+  installationId?: number;
+}): Promise<Result<FlaggedAccountRow[]>> {
   const sb = await getServerSupabase();
 
   if (!sb) {
@@ -1123,21 +1125,89 @@ export async function getFlaggedAccounts(): Promise<Result<FlaggedAccountRow[]>>
     return err('not_authorised', 'not a maintainer');
   }
 
+  let installationId = args?.installationId;
+
+  if (!installationId) {
+    const installs = await listMaintainerInstalls(user.id);
+    const installationIds = installs.map((i) => i.installationId);
+    if (installationIds.length === 0) {
+      return ok([]);
+    }
+    installationId = installationIds[0];
+  }
+
+  if (!installationId) {
+    return ok([]);
+  }
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return ok([]);
+  }
+
   const { data: flags, error } = await service
     .from('flagged_accounts')
     .select('id, user_id, reason, severity, evidence, detected_at')
     .eq('status', 'open')
-    .order('detected_at', { ascending: false })
-    .limit(10);
+    .order('detected_at', { ascending: false });
 
   if (error) {
     return err('query_failed', error.message);
   }
 
-  const userIds = Array.from(new Set((flags ?? []).map((flag) => flag.user_id).filter(Boolean)));
+  if (!flags || flags.length === 0) {
+    return ok([]);
+  }
+
+  const userIds = Array.from(new Set(flags.map((flag) => flag.user_id).filter(Boolean)));
+  if (userIds.length === 0) {
+    return ok([]);
+  }
+
+  const { data: prUsers, error: prError } = await service
+    .from('pull_requests')
+    .select('author_user_id')
+    .in('author_user_id', userIds)
+    .in('repo_full_name', repos);
+
+  if (prError) {
+    return err('query_failed', prError.message);
+  }
+
+  const { data: recUsers, error: recError } = await service
+    .from('recommendations')
+    .select('user_id, issues!inner(repo_full_name)')
+    .in('user_id', userIds)
+    .in('issues.repo_full_name', repos);
+
+  if (recError) {
+    return err('query_failed', recError.message);
+  }
+
+  const activeUserIds = new Set<string>();
+  for (const pr of prUsers ?? []) {
+    if (pr.author_user_id) {
+      activeUserIds.add(pr.author_user_id);
+    }
+  }
+  for (const rec of recUsers ?? []) {
+    if (rec.user_id) {
+      activeUserIds.add(rec.user_id);
+    }
+  }
+
+  const allowedFlags = flags.filter((flag) => flag.user_id && activeUserIds.has(flag.user_id));
+  const limitedFlags = allowedFlags.slice(0, 10);
+
+  const allowedUserIds = Array.from(
+    new Set(limitedFlags.map((flag) => flag.user_id).filter(Boolean)),
+  );
   const { data: profiles, error: profilesError } =
-    userIds.length > 0
-      ? await service.from('profiles').select('id, github_handle, xp, level').in('id', userIds)
+    allowedUserIds.length > 0
+      ? await service
+          .from('profiles')
+          .select('id, github_handle, xp, level')
+          .in('id', allowedUserIds)
       : { data: [], error: null };
 
   if (profilesError) {
@@ -1156,7 +1226,7 @@ export async function getFlaggedAccounts(): Promise<Result<FlaggedAccountRow[]>>
   );
 
   return ok(
-    (flags ?? []).map((flag) => {
+    limitedFlags.map((flag) => {
       const profile = profilesById.get(flag.user_id ?? '');
       const evidence = readFlagEvidence(flag.evidence);
 
