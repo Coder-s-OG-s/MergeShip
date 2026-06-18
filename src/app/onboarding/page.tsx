@@ -72,7 +72,7 @@ export default function OnboardingPage() {
             </ul>
 
             <Link
-              href="/dashboard"
+              href="/maintainer"
               className="mt-8 block w-full rounded border border-zinc-700 px-5 py-4 text-center font-medium text-white"
             >
               Continue as Maintainer →
