@@ -5,7 +5,6 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { cacheDel } from '@/lib/cache';
-import { repoFilterPattern } from './issues-helpers';
 import { getInstallOctokit } from '@/lib/github/app';
 
 const PAGE_SIZE = 10;
