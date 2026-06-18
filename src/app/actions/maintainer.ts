@@ -612,7 +612,9 @@ export async function getPrCiStatus(
 // (COMMUNITY_KINDS is imported directly from '@/lib/maintainer/community'
 // in client / page code — re-exporting it here would violate Next.js's
 // 'use server' rule that only async functions may be exported.)
-export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> {
+export async function getRepoHealthOverview(args: {
+  installationId: number;
+}): Promise<Result<RepoHealthRow[]>> {
   const sb = await getServerSupabase();
 
   if (!sb) {
@@ -648,21 +650,11 @@ export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> 
     return err('not_authorised', 'not a maintainer');
   }
 
-  const installs = await listMaintainerInstalls(user.id);
+  const repos = await listMaintainerRepos(user.id, args.installationId);
 
-  const installationIds = installs.map((i) => i.installationId);
-
-  if (installationIds.length === 0) {
+  if (repos.length === 0) {
     return ok([]);
   }
-
-  const installationId = installationIds[0];
-
-  if (!installationId) {
-    return ok([]);
-  }
-
-  const repos = await listMaintainerRepos(user.id, installationId);
 
   const repoNames = repos;
 
@@ -705,7 +697,9 @@ export async function getRepoHealthOverview(): Promise<Result<RepoHealthRow[]>> 
   );
 }
 
-export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
+export async function getStaleIssues(args: {
+  installationId: number;
+}): Promise<Result<StaleIssueRow[]>> {
   const sb = await getServerSupabase();
 
   if (!sb) {
@@ -741,21 +735,11 @@ export async function getStaleIssues(): Promise<Result<StaleIssueRow[]>> {
     return err('not_authorised', 'not a maintainer');
   }
 
-  const installs = await listMaintainerInstalls(user.id);
+  const repos = await listMaintainerRepos(user.id, args.installationId);
 
-  const installationIds = installs.map((i) => i.installationId);
-
-  if (installationIds.length === 0) {
+  if (repos.length === 0) {
     return ok([]);
   }
-
-  const installationId = installationIds[0];
-
-  if (!installationId) {
-    return ok([]);
-  }
-
-  const repos = await listMaintainerRepos(user.id, installationId);
 
   const repoNames = repos;
 

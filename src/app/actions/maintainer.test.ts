@@ -293,7 +293,7 @@ describe('maintainer actions', () => {
   it('getRepoHealthOverview returns rate_limited when rate limit exceeded', async () => {
     vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
 
-    const res = await getRepoHealthOverview();
+    const res = await getRepoHealthOverview({ installationId: 1 });
 
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe('rate_limited');
@@ -302,7 +302,7 @@ describe('maintainer actions', () => {
   it('getStaleIssues returns rate_limited when rate limit exceeded', async () => {
     vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
 
-    const res = await getStaleIssues();
+    const res = await getStaleIssues({ installationId: 1 });
 
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe('rate_limited');
