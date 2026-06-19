@@ -45,8 +45,8 @@ vi.mock('@/lib/db/schema', () => ({
 }));
 
 vi.mock('drizzle-orm', () => ({
-  ilike: vi.fn((col, pat) => ({ col, pat })),
-  desc: vi.fn((col) => ({ col, dir: 'desc' })),
+  ilike: vi.fn((col: any, pat: any) => ({ col, pat })),
+  desc: vi.fn((col: any) => ({ col, dir: 'desc' })),
 }));
 
 import { searchGlobal } from './search';

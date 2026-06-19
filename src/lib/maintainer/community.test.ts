@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { validateCommunityUrl, COMMUNITY_KINDS, type CommunityKind } from './community';
 
 describe('validateCommunityUrl', () => {
-  it.each(COMMUNITY_KINDS)('accepts plain https for %s', (kind) => {
+  it.each(COMMUNITY_KINDS)('accepts plain https for %s', (kind: any) => {
     const res = validateCommunityUrl('https://example.com/abc', kind as CommunityKind);
     expect(res.ok).toBe(true);
   });
