@@ -57,6 +57,7 @@ function chain(data: unknown = [], error: unknown = null) {
   c.upsert = vi.fn(pass);
   c.single = vi.fn(pass);
   c.maybeSingle = vi.fn(pass);
+  c.limit = vi.fn(pass);
   c.then = (resolve: (v: unknown) => void) => resolve({ data, error });
   return c;
 }
@@ -415,7 +416,7 @@ describe('maintainer actions', () => {
   it('getRepoHealthOverview returns rate_limited when rate limit exceeded', async () => {
     vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
 
-    const res = await getRepoHealthOverview();
+    const res = await getRepoHealthOverview({ installationId: 1 });
 
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe('rate_limited');
@@ -424,19 +425,60 @@ describe('maintainer actions', () => {
   it('getStaleIssues returns rate_limited when rate limit exceeded', async () => {
     vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
 
-    const res = await getStaleIssues();
+    const res = await getStaleIssues({ installationId: 1 });
 
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe('rate_limited');
   });
 
-  it('getTopContributors returns rate_limited when rate limit exceeded', async () => {
-    vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+  //   getTopContributors
 
-    const res = await getTopContributors();
+  describe('getTopContributors', () => {
+    it('returns rate_limited when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
 
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error.code).toBe('rate_limited');
+      const res = await getTopContributors({ installationId: 1 });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns empty array if maintainer has no repos in install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+      const res = await getTopContributors({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('returns empty array if no PRs found in scoped repos', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+      mockFrom.mockReturnValueOnce(chain([])); // pull_requests returns empty
+      const res = await getTopContributors({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('returns scoped contributors matching PR authors', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+
+      const mockPrs = [{ author_user_id: 'user-a' }, { author_user_id: 'user-b' }];
+      const mockProfiles = [
+        { github_handle: 'alice', xp: 100, level: 2 },
+        { github_handle: 'bob', xp: 50, level: 1 },
+      ];
+
+      mockFrom
+        .mockReturnValueOnce(chain(mockPrs)) // pull_requests query
+        .mockReturnValueOnce(chain(mockProfiles)); // profiles query
+
+      const res = await getTopContributors({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(2);
+        expect(res.data[0]?.githubHandle).toBe('alice');
+        expect(res.data[1]?.githubHandle).toBe('bob');
+      }
+    });
   });
 
   it('getFlaggedAccounts returns rate_limited when rate limit exceeded', async () => {
@@ -446,5 +488,86 @@ describe('maintainer actions', () => {
 
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe('rate_limited');
+  });
+
+  describe('getFlaggedAccounts scoping', () => {
+    beforeEach(() => {
+      vi.mocked(detect.listMaintainerInstalls).mockResolvedValue([
+        {
+          installationId: 1,
+          accountLogin: 'org1',
+          accountType: 'Organization',
+          permissionLevel: 'org_admin',
+        },
+      ]);
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['my-org/my-repo']);
+    });
+
+    it('scopes flagged accounts to users with activity in maintainer repos', async () => {
+      const flagged = [
+        {
+          id: 1,
+          user_id: 'user-active-pr',
+          reason: 'daily_xp_event_spike',
+          severity: 'medium',
+          evidence: {},
+          detected_at: '2026-05-18T00:00:00Z',
+        },
+        {
+          id: 2,
+          user_id: 'user-active-rec',
+          reason: 'rapid_merge_spike',
+          severity: 'high',
+          evidence: {},
+          detected_at: '2026-05-18T01:00:00Z',
+        },
+        {
+          id: 3,
+          user_id: 'user-inactive',
+          reason: 'reviewer_approval_concentration',
+          severity: 'medium',
+          evidence: {},
+          detected_at: '2026-05-18T02:00:00Z',
+        },
+      ];
+
+      const prs = [{ author_user_id: 'user-active-pr' }];
+
+      const recs = [{ user_id: 'user-active-rec' }];
+
+      const profiles = [
+        { id: 'user-active-pr', github_handle: 'active-pr-user', xp: 100, level: 2 },
+        { id: 'user-active-rec', github_handle: 'active-rec-user', xp: 200, level: 3 },
+      ];
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'flagged_accounts') return chain(flagged);
+        if (table === 'pull_requests') return chain(prs);
+        if (table === 'recommendations') return chain(recs);
+        if (table === 'profiles') return chain(profiles);
+        return chain([]);
+      });
+
+      const res = await getFlaggedAccounts({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(2);
+        const handles = res.data.map((d) => d.githubHandle);
+        expect(handles).toContain('active-pr-user');
+        expect(handles).toContain('active-rec-user');
+        expect(handles).not.toContain('unknown');
+      }
+    });
+
+    it('returns empty array when no repos configured for maintainer', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+      mockFrom.mockReturnValue(chain([]));
+
+      const res = await getFlaggedAccounts({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(0);
+      }
+    });
   });
 });

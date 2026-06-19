@@ -17,14 +17,20 @@ import { buildMentorCommentBody, decideMentorCommentAction } from '@/lib/maintai
  *  - Skips entirely on closed/merged/draft PRs
  */
 
-type Event = { data: { prId: number; reviewerId: string } };
+type Event = {
+  data: {
+    prId: number;
+    reviewerId: string;
+    previousReviewerId?: string | null;
+  };
+};
 
 export const mentorPostComment = inngest.createFunction(
   { id: 'mentor-post-comment', concurrency: { key: 'event.data.prId', limit: 1 } },
   { event: 'mentor/post-comment' },
   async ({ event, step }) => {
     return await step.run('post-or-update', async () => {
-      const { prId, reviewerId } = (event as Event).data;
+      const { prId, reviewerId, previousReviewerId } = (event as Event).data;
       const sb = getServiceSupabase();
       if (!sb) return { skipped: true, reason: 'no_service_role' };
 
@@ -43,15 +49,16 @@ export const mentorPostComment = inngest.createFunction(
         .maybeSingle();
       if (!reviewer) return { skipped: true, reason: 'reviewer_not_found' };
 
-      // Look up the existing mentor level (whoever is on the row right now —
-      // could be the same reviewer if this is a replay, or an older one if a
-      // higher-level reviewer just landed).
+      // Look up the existing mentor level. We prefer the previousReviewerId carried
+      // in the event payload to avoid reading the already-overwritten row.
+      const oldMentorId =
+        previousReviewerId !== undefined ? previousReviewerId : pr.mentor_reviewer_id;
       let existingMentorLevel: number | null = null;
-      if (pr.mentor_reviewer_id) {
+      if (oldMentorId) {
         const { data: m } = await sb
           .from('profiles')
           .select('level')
-          .eq('id', pr.mentor_reviewer_id)
+          .eq('id', oldMentorId)
           .maybeSingle();
         existingMentorLevel = m?.level ?? null;
       }

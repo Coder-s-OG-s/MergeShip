@@ -87,15 +87,15 @@ export default async function MaintainerPage({
   const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
     ? trendsRes.data
     : { weekly: [], levelDistribution: [] };
-  const repoHealthRes = await getRepoHealthOverview();
+  const repoHealthRes = await getRepoHealthOverview({ installationId: activeInstallId });
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
-  const staleIssuesRes = await getStaleIssues();
+  const staleIssuesRes = await getStaleIssues({ installationId: activeInstallId });
   const staleIssues: StaleIssueRow[] = isOk(staleIssuesRes) ? staleIssuesRes.data : [];
 
-  const contributorsRes = await getTopContributors();
+  const contributorsRes = await getTopContributors({ installationId: activeInstallId });
   const topContributors: ContributorRow[] = isOk(contributorsRes) ? contributorsRes.data : [];
-  const flaggedAccountsRes = await getFlaggedAccounts();
+  const flaggedAccountsRes = await getFlaggedAccounts({ installationId: activeInstallId });
   const flaggedAccounts: FlaggedAccountRow[] = isOk(flaggedAccountsRes)
     ? flaggedAccountsRes.data
     : [];
