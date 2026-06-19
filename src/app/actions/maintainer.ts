@@ -1159,7 +1159,9 @@ export async function getRepoPicker(installationId: number): Promise<Result<Repo
       openPrCount.set(row.repo_full_name, (openPrCount.get(row.repo_full_name) ?? 0) + 1);
     }
     const prev = lastUpdatedAt.get(row.repo_full_name);
-    if (!prev || row.github_updated_at > prev) {
+    // Compare as parsed instants — these timestamps may carry offsets, so a
+    // lexicographic string compare isn't reliable.
+    if (!prev || Date.parse(row.github_updated_at) > Date.parse(prev)) {
       lastUpdatedAt.set(row.repo_full_name, row.github_updated_at);
     }
   }
@@ -1225,12 +1227,16 @@ export async function setRepoManaged(input: {
     return err('not_authorised', 'not your repo');
   }
 
-  const { error } = await service
+  const { data, error } = await service
     .from('installation_repositories')
     .update({ managed: input.managed })
     .eq('installation_id', input.installationId)
-    .eq('repo_full_name', input.repoFullName);
+    .eq('repo_full_name', input.repoFullName)
+    .select('repo_full_name');
   if (error) return err('persist_failed', error.message);
+  // Zero rows updated → the repo isn't installed under this install (e.g. stale
+  // scope data). Surface it rather than reporting a phantom success.
+  if (!data || data.length === 0) return err('not_found', 'repo not found for install');
 
   return ok({ ok: true });
 }

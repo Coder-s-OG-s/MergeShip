@@ -378,7 +378,7 @@ describe('maintainer actions', () => {
   describe('setRepoManaged', () => {
     it('updates managed flag for a repo in scope', async () => {
       vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
-      const c = chain();
+      const c = chain([{ repo_full_name: 'org/repo' }]);
       mockFrom.mockReturnValue(c);
       const res = await setRepoManaged({
         installationId: 1,
@@ -387,6 +387,18 @@ describe('maintainer actions', () => {
       });
       expect(res.ok).toBe(true);
       expect(c.update).toHaveBeenCalledWith({ managed: false });
+    });
+
+    it('returns not_found when the update matches no rows', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockFrom.mockReturnValue(chain([]));
+      const res = await setRepoManaged({
+        installationId: 1,
+        repoFullName: 'org/repo',
+        managed: true,
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_found');
     });
 
     it('returns not_authorised for a repo outside the caller scope', async () => {

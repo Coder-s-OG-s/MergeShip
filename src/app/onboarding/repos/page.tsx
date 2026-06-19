@@ -26,7 +26,10 @@ export default async function OnboardingReposPage() {
   if (!install) redirect('/install');
 
   const res = await getRepoPicker(install.installationId);
-  const repos = res.ok ? res.data : [];
+  // Surface a load failure via the nearest error boundary rather than silently
+  // rendering an empty list that strands the user on a disabled button.
+  if (!res.ok) throw new Error(`Failed to load repos: ${res.error.message}`);
+  const repos = res.data;
 
   return (
     <main className="flex min-h-screen justify-center bg-[#0D0E12] px-6 py-16 text-white">

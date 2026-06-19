@@ -26,7 +26,11 @@ const LANGUAGE_COLORS: Record<string, string> = {
 
 function relativeTime(iso: string | null): string {
   if (!iso) return 'never';
-  const diffMs = Date.now() - new Date(iso).getTime();
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return 'unknown';
+  const diffMs = Date.now() - t;
+  // Future skew (clock differences) shouldn't render as a negative age.
+  if (diffMs < 0) return 'just now';
   const hours = Math.floor(diffMs / (1000 * 60 * 60));
   if (hours < 1) return 'just now';
   if (hours < 24) return `${hours}h ago`;
@@ -57,15 +61,24 @@ export function RepoPicker({
   const managedCount = repos.filter((r) => r.managed).length;
 
   function toggle(repoFullName: string, next: boolean) {
-    // Optimistic flip; revert the single row if the write fails.
+    // Optimistic flip. Capture the exact prior value so a failed write reverts
+    // to where the row actually was, not just the inverse of this toggle (which
+    // would be wrong under rapid successive failures).
+    let prevManaged: boolean | undefined;
     setRepos((prev) =>
-      prev.map((r) => (r.repoFullName === repoFullName ? { ...r, managed: next } : r)),
+      prev.map((r) => {
+        if (r.repoFullName !== repoFullName) return r;
+        prevManaged = r.managed;
+        return { ...r, managed: next };
+      }),
     );
     startTransition(async () => {
       const res = await setRepoManaged({ installationId, repoFullName, managed: next });
       if (!res.ok) {
         setRepos((prev) =>
-          prev.map((r) => (r.repoFullName === repoFullName ? { ...r, managed: !next } : r)),
+          prev.map((r) =>
+            r.repoFullName === repoFullName ? { ...r, managed: prevManaged ?? !next } : r,
+          ),
         );
       }
     });
@@ -81,8 +94,12 @@ export function RepoPicker({
       </div>
 
       <div className="relative">
+        <label htmlFor="repo-filter" className="sr-only">
+          Filter repositories
+        </label>
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
         <input
+          id="repo-filter"
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
