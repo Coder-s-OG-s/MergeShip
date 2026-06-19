@@ -504,6 +504,7 @@ export const installationSettings = pgTable('installation_settings', {
     .primaryKey()
     .references(() => githubInstallations.id, { onDelete: 'cascade' }),
   minContributorLevel: integer('min_contributor_level').notNull().default(0),
+  autoAssignMentorChain: boolean('auto_assign_mentor_chain').notNull().default(false),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

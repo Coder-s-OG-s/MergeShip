@@ -5,6 +5,11 @@ import { XP_SOURCE, xpForMerge, refIds, XP_REWARDS } from '@/lib/xp/sources';
 import { cacheDelByPrefix } from '@/lib/cache';
 import { buildPrRow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
 import { unwrapJoin } from '@/lib/supabase/inner-join';
+import {
+  pickMentor,
+  shouldAutoAssignMentor,
+  type SeniorMaintainer,
+} from '@/lib/maintainer/mentor-assign';
 
 /**
  * Webhook handler for GitHub `pull_request` events.
@@ -84,6 +89,9 @@ export const processPrEvent = inngest.createFunction(
         return { ok: true };
       });
       if (action === 'opened') {
+        await step.run('maybe-auto-assign-mentor', async () =>
+          maybeAutoAssignMentor(repo, pr.number),
+        );
         return await step.run('link-pr-to-claim', async () => linkPrToClaim(prUrl, repo, pr));
       }
       if (action === 'closed' && pr.merged === true) {
@@ -142,6 +150,73 @@ async function upsertPrRow(
     .upsert(buildPrRow(pr as IngestiblePr, authorProfile?.id ?? null, action), {
       onConflict: 'repo_full_name,number',
     });
+}
+
+async function maybeAutoAssignMentor(
+  repo: string,
+  prNumber: number,
+): Promise<{ assigned: boolean; handle: string | null }> {
+  const sb = getServiceSupabase();
+  if (!sb) return { assigned: false, handle: null };
+
+  const { data: repoRow } = await sb
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', repo)
+    .limit(1)
+    .maybeSingle();
+  if (!repoRow?.installation_id) return { assigned: false, handle: null };
+
+  const installationId = repoRow.installation_id as number;
+  const { data: settings } = await sb
+    .from('installation_settings')
+    .select('min_contributor_level, auto_assign_mentor_chain')
+    .eq('installation_id', installationId)
+    .maybeSingle();
+  if (!settings?.auto_assign_mentor_chain) return { assigned: false, handle: null };
+
+  const minContributorLevel = settings.min_contributor_level ?? 0;
+  const { data: prRow } = await sb
+    .from('pull_requests')
+    .select('id, author_user_id, mentor_reviewer_id')
+    .eq('repo_full_name', repo)
+    .eq('number', prNumber)
+    .maybeSingle();
+  if (!prRow || prRow.mentor_reviewer_id || !prRow.author_user_id) {
+    return { assigned: false, handle: null };
+  }
+
+  const { data: authorProfile } = await sb
+    .from('profiles')
+    .select('level')
+    .eq('id', prRow.author_user_id)
+    .maybeSingle();
+  if (!shouldAutoAssignMentor(authorProfile?.level ?? null, minContributorLevel)) {
+    return { assigned: false, handle: null };
+  }
+
+  const { data: seniorRows } = (await sb
+    .from('github_installation_users')
+    .select('user_id, profiles!inner(github_handle)')
+    .eq('installation_id', installationId)
+    .eq('permission_level', 'org_admin')) as unknown as {
+    data: { user_id: string; profiles: { github_handle: string } }[] | null;
+  };
+
+  const seniors: SeniorMaintainer[] = (seniorRows ?? []).map((row) => ({
+    userId: row.user_id,
+    handle: row.profiles.github_handle,
+  }));
+  const chosen = pickMentor(seniors, prRow.author_user_id);
+  if (!chosen) return { assigned: false, handle: null };
+
+  const { error } = await sb
+    .from('pull_requests')
+    .update({ mentor_reviewer_id: chosen.userId })
+    .eq('id', prRow.id);
+  if (error) throw new Error(error.message);
+
+  return { assigned: true, handle: chosen.handle };
 }
 
 async function linkPrToClaim(
