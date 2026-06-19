@@ -497,6 +497,16 @@ export const orgCommunities = pgTable(
   }),
 );
 
+// ---------- per-installation maintainer settings ----------
+
+export const installationSettings = pgTable('installation_settings', {
+  installationId: bigint('installation_id', { mode: 'number' })
+    .primaryKey()
+    .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+  minContributorLevel: integer('min_contributor_level').notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- failed webhook events (dead letter queue) ----------
 
 export const failedWebhookEvents = pgTable(

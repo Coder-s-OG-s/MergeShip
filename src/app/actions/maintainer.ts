@@ -79,6 +79,11 @@ export type FlaggedAccountRow = {
   count: number;
 };
 
+export type InstallationSettingsData = {
+  installationId: number;
+  minContributorLevel: 0 | 1 | 2 | 3;
+};
+
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
   'needs-triage',
   'in-progress',
@@ -87,6 +92,7 @@ const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
 ]);
 
 const PAGE_SIZE = 25;
+const MIN_CONTRIBUTOR_LEVELS = new Set([0, 1, 2, 3]);
 
 export async function getMaintainerInstalls(): Promise<Result<MaintainerInstall[]>> {
   const sb = await getServerSupabase();
@@ -98,6 +104,121 @@ export async function getMaintainerInstalls(): Promise<Result<MaintainerInstall[
 
   const installs = await listMaintainerInstalls(user.id);
   return ok(installs);
+}
+
+async function assertMaintainerInstall(
+  service: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  userId: string,
+  installationId: number,
+): Promise<boolean> {
+  const { data: junction } = await service
+    .from('github_installation_users')
+    .select('installation_id')
+    .eq('user_id', userId)
+    .eq('installation_id', installationId)
+    .maybeSingle();
+
+  return !!junction;
+}
+
+async function readMinContributorLevel(
+  service: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  installationId: number,
+): Promise<0 | 1 | 2 | 3> {
+  const { data } = await service
+    .from('installation_settings')
+    .select('min_contributor_level')
+    .eq('installation_id', installationId)
+    .maybeSingle();
+
+  const level = data?.min_contributor_level;
+  return MIN_CONTRIBUTOR_LEVELS.has(level) ? (level as 0 | 1 | 2 | 3) : 0;
+}
+
+export async function getInstallationSettings(
+  installationId: number,
+): Promise<Result<InstallationSettingsData>> {
+  const sb = await getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const limited = await rateLimit({
+    namespace: 'maint:settings',
+    key: user.id,
+    limit: 60,
+    windowSec: 60,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  if (!(await assertMaintainerInstall(service, user.id, installationId))) {
+    return err('not_authorised', 'not your install');
+  }
+
+  return ok({
+    installationId,
+    minContributorLevel: await readMinContributorLevel(service, installationId),
+  });
+}
+
+export async function setMinContributorLevel(opts: {
+  installationId: number;
+  minContributorLevel: number;
+}): Promise<Result<InstallationSettingsData>> {
+  const sb = await getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const limited = await rateLimit({
+    namespace: 'maint:settings',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  if (!MIN_CONTRIBUTOR_LEVELS.has(opts.minContributorLevel)) {
+    return err('invalid_input', 'minimum contributor level must be L0, L1, L2, or L3');
+  }
+
+  if (!(await assertMaintainerInstall(service, user.id, opts.installationId))) {
+    return err('not_authorised', 'not your install');
+  }
+
+  const minContributorLevel = opts.minContributorLevel as 0 | 1 | 2 | 3;
+  const { error } = await service.from('installation_settings').upsert(
+    {
+      installation_id: opts.installationId,
+      min_contributor_level: minContributorLevel,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'installation_id' },
+  );
+  if (error) return err('persist_failed', error.message);
+
+  return ok({
+    installationId: opts.installationId,
+    minContributorLevel,
+  });
 }
 
 export async function getMaintainerPrQueue(args: {
@@ -142,6 +263,8 @@ export async function getMaintainerPrQueue(args: {
   if (scopedRepos.length === 0) {
     return ok({ rows: [], hasMore: false });
   }
+
+  const minContributorLevel = await readMinContributorLevel(service, args.installationId);
 
   let q = service
     .from('pull_requests')
@@ -239,7 +362,7 @@ export async function getMaintainerPrQueue(args: {
 
   // Apply author-level filter after the join (since author level isn't on
   // the pull_requests row).
-  let filtered = rows;
+  let filtered = rows.filter((row) => (row.authorLevel ?? 0) >= minContributorLevel);
   if (filters.authorLevel.length > 0) {
     filtered = filtered.filter((row) => filters.authorLevel.includes(row.authorLevel ?? 0));
   }

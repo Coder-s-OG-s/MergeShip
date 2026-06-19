@@ -10,6 +10,8 @@ import {
   getStaleIssues,
   getTopContributors,
   getFlaggedAccounts,
+  getInstallationSettings,
+  setMinContributorLevel,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -133,6 +135,53 @@ describe('maintainer actions', () => {
     });
   });
 
+  //   installation settings
+
+  describe('installation settings', () => {
+    it('returns default min contributor level when no row exists', async () => {
+      mockFrom.mockReturnValueOnce(chain({ installation_id: 1 })).mockReturnValueOnce(chain(null));
+
+      const res = await getInstallationSettings(1);
+
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data.minContributorLevel).toBe(0);
+    });
+
+    it('returns saved min contributor level', async () => {
+      mockFrom
+        .mockReturnValueOnce(chain({ installation_id: 1 }))
+        .mockReturnValueOnce(chain({ min_contributor_level: 2 }));
+
+      const res = await getInstallationSettings(1);
+
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data.minContributorLevel).toBe(2);
+    });
+
+    it('rejects invalid min contributor level', async () => {
+      const res = await setMinContributorLevel({ installationId: 1, minContributorLevel: 4 });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('invalid_input');
+    });
+
+    it('upserts min contributor level for maintainer install', async () => {
+      const upsert = chain();
+      mockFrom.mockReturnValueOnce(chain({ installation_id: 1 })).mockReturnValueOnce(upsert);
+
+      const res = await setMinContributorLevel({ installationId: 1, minContributorLevel: 2 });
+
+      expect(res.ok).toBe(true);
+      expect(upsert.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          installation_id: 1,
+          min_contributor_level: 2,
+        }),
+        { onConflict: 'installation_id' },
+      );
+    });
+  });
+
   //   getMaintainerPrQueue
 
   describe('getMaintainerPrQueue', () => {
@@ -184,6 +233,40 @@ describe('maintainer actions', () => {
       const res = await getMaintainerPrQueue({ installationId: 99 });
       expect(res.ok).toBe(true);
       if (res.ok) expect(res.data.rows).toEqual([]);
+    });
+
+    it('hides PRs below the installation minimum contributor level', async () => {
+      const lowPr = {
+        ...rawPr,
+        id: 1,
+        title: 'low trust',
+        author_user_id: 'low-user',
+      };
+      const seniorPr = {
+        ...rawPr,
+        id: 2,
+        title: 'senior trust',
+        author_user_id: 'senior-user',
+      };
+
+      mockFrom
+        .mockReturnValueOnce(chain({ min_contributor_level: 2 }))
+        .mockReturnValueOnce(chain([lowPr, seniorPr]))
+        .mockReturnValueOnce(
+          chain([
+            { id: 'low-user', github_handle: 'low', level: 1, xp: 50 },
+            { id: 'senior-user', github_handle: 'senior', level: 2, xp: 500 },
+          ]),
+        )
+        .mockReturnValueOnce(chain([]));
+
+      const res = await getMaintainerPrQueue({ installationId: 1 });
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.rows).toHaveLength(1);
+        expect(res.data.rows[0]?.title).toBe('senior trust');
+      }
     });
   });
 
