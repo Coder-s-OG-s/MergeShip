@@ -93,18 +93,18 @@ function buildTrailingGrid(activityMap: Map<string, number>) {
  * The grid starts on the Sunday on or before Jan 1 and ends on the Saturday
  * on or after Dec 31 of the given year — same approach GitHub uses.
  */
-function buildYearGrid(year: number, activityMap: Map<string, number>) {
-  const jan1 = new Date(year, 0, 1);
-  const dec31 = new Date(year, 11, 31);
+export function buildYearGrid(year: number, activityMap: Map<string, number>) {
+  const jan1 = new Date(Date.UTC(year, 0, 1));
+  const dec31 = new Date(Date.UTC(year, 11, 31));
 
   // Align start to the Sunday on or before Jan 1
   const startDate = new Date(jan1);
-  startDate.setDate(jan1.getDate() - jan1.getDay());
+  startDate.setUTCDate(jan1.getUTCDate() - jan1.getUTCDay());
 
   // Align end to the Saturday on or after Dec 31
   const endDate = new Date(dec31);
-  const daysUntilSat = (6 - dec31.getDay() + 7) % 7;
-  endDate.setDate(dec31.getDate() + daysUntilSat);
+  const daysUntilSat = (6 - dec31.getUTCDay() + 7) % 7;
+  endDate.setUTCDate(dec31.getUTCDate() + daysUntilSat);
 
   // Calculate number of weeks
   const totalMs = endDate.getTime() - startDate.getTime();
@@ -117,12 +117,13 @@ function buildYearGrid(year: number, activityMap: Map<string, number>) {
   for (let i = 0; i < totalDays; i++) {
     const ymd = runningDate.toISOString().slice(0, 10);
     // Days outside Jan 1 – Dec 31 are padding (shown as future/empty)
-    const isOutsideYear = runningDate.getFullYear() !== year;
+    const isOutsideYear = runningDate.getUTCFullYear() !== year;
     const count = isOutsideYear ? 0 : (activityMap.get(ymd) ?? 0);
     const formattedDate = runningDate.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
+      timeZone: 'UTC',
     });
     days.push({
       dateStr: ymd,
@@ -132,7 +133,7 @@ function buildYearGrid(year: number, activityMap: Map<string, number>) {
         ? ''
         : `${count} contribution${count === 1 ? '' : 's'} on ${formattedDate}`,
     });
-    runningDate.setDate(runningDate.getDate() + 1);
+    runningDate.setUTCDate(runningDate.getUTCDate() + 1);
   }
 
   // Month labels
@@ -140,12 +141,12 @@ function buildYearGrid(year: number, activityMap: Map<string, number>) {
   let lastMonth = -1;
   for (let col = 0; col < numCols; col++) {
     const colStart = new Date(startDate);
-    colStart.setDate(startDate.getDate() + col * 7);
-    const month = colStart.getMonth();
-    if (month !== lastMonth && colStart.getFullYear() === year) {
+    colStart.setUTCDate(startDate.getUTCDate() + col * 7);
+    const month = colStart.getUTCMonth();
+    if (month !== lastMonth && colStart.getUTCFullYear() === year) {
       monthLabels.push({
         col,
-        label: colStart.toLocaleDateString('en-US', { month: 'short' }),
+        label: colStart.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
       });
       lastMonth = month;
     }
@@ -232,7 +233,8 @@ export function ActivityHeatmap({ activityHistory, allTimeContributions }: Activ
                   ? 'bg-[#39d353] text-black'
                   : 'border border-[#21262d] bg-[#161b22] text-zinc-400 hover:border-[#39d353]/50 hover:text-zinc-200'
               }`}
-              aria-pressed={selectedYear === year}
+              role="tab"
+              aria-selected={selectedYear === year}
             >
               {year}
             </button>
