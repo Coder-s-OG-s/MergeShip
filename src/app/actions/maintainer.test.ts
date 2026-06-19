@@ -10,6 +10,8 @@ import {
   getStaleIssues,
   getTopContributors,
   getFlaggedAccounts,
+  getRepoPicker,
+  setRepoManaged,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -49,6 +51,8 @@ function chain(data: unknown = [], error: unknown = null) {
   c.eq = vi.fn(pass);
   c.order = vi.fn(pass);
   c.range = vi.fn(pass);
+  c.not = vi.fn(pass);
+  c.update = vi.fn(pass);
   c.delete = vi.fn(pass);
   c.upsert = vi.fn(pass);
   c.single = vi.fn(pass);
@@ -289,6 +293,124 @@ describe('maintainer actions', () => {
       const res = await deleteCommunityLink(999);
       expect(res.ok).toBe(false);
       if (!res.ok) expect(res.error.code).toBe('not_found');
+    });
+  });
+
+  //   getRepoPicker
+
+  describe('getRepoPicker', () => {
+    beforeEach(() => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo', 'org/other']);
+    });
+
+    function byTable(tables: Record<string, unknown>) {
+      mockFrom.mockImplementation((table: string) => chain(tables[table] ?? []));
+    }
+
+    it('returns rows with derived metadata, scoped to managed repos', async () => {
+      byTable({
+        installation_repositories: [
+          { repo_full_name: 'org/repo', managed: true, added_at: '2026-01-01T00:00:00Z' },
+          // Not in the caller's maintainer scope → filtered out.
+          { repo_full_name: 'org/secret', managed: true, added_at: '2026-01-01T00:00:00Z' },
+        ],
+        pull_requests: [
+          { repo_full_name: 'org/repo', state: 'open', github_updated_at: '2026-05-01T00:00:00Z' },
+          { repo_full_name: 'org/repo', state: 'open', github_updated_at: '2026-06-01T00:00:00Z' },
+          {
+            repo_full_name: 'org/repo',
+            state: 'merged',
+            github_updated_at: '2026-04-01T00:00:00Z',
+          },
+        ],
+        issues: [{ repo_full_name: 'org/repo', repo_language: 'TypeScript' }],
+      });
+
+      const res = await getRepoPicker(1);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(1);
+        const row = res.data[0]!;
+        expect(row.repoFullName).toBe('org/repo');
+        expect(row.openPrCount).toBe(2);
+        expect(row.language).toBe('TypeScript');
+        expect(row.lastUpdatedAt).toBe('2026-06-01T00:00:00Z');
+        expect(row.managed).toBe(true);
+      }
+    });
+
+    it('falls back to added_at and null language when no PRs/issues', async () => {
+      byTable({
+        installation_repositories: [
+          { repo_full_name: 'org/repo', managed: false, added_at: '2026-01-01T00:00:00Z' },
+        ],
+        pull_requests: [],
+        issues: [],
+      });
+
+      const res = await getRepoPicker(1);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        const row = res.data[0]!;
+        expect(row.openPrCount).toBe(0);
+        expect(row.language).toBeNull();
+        expect(row.lastUpdatedAt).toBe('2026-01-01T00:00:00Z');
+        expect(row.managed).toBe(false);
+      }
+    });
+
+    it('returns empty when caller maintains no repos for the install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+      const res = await getRepoPicker(99);
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('returns not_authorised when not a maintainer', async () => {
+      vi.mocked(detect.isUserMaintainer).mockResolvedValue(false);
+      const res = await getRepoPicker(1);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+  });
+
+  //   setRepoManaged
+
+  describe('setRepoManaged', () => {
+    it('updates managed flag for a repo in scope', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      const c = chain([{ repo_full_name: 'org/repo' }]);
+      mockFrom.mockReturnValue(c);
+      const res = await setRepoManaged({
+        installationId: 1,
+        repoFullName: 'org/repo',
+        managed: false,
+      });
+      expect(res.ok).toBe(true);
+      expect(c.update).toHaveBeenCalledWith({ managed: false });
+    });
+
+    it('returns not_found when the update matches no rows', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockFrom.mockReturnValue(chain([]));
+      const res = await setRepoManaged({
+        installationId: 1,
+        repoFullName: 'org/repo',
+        managed: true,
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_found');
+    });
+
+    it('returns not_authorised for a repo outside the caller scope', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      const res = await setRepoManaged({
+        installationId: 1,
+        repoFullName: 'org/not-mine',
+        managed: true,
+      });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
     });
   });
   it('getRepoHealthOverview returns rate_limited when rate limit exceeded', async () => {
