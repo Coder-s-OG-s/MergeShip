@@ -1,7 +1,11 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallationToken } from '@/lib/github/app';
-import { fetchMergedCount, fetchContributionStreak, fetchContributionCalendar } from '@/app/actions/github-sync-helpers';
+import {
+  fetchMergedCount,
+  fetchContributionStreak,
+  fetchContributionCalendar,
+} from '@/app/actions/github-sync-helpers';
 import { cacheDel, cacheSet } from '@/lib/cache';
 
 type StatsSyncEvent = { data: { userId: string; githubHandle: string } };

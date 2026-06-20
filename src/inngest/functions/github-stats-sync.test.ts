@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getInstallationToken } from '@/lib/github/app';
-import { fetchMergedCount, fetchContributionStreak, fetchContributionCalendar } from '@/app/actions/github-sync-helpers';
+import {
+  fetchMergedCount,
+  fetchContributionStreak,
+  fetchContributionCalendar,
+} from '@/app/actions/github-sync-helpers';
 import { cacheDel, cacheSet } from '@/lib/cache';
 import { githubStatsSync } from './github-stats-sync';
 import { sb, wire, step } from './__tests__/test-helpers';

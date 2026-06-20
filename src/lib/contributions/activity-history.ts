@@ -20,9 +20,7 @@ export function mergeActivityDays(
   return Array.from(countMap.entries()).map(([date, count]) => ({ date, count }));
 }
 
-export function contributionCalendarToActivity(
-  days: readonly ContributionDay[],
-): ActivityDay[] {
+export function contributionCalendarToActivity(days: readonly ContributionDay[]): ActivityDay[] {
   return mergeActivityDays(
     days.map(({ date, contributionCount }) => ({ date, count: contributionCount })),
   );

@@ -5,7 +5,11 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallationToken } from '@/lib/github/app';
 import { cacheDel, cacheSet } from '@/lib/cache';
 import { ok, err, type Result } from '@/lib/result';
-import { fetchMergedCount, fetchContributionStreak, fetchContributionCalendar } from './github-sync-helpers';
+import {
+  fetchMergedCount,
+  fetchContributionStreak,
+  fetchContributionCalendar,
+} from './github-sync-helpers';
 
 export type GitHubPR = {
   id: number;

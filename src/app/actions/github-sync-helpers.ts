@@ -9,10 +9,7 @@ export function parsePRState(
   return 'closed';
 }
 
-export function calculateStreak(
-  days: ContributionDay[],
-  today: string,
-): number {
+export function calculateStreak(days: ContributionDay[], today: string): number {
   const sorted = [...days]
     .filter((d) => d.date <= today)
     .sort((a, b) => b.date.localeCompare(a.date));
