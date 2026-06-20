@@ -10,6 +10,11 @@ type InstallWizardProps = {
   installUrl: string;
 };
 
+function clampStep(value: number): 1 | 2 | 3 {
+  if (Number.isNaN(value) || value < 1 || value > 3) return 1;
+  return value as 1 | 2 | 3;
+}
+
 export function InstallWizard({ initialStep, installUrl }: InstallWizardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -19,7 +24,7 @@ export function InstallWizard({ initialStep, installUrl }: InstallWizardProps) {
   useEffect(() => {
     const stepParam = searchParams.get('step');
     if (stepParam) {
-      setStep(parseInt(stepParam, 10));
+      setStep(clampStep(parseInt(stepParam, 10)));
     }
   }, [searchParams]);
 
