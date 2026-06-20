@@ -82,6 +82,7 @@ export type FlaggedAccountRow = {
 export type InstallationSettingsData = {
   installationId: number;
   minContributorLevel: 0 | 1 | 2 | 3;
+  autoAssignMentorChain: boolean;
 };
 
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
@@ -135,6 +136,23 @@ async function readMinContributorLevel(
   return MIN_CONTRIBUTOR_LEVELS.has(level) ? (level as 0 | 1 | 2 | 3) : 0;
 }
 
+async function readInstallationSettings(
+  service: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  installationId: number,
+): Promise<Omit<InstallationSettingsData, 'installationId'>> {
+  const { data } = await service
+    .from('installation_settings')
+    .select('min_contributor_level, auto_assign_mentor_chain')
+    .eq('installation_id', installationId)
+    .maybeSingle();
+
+  const level = data?.min_contributor_level;
+  return {
+    minContributorLevel: MIN_CONTRIBUTOR_LEVELS.has(level) ? (level as 0 | 1 | 2 | 3) : 0,
+    autoAssignMentorChain: data?.auto_assign_mentor_chain ?? false,
+  };
+}
+
 export async function getInstallationSettings(
   installationId: number,
 ): Promise<Result<InstallationSettingsData>> {
@@ -164,9 +182,10 @@ export async function getInstallationSettings(
     return err('not_authorised', 'not your install');
   }
 
+  const settings = await readInstallationSettings(service, installationId);
   return ok({
     installationId,
-    minContributorLevel: await readMinContributorLevel(service, installationId),
+    ...settings,
   });
 }
 
@@ -205,10 +224,12 @@ export async function setMinContributorLevel(opts: {
   }
 
   const minContributorLevel = opts.minContributorLevel as 0 | 1 | 2 | 3;
+  const current = await readInstallationSettings(service, opts.installationId);
   const { error } = await service.from('installation_settings').upsert(
     {
       installation_id: opts.installationId,
       min_contributor_level: minContributorLevel,
+      auto_assign_mentor_chain: current.autoAssignMentorChain,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'installation_id' },
@@ -218,6 +239,56 @@ export async function setMinContributorLevel(opts: {
   return ok({
     installationId: opts.installationId,
     minContributorLevel,
+    autoAssignMentorChain: current.autoAssignMentorChain,
+  });
+}
+
+export async function setAutoAssignMentorChain(opts: {
+  installationId: number;
+  enabled: boolean;
+}): Promise<Result<InstallationSettingsData>> {
+  const sb = await getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const limited = await rateLimit({
+    namespace: 'maint:settings',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  if (!(await assertMaintainerInstall(service, user.id, opts.installationId))) {
+    return err('not_authorised', 'not your install');
+  }
+
+  const current = await readInstallationSettings(service, opts.installationId);
+  const { error } = await service.from('installation_settings').upsert(
+    {
+      installation_id: opts.installationId,
+      min_contributor_level: current.minContributorLevel,
+      auto_assign_mentor_chain: opts.enabled,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'installation_id' },
+  );
+  if (error) return err('persist_failed', error.message);
+
+  return ok({
+    installationId: opts.installationId,
+    minContributorLevel: current.minContributorLevel,
+    autoAssignMentorChain: opts.enabled,
   });
 }
 

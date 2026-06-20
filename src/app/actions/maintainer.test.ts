@@ -12,6 +12,7 @@ import {
   getFlaggedAccounts,
   getInstallationSettings,
   setMinContributorLevel,
+  setAutoAssignMentorChain,
   getRepoPicker,
   setRepoManaged,
 } from './maintainer';
@@ -154,12 +155,15 @@ describe('maintainer actions', () => {
     it('returns saved min contributor level', async () => {
       mockFrom
         .mockReturnValueOnce(chain({ installation_id: 1 }))
-        .mockReturnValueOnce(chain({ min_contributor_level: 2 }));
+        .mockReturnValueOnce(chain({ min_contributor_level: 2, auto_assign_mentor_chain: true }));
 
       const res = await getInstallationSettings(1);
 
       expect(res.ok).toBe(true);
-      if (res.ok) expect(res.data.minContributorLevel).toBe(2);
+      if (res.ok) {
+        expect(res.data.minContributorLevel).toBe(2);
+        expect(res.data.autoAssignMentorChain).toBe(true);
+      }
     });
 
     it('rejects invalid min contributor level', async () => {
@@ -171,7 +175,10 @@ describe('maintainer actions', () => {
 
     it('upserts min contributor level for maintainer install', async () => {
       const upsert = chain();
-      mockFrom.mockReturnValueOnce(chain({ installation_id: 1 })).mockReturnValueOnce(upsert);
+      mockFrom
+        .mockReturnValueOnce(chain({ installation_id: 1 }))
+        .mockReturnValueOnce(chain({ auto_assign_mentor_chain: true }))
+        .mockReturnValueOnce(upsert);
 
       const res = await setMinContributorLevel({ installationId: 1, minContributorLevel: 2 });
 
@@ -180,6 +187,27 @@ describe('maintainer actions', () => {
         expect.objectContaining({
           installation_id: 1,
           min_contributor_level: 2,
+          auto_assign_mentor_chain: true,
+        }),
+        { onConflict: 'installation_id' },
+      );
+    });
+
+    it('upserts auto-assign mentor chain while preserving min contributor level', async () => {
+      const upsert = chain();
+      mockFrom
+        .mockReturnValueOnce(chain({ installation_id: 1 }))
+        .mockReturnValueOnce(chain({ min_contributor_level: 2 }))
+        .mockReturnValueOnce(upsert);
+
+      const res = await setAutoAssignMentorChain({ installationId: 1, enabled: true });
+
+      expect(res.ok).toBe(true);
+      expect(upsert.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          installation_id: 1,
+          min_contributor_level: 2,
+          auto_assign_mentor_chain: true,
         }),
         { onConflict: 'installation_id' },
       );
