@@ -244,9 +244,9 @@ function NavAuth() {
 
   if (!configured) {
     return (
-      <button className="btn" disabled title="Auth not configured on this deployment">
-        Sign-in coming soon
-      </button>
+      <Link href="/dev/login" className="btn">
+        Sign in →
+      </Link>
     );
   }
 
