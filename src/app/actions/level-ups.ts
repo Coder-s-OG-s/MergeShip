@@ -3,6 +3,7 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
+import { rateLimit } from '@/lib/rate-limit';
 
 export type LevelUpRow = {
   id: number;
@@ -53,6 +54,14 @@ export async function acknowledgeLevelUp(levelUpId: number): Promise<Result<{ ok
     data: { user },
   } = await sb.auth.getUser();
   if (!user) return err('not_authenticated', 'sign in first');
+
+  const limited = await rateLimit({
+    namespace: 'level-ups:acknowledge',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
 
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');

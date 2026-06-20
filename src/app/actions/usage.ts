@@ -2,6 +2,7 @@
 
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { rateLimit } from '@/lib/rate-limit';
 
 export type UsageEntry = {
   id: number;
@@ -28,6 +29,14 @@ export async function getUsage(limit = 100): Promise<UsageSummary> {
     data: { user },
   } = await sb.auth.getUser();
   if (!user) return empty;
+
+  const limited = await rateLimit({
+    namespace: 'usage:get',
+    key: user.id,
+    limit: 60,
+    windowSec: 60,
+  });
+  if (!limited.ok) return empty;
 
   const service = getServiceSupabase();
   if (!service) return empty;

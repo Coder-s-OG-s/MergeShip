@@ -385,6 +385,14 @@ export async function getCommunityLinks(installationId: number): Promise<Result<
   } = await sb.auth.getUser();
   if (!user) return err('not_authenticated', 'sign in first');
 
+  const limited = await rateLimit({
+    namespace: 'maint:community-links',
+    key: user.id,
+    limit: 60,
+    windowSec: 60,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
+
   if (!(await isUserMaintainer(user.id))) {
     return err('not_authorised', 'not a maintainer');
   }
