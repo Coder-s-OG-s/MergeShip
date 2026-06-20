@@ -132,6 +132,21 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
 
   const isSearch = !!filters.search?.trim();
 
+  // Resolve user's allowed repositories
+  const repoOptionsRes = await getRepoOptions();
+  if (!repoOptionsRes.ok) {
+    return err(repoOptionsRes.error.code, repoOptionsRes.error.message);
+  }
+  const allowedRepos = repoOptionsRes.data.map((opt) => opt.value);
+  if (allowedRepos.length === 0) {
+    return ok({
+      issues: [],
+      total: 0,
+      page,
+      pageSize: PAGE_SIZE,
+    });
+  }
+
   // Cast to any to avoid complex union type builder errors between rpc and from
   let query: any = isSearch
     ? service.rpc('search_issues', { search_query: filters.search!.trim() })
@@ -143,6 +158,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
       { count: 'exact' },
     )
     .eq('state', filters.state ?? 'open')
+    .in('repo_full_name', allowedRepos)
     .range(from, to);
 
   // When searching via RPC, results are naturally ordered by rank (from the SQL function).
