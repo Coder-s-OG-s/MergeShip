@@ -16,9 +16,9 @@ import {
 import { isActiveRoute } from '@/lib/nav-utils';
 
 const CORE_NAV = [
-  { name: 'DASHBOARD', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'ISSUES', href: '/issues', icon: CheckCircle2 },
-  { name: 'MY PRS', href: '/my-prs', icon: GitPullRequest },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Issues', href: '/issues', icon: CheckCircle2 },
+  { name: 'My PRs', href: '/my-prs', icon: GitPullRequest },
 ];
 
 export function NavItems({
@@ -34,12 +34,12 @@ export function NavItems({
 
   const items = [
     ...CORE_NAV,
-    ...(level >= 2 ? [{ name: 'HELP INBOX', href: '/help-inbox', icon: Inbox }] : []),
-    ...(isMaintainer ? [{ name: 'MAINTAINER', href: '/maintainer', icon: Shield }] : []),
-    { name: 'PROFILE', href: profileHref, icon: User },
-    { name: 'LEADERBOARD', href: '/leaderboard', icon: Trophy },
-    { name: 'SETTINGS', href: '/settings/profile', icon: Settings },
-    { name: 'USAGE', href: '/settings/usage', icon: Activity },
+    ...(level >= 2 ? [{ name: 'Help Inbox', href: '/help-inbox', icon: Inbox }] : []),
+    ...(isMaintainer ? [{ name: 'Maintainer', href: '/maintainer', icon: Shield }] : []),
+    { name: 'Profile', href: profileHref, icon: User },
+    { name: 'Leaderboard', href: '/leaderboard', icon: Trophy },
+    { name: 'Settings', href: '/settings/profile', icon: Settings },
+    { name: 'Usage', href: '/settings/usage', icon: Activity },
   ];
 
   return (
@@ -52,13 +52,9 @@ export function NavItems({
           <Link
             key={item.name}
             href={item.href}
-            className={`flex items-center gap-4 rounded-md px-4 py-3 text-[13px] tracking-widest transition-colors ${
-              isActive
-                ? 'bg-[#161b22] text-white'
-                : 'text-zinc-400 hover:bg-[#161b22]/50 hover:text-white'
-            }`}
+            className={`app-nav-item${isActive ? 'app-nav-item--active' : ''}`}
           >
-            <Icon className="h-4 w-4" />
+            <Icon strokeWidth={1.75} />
             {item.name}
           </Link>
         );

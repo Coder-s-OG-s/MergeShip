@@ -98,7 +98,7 @@ function StatNumber({ value, duration = 2 }: { value: string; duration?: number 
    ═══════════════════════════════════════════════════════════════════════════ */
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<NavUser | null>(null);
   const [configured, setConfigured] = useState(true);
   const localDev = isLocalSupabase();
@@ -111,11 +111,11 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
-    document.body.style.overflow = menuOpen ? 'hidden' : '';
+    document.body.style.overflow = mobileMenuOpen ? 'hidden' : '';
     return () => {
       document.body.style.overflow = '';
     };
-  }, [menuOpen]);
+  }, [mobileMenuOpen]);
 
   useEffect(() => {
     const sb = getBrowserSupabase();
@@ -163,19 +163,56 @@ export default function LandingPage() {
         </Link>
       );
     }
-
     if (localDev) {
       return (
-        <Link href="/dev/login?next=/onboarding" className={className}>
+        <button onClick={() => handleLogin('/onboarding')} className={className}>
           {label} <ArrowRight size={15} />
-        </Link>
+        </button>
       );
     }
-
     return (
-      <button onClick={() => handleLogin('/onboarding')} className={className}>
+      <button onClick={handleLogin} className={className}>
         {label} <ArrowRight size={15} />
       </button>
+    );
+  };
+
+  const NavAuth = () => {
+    if (!configured) {
+      return (
+        <span className="btn-signin" style={{ cursor: 'not-allowed' }}>
+          Sign-in coming soon
+        </span>
+      );
+    }
+    if (user) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <span style={{
+            fontFamily: 'var(--font-dm-mono), DM Mono, monospace',
+            fontSize: '0.72rem',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            color: '#b8b3aa',
+          }}>
+            {user.name || user.email}
+          </span>
+          <Link href="/dashboard" className="btn" style={{ fontSize: '0.72rem' }}>
+            Dashboard →
+          </Link>
+          <button type="button" className="btn-ghost dark" onClick={handleLogout}>Sign Out</button>
+        </div>
+      );
+    }
+    return (
+      <>
+        {localDev ? (
+          <Link href="/dev/login" className="btn-signin-border">Login</Link>
+        ) : (
+          <button className="btn-signin-border" onClick={handleLogin}>Login</button>
+        )}
+        <PrimaryCTA label="Get started" className="btn-neon" />
+      </>
     );
   };
 
@@ -186,103 +223,61 @@ export default function LandingPage() {
 
       {/* ════════ NAVBAR ════════════════════════════════════════════════════ */}
       <nav className={`nav ${scrolled ? 'scrolled' : ''}`}>
-        <div className="nav-logo">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="4" r="2" />
-            <line x1="12" y1="6" x2="12" y2="14" />
-            <path d="M7 14 Q12 19 17 14" />
-            <line x1="9" y1="10" x2="6" y2="10" />
-            <circle cx="5" cy="10" r="1" />
-            <line x1="15" y1="10" x2="18" y2="10" />
-            <circle cx="19" cy="10" r="1" />
-          </svg>
-          <span className="wordmark">MergeShip</span>
-        </div>
-
-        <div className="nav-links">
-          <a className="nav-link" href="#pain">Platform</a>
-          <a className="nav-link" href="#triage">Features</a>
-          <Link className="nav-link" href="/docs">Docs</Link>
-          <a className="nav-link" href="#cta">Pricing</a>
-        </div>
-
-        <div className="nav-auth">
-          {!configured ? (
-            <span className="btn-signin" style={{ cursor: 'not-allowed' }}>
-              Sign-in coming soon
-            </span>
-          ) : user ? (
-            <>
-              <span className="btn-signin">{user.name || user.email}</span>
-              <Link href="/dashboard" className="btn-neon">Dashboard</Link>
-              <button className="btn-signin" onClick={handleLogout}>Sign Out</button>
-            </>
-          ) : (
-            <>
-              {localDev ? (
-                <Link href="/dev/login" className="btn-signin-border">Login</Link>
-              ) : (
-                <button className="btn-signin-border" onClick={handleLogin}>Login</button>
-              )}
-              <PrimaryCTA label="Get started" className="btn-neon" />
-            </>
-          )}
-        </div>
-
-        <button
-          className="mobile-menu-btn"
-          onClick={() => setMenuOpen((v) => !v)}
-          aria-label="Toggle menu"
-        >
-          {menuOpen ? <X size={22} /> : <Menu size={22} />}
-        </button>
-      </nav>
-
-      {/* mobile menu */}
-      {menuOpen && (
-        <>
-          <div className="mobile-overlay" onClick={() => setMenuOpen(false)} />
-          <div className="mobile-nav">
-            <a href="#pain" onClick={() => setMenuOpen(false)}>Platform</a>
-            <a href="#triage" onClick={() => setMenuOpen(false)}>Features</a>
-            <Link href="/docs" onClick={() => setMenuOpen(false)}>Docs</Link>
-            <a href="#cta" onClick={() => setMenuOpen(false)}>Pricing</a>
-            <div className="mobile-nav-divider" />
-            {!configured ? (
-              <span style={{ padding: '14px 24px', color: 'var(--text-muted)' }}>
-                Sign-in coming soon
-              </span>
-            ) : user ? (
-              <>
-                <Link href="/dashboard" className="btn-neon" onClick={() => setMenuOpen(false)}>
-                  Dashboard <ArrowRight size={15} />
-                </Link>
-                <button className="mobile-link" onClick={() => { handleLogout(); setMenuOpen(false); }}>
-                  Sign Out
-                </button>
-              </>
-            ) : (
-              <>
-                {localDev ? (
-                  <Link href="/dev/login" onClick={() => setMenuOpen(false)}>Login</Link>
-                ) : (
-                  <button className="mobile-link" onClick={() => { handleLogin(); setMenuOpen(false); }}>
-                    Login
-                  </button>
-                )}
-                <PrimaryCTA label="Get started" />
-              </>
-            )}
+        <div className="nav-split-left">
+          <div className="nav-logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="4" r="1.8" />
+              <line x1="12" y1="5.8" x2="12" y2="14" />
+              <path d="M7 14 Q12 19 17 14" />
+              <line x1="9" y1="11" x2="6" y2="11" />
+              <circle cx="5" cy="11" r="1.2" />
+              <line x1="15" y1="11" x2="18" y2="11" />
+              <circle cx="19" cy="11" r="1.2" />
+            </svg>
+            <span className="wordmark">MergeShip</span>
           </div>
-        </>
-      )}
+          <div className="nav-links">
+            <a className="nav-link" href="#contributors">For Contributors</a>
+            <a className="nav-link" href="#maintainers">For Maintainers</a>
+            <a className="nav-link" href="#how">How It Works</a>
+            <a className="nav-link" href="#levels">Levels</a>
+          </div>
+        </div>
+
+        <div className="nav-split-right">
+          {mobileMenuOpen && (
+            <div
+              className="mobile-overlay"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+          )}
+          {mobileMenuOpen && (
+            <div className="mobile-nav">
+              <a href="#contributors" onClick={() => setMobileMenuOpen(false)}>
+                For Contributors
+              </a>
+              <a href="#maintainers" onClick={() => setMobileMenuOpen(false)}>
+                For Maintainers
+              </a>
+              <a href="#how" onClick={() => setMobileMenuOpen(false)}>
+                How It Works
+              </a>
+              <a href="#levels" onClick={() => setMobileMenuOpen(false)}>
+                Levels
+              </a>
+            </div>
+          )}
+          <NavAuth />
+          <button
+            type="button"
+            className="mobile-menu-btn"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Open menu"
+          >
+            ☰
+          </button>
+        </div>
+      </nav>
 
       {/* ════════ HERO ═════════════════════════════════════════════════════ */}
       <header className="hero">

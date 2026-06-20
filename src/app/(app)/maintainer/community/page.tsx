@@ -42,7 +42,7 @@ export default async function CommunityPage({
   const install = installs.find((i) => i.installationId === installId)!;
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-2xl">
         <h1 className="font-display text-3xl font-bold">Community links</h1>
         <p className="mt-2 text-sm text-zinc-400">

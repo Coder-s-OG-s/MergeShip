@@ -1,6 +1,6 @@
 export default function DashboardLoading() {
   return (
-    <div className="min-h-screen bg-[#0d1117] p-12 font-mono text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-6xl animate-pulse">
         <div className="mb-6 flex items-center justify-between gap-4 border border-zinc-800/40 bg-zinc-900/20 px-5 py-4">
           <div className="flex items-center gap-4">

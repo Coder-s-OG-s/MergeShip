@@ -56,7 +56,7 @@ export default async function HelpInboxPage() {
   const sb = await getServerSupabase();
   if (!sb) {
     return (
-      <div className="min-h-screen px-6 py-12 text-white">
+      <div className="app-page">
         <p className="text-gray-400">Service not configured.</p>
       </div>
     );
@@ -70,7 +70,7 @@ export default async function HelpInboxPage() {
   const service = getServiceSupabase();
   if (!service) {
     return (
-      <div className="min-h-screen px-6 py-12 text-white">
+      <div className="app-page">
         <p className="text-gray-400">Service role not configured.</p>
       </div>
     );
@@ -159,7 +159,7 @@ export default async function HelpInboxPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-3xl">
         <h1 className="font-display text-3xl font-bold">Help inbox</h1>
         <p className="mt-2 text-sm text-zinc-400">

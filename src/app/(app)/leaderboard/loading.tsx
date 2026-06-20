@@ -1,22 +1,8 @@
 export default function LeaderboardPageLoading() {
   return (
-    <div className="flex min-h-screen bg-[#0D0E12]">
-      {/* Left sidebar skeleton */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-zinc-800 p-6 lg:flex">
-        <div className="flex flex-col items-center gap-3 py-8">
-          <div className="h-16 w-16 animate-pulse rounded-full bg-zinc-800" />
-          <div className="h-4 w-24 animate-pulse rounded bg-zinc-800" />
-          <div className="h-3 w-20 animate-pulse rounded bg-zinc-800/60" />
-        </div>
-        <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex items-center justify-between">
-              <div className="h-3 w-16 animate-pulse rounded bg-zinc-800/60" />
-              <div className="h-3 w-12 animate-pulse rounded bg-zinc-800/80" />
-            </div>
-          ))}
-        </div>
-      </aside>
+    <div className="app-page">
+      <div className="mx-auto max-w-3xl animate-pulse">
+        <div className="h-9 w-44 rounded bg-zinc-800" />
 
       {/* Main skeleton */}
       <div className="flex-1 overflow-y-auto">

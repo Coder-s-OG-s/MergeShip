@@ -108,7 +108,7 @@ export default async function MaintainerPage({
     : { installationId: activeInstallId, minContributorLevel: 0, autoAssignMentorChain: false };
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-5xl">
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <h1 className="font-display text-3xl font-bold">Maintainer</h1>
@@ -442,7 +442,7 @@ function withParam(
 
 function NoInstalls() {
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-20 text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-xl">
         <h1 className="mb-3 font-display text-3xl font-bold">No installs</h1>
         <p className="text-zinc-400">
@@ -465,7 +465,7 @@ function formatFlagReason(reason: string) {
 
 function NotConfigured() {
   return (
-    <div className="min-h-screen px-6 py-20 text-white">
+    <div className="app-page">
       <p className="text-gray-400">Auth not configured.</p>
     </div>
   );

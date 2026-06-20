@@ -115,68 +115,26 @@ export default async function DashboardPage() {
           <StatsRow userId={user.id} profile={profile} />
         </Suspense>
 
-        {/* Three-column layout */}
-        <div className="grid grid-cols-1 gap-16 xl:grid-cols-3">
-          {/* ── Left Sidebar ── */}
-          <div className="space-y-12">
-            <Suspense fallback={<ProfileSidebarSkeleton />}>
-              <ProfileSidebar githubHandle={githubHandle} xp={xp} level={level} />
-            </Suspense>
-          </div>
-
-          {/* ── Center Feed ── */}
-          <main className="min-w-0 space-y-12">
-            {/* Journey progress */}
-            <Suspense fallback={<JourneyProgressSkeleton />}>
-              <JourneyProgress xp={xp} level={level} />
-            </Suspense>
-
-            {/* Recent XP activity */}
-            <Suspense fallback={<RecentActivitySkeleton />}>
-              <RecentActivity userId={user.id} />
-            </Suspense>
-
-            {/* Active issues */}
+        {/* Main Columns */}
+        <div className="grid grid-cols-1 gap-16 lg:grid-cols-2">
+          {/* Left Column */}
+          <div className="space-y-16">
             <Suspense fallback={<RecsSkeleton />}>
               <ActiveIssuesSection />
             </Suspense>
 
-            {/* GitHub PRs */}
-            <Suspense fallback={<PrsSkeleton />}>
-              <GitHubPRsWrapper userId={user.id} githubHandle={githubHandle} />
-            </Suspense>
-
-            {/* Contribution heatmap */}
-            <Suspense fallback={<HeatmapSkeleton />}>
-              <HeatmapWrapper userId={user.id} />
-            </Suspense>
-
-            {/* Daily challenge */}
-            <DailyChallenge />
-
-            {/* Course progression */}
-            <CourseProgress />
-
-            {/* Mentees */}
             <Suspense fallback={<MenteesSkeleton />}>
               <MenteesSection userId={user.id} />
             </Suspense>
+          </div>
 
-            {/* Trending Repos */}
-            <Suspense fallback={<TrendingReposSkeleton />}>
-              <TrendingRepos />
+          {/* Right Column */}
+          <div className="space-y-16">
+            <Suspense fallback={<PrsSkeleton />}>
+              <GitHubPRsWrapper userId={user.id} githubHandle={profile?.github_handle ?? ''} />
             </Suspense>
-          </main>
-
-          {/* ── Right Sidebar ── */}
-          <div className="space-y-12">
-            <Suspense fallback={<RightSidebarSkeleton />}>
-              <RightSidebar />
-            </Suspense>
-
-            {/* Leaderboard */}
             <Suspense fallback={<LeaderboardSkeleton />}>
-              <LeaderboardSnapshot githubHandle={githubHandle} />
+              <LeaderboardSnapshot githubHandle={profile?.github_handle ?? ''} />
             </Suspense>
 
             {/* Repository Matches */}
@@ -188,33 +146,26 @@ export default async function DashboardPage() {
             </Suspense>
           </div>
         </div>
-
-        {/* Footer */}
-        <footer className="mt-24 flex justify-between border-t border-[#2d333b] pt-8 text-[10px] uppercase tracking-widest text-zinc-600">
-          <span>©{new Date().getFullYear()} ARCH_06 / SYSTEM_v1.0</span>
-          <div className="flex gap-6">
-            <Link href="#" className="transition-colors hover:text-zinc-400">
-              TERMS
-            </Link>
-            <Link href="#" className="transition-colors hover:text-zinc-400">
-              PRIVACY
-            </Link>
-            <Link href="#" className="transition-colors hover:text-zinc-400">
-              SECURITY
-            </Link>
-          </div>
-        </footer>
       </div>
+
+      <footer className="app-footer">
+        <span>© {new Date().getFullYear()} MergeShip</span>
+        <div className="flex gap-6">
+          <Link href="#">Terms</Link>
+          <Link href="#">Privacy</Link>
+          <Link href="#">Security</Link>
+        </div>
+      </footer>
     </div>
   );
 }
 
 function NotConfigured() {
   return (
-    <div className="min-h-screen bg-[#000E12] px-6 py-20 text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-xl">
-        <h1 className="mb-4 font-serif text-3xl font-bold">Dashboard not configured</h1>
-        <p className="text-gray-400">Auth isn&apos;t wired on this deployment yet.</p>
+        <h1 className="app-title-sm mb-4">Dashboard not configured</h1>
+        <p className="app-body">Auth isn&apos;t wired on this deployment yet.</p>
       </div>
     </div>
   );

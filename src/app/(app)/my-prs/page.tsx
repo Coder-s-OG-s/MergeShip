@@ -112,10 +112,7 @@ async function fetchAndBackfillPRs(
 
 export default async function MyPRsPage() {
   const sb = await getServerSupabase();
-  if (!sb)
-    return (
-      <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">Not configured</div>
-    );
+  if (!sb) return <div className="app-page">Not configured</div>;
 
   const {
     data: { user },
@@ -123,10 +120,7 @@ export default async function MyPRsPage() {
   if (!user) redirect('/');
 
   const service = getServiceSupabase();
-  if (!service)
-    return (
-      <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">Not configured</div>
-    );
+  if (!service) return <div className="app-page">Not configured</div>;
 
   // Fetch profile with XP/level
   const { data: profile } = await service
@@ -307,7 +301,7 @@ export default async function MyPRsPage() {
       : 0;
 
   return (
-    <div className="flex min-h-screen bg-[#111318] font-mono text-white">
+    <div className="app-page flex flex-col">
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto px-10 py-10">
         <header className="mb-8">

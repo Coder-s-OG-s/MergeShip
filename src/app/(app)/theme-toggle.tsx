@@ -21,12 +21,9 @@ export function ThemeToggle() {
   };
 
   return (
-    <button
-      onClick={toggle}
-      className="flex w-full items-center gap-3 text-[13px] tracking-widest text-zinc-400 transition-colors hover:text-white"
-    >
-      {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      {dark ? 'LIGHT MODE' : 'DARK MODE'}
+    <button type="button" onClick={toggle} className="app-sidebar-action">
+      {dark ? <Sun strokeWidth={1.75} /> : <Moon strokeWidth={1.75} />}
+      {dark ? 'Light mode' : 'Dark mode'}
     </button>
   );
 }

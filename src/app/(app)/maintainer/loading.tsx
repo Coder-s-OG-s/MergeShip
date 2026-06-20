@@ -1,6 +1,6 @@
 export default function MaintainerPageLoading() {
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-5xl animate-pulse">
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <div className="h-9 w-40 rounded bg-zinc-800" />

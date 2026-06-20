@@ -1,6 +1,6 @@
 export default function UsagePageLoading() {
   return (
-    <div className="min-h-screen bg-[#0d1117] p-12 font-mono text-white">
+    <div className="app-page">
       <div className="mx-auto max-w-3xl animate-pulse">
         <div className="mb-4 h-3 w-32 rounded bg-zinc-800/50" />
 

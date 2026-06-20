@@ -87,14 +87,18 @@ export function SyncButton({ lastSyncedAt }: Props) {
       <button
         onClick={handleSync}
         disabled={syncing || cooldown}
-        className="flex items-center gap-2 border border-zinc-700 px-4 py-3 text-[11px] font-bold uppercase tracking-widest text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex items-center gap-2 border border-[#2a2a28] px-4 py-3 text-[11px] uppercase tracking-[0.1em] text-[#f2f0eb] transition-colors hover:border-[#3a3a36] hover:bg-[#1a1a18] disabled:cursor-not-allowed disabled:opacity-50"
+        style={{ fontFamily: 'var(--font-dm-mono), monospace' }}
       >
         <RefreshCw className={`h-3 w-3 ${syncing ? 'animate-spin' : ''}`} />
 
         {syncing ? 'SYNCING...' : 'SYNC'}
       </button>
 
-      <span className="text-[10px] uppercase tracking-widest text-zinc-600">
+      <span
+        className="text-[10px] uppercase tracking-[0.1em] text-[#8a877e]"
+        style={{ fontFamily: 'var(--font-dm-mono), monospace' }}
+      >
         {formatSyncedAt(localSyncedAt)}
       </span>
 
