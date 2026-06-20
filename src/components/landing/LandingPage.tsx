@@ -432,7 +432,7 @@ export default function LandingPage() {
           <p>
             Join hundreds of developers and maintainers building clean, verified, high-velocity open source.
           </p>
-          <PrimaryCTA label="Get Started Free" />
+          <PrimaryCTA label="Get Started for Free" />
         </div>
       </section>
 

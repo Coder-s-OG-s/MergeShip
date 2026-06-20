@@ -10,7 +10,9 @@ import {
   getStaleIssues,
   getFlaggedAccounts,
   getTopContributors,
+  getInstallationSettings,
   type FlaggedAccountRow,
+  type InstallationSettingsData,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
@@ -24,6 +26,7 @@ import CiStatusBadge from './ci-status-badge';
 import AnalyticsTrends from './analytics-trends';
 import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
+import QueueSettings from './queue-settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,6 +102,10 @@ export default async function MaintainerPage({
   const flaggedAccounts: FlaggedAccountRow[] = isOk(flaggedAccountsRes)
     ? flaggedAccountsRes.data
     : [];
+  const settingsRes = await getInstallationSettings(activeInstallId);
+  const settings: InstallationSettingsData = isOk(settingsRes)
+    ? settingsRes.data
+    : { installationId: activeInstallId, minContributorLevel: 0 };
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -179,6 +186,7 @@ export default async function MaintainerPage({
         <p className="mb-4 text-xs text-zinc-500">
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
+        <QueueSettings settings={settings} />
         <AnalyticsTrends data={analyticsTrends} />
         {flaggedAccounts.length > 0 && (
           <section className="mb-8 rounded-2xl border border-amber-900/60 bg-amber-950/20 p-5">
