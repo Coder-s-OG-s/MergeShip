@@ -3,7 +3,7 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
-import { rateLimit } from '@/lib/rate-limit';
+import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import {
   isUserMaintainer,
   listMaintainerInstalls,
@@ -169,8 +169,7 @@ export async function getInstallationSettings(
   const limited = await rateLimit({
     namespace: 'maint:settings',
     key: user.id,
-    limit: 60,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.GENEROUS,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -206,8 +205,7 @@ export async function setMinContributorLevel(opts: {
   const limited = await rateLimit({
     namespace: 'maint:settings',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -260,8 +258,7 @@ export async function setAutoAssignMentorChain(opts: {
   const limited = await rateLimit({
     namespace: 'maint:settings',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -310,8 +307,7 @@ export async function getMaintainerPrQueue(args: {
   const limited = await rateLimit({
     namespace: 'maint:queue',
     key: user.id,
-    limit: 60,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.GENEROUS,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -464,8 +460,7 @@ export async function getMaintainerIssueQueue(args: {
   const limited = await rateLimit({
     namespace: 'maint:issues',
     key: user.id,
-    limit: 60,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.GENEROUS,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -578,8 +573,7 @@ export async function refreshMaintainerBackfill(
   const limited = await rateLimit({
     namespace: 'maint:backfill',
     key: user.id,
-    limit: 5,
-    windowSec: 60 * 60,
+    ...RATE_LIMIT_TIERS.HOURLY,
   });
   if (!limited.ok) return err('rate_limited', 'try again in an hour', true);
 
@@ -835,8 +829,7 @@ export async function getRepoHealthOverview(args: {
   const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
 
   if (!limited.ok) {
@@ -920,8 +913,7 @@ export async function getStaleIssues(args: {
   const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
 
   if (!limited.ok) {
@@ -998,8 +990,7 @@ export async function getTopContributors(args: {
   const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
 
   if (!limited.ok) {
@@ -1073,8 +1064,7 @@ export async function getMaintainerAnalyticsTrends(args: {
   const limited = await rateLimit({
     namespace: 'maintainer:analytics',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -1133,8 +1123,7 @@ export async function exportPrQueueCsv(
   const limited = await rateLimit({
     namespace: 'maint:csv',
     key: user.id,
-    limit: 10,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STRICT,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -1318,8 +1307,7 @@ export async function getRepoPicker(installationId: number): Promise<Result<Repo
   const limited = await rateLimit({
     namespace: 'maint:repo-picker',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -1414,8 +1402,7 @@ export async function setRepoManaged(input: {
   const limited = await rateLimit({
     namespace: 'maint:repo-managed',
     key: user.id,
-    limit: 60,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.GENEROUS,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -1468,8 +1455,7 @@ export async function getFlaggedAccounts(args?: {
   const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
 
   if (!limited.ok) {

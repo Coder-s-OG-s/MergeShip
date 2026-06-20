@@ -58,9 +58,13 @@ vi.mock('@/lib/maintainer/detect', () => ({
   listMaintainerRepos: vi.fn(),
 }));
 
-vi.mock('@/lib/rate-limit', () => ({
-  rateLimit: vi.fn(),
-}));
+vi.mock('@/lib/rate-limit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/rate-limit')>();
+  return {
+    ...actual,
+    rateLimit: vi.fn(),
+  };
+});
 
 vi.mock('@/inngest/client', () => ({
   inngest: { send: vi.fn() },
