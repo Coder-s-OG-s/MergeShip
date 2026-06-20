@@ -30,17 +30,28 @@ const CELL_FULL = CELL + GAP; // 13px per cell
 
 /**
  * Build the day/week grid for the "last 53 weeks" (trailing) view — current year mode.
+ *
+ * All date math here is done in UTC (mirroring buildYearGrid below) even though
+ * "today" is anchored to the user's *local* calendar date. This avoids the bug
+ * where local-time Date methods (getDate/setDate) were mixed with
+ * toISOString() (always UTC) — that mismatch caused local midnight to
+ * serialize to the previous day's UTC date string for anyone in a positive
+ * UTC-offset timezone (IST, JST, etc.), misaligning the grid against
+ * activityHistory entries keyed by calendar date.
  */
 function buildTrailingGrid(activityMap: Map<string, number>) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const now = new Date();
+  // Pin the LOCAL calendar date (Y/M/D) into a UTC-based Date. From this point
+  // on we only ever touch it with getUTC*/setUTC*, so toISOString() stays
+  // consistent with every date derived from it.
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
 
-  const currentDayOfWeek = today.getDay(); // 0 = Sunday
+  const currentDayOfWeek = today.getUTCDay(); // 0 = Sunday
   const startOfCurrentWeek = new Date(today);
-  startOfCurrentWeek.setDate(today.getDate() - currentDayOfWeek);
+  startOfCurrentWeek.setUTCDate(today.getUTCDate() - currentDayOfWeek);
 
   const startDate = new Date(startOfCurrentWeek);
-  startDate.setDate(startOfCurrentWeek.getDate() - 52 * 7); // 52 weeks ago Sunday
+  startDate.setUTCDate(startOfCurrentWeek.getUTCDate() - 52 * 7); // 52 weeks ago Sunday
 
   const days: { dateStr: string; count: number; isFuture: boolean; label: string }[] = [];
   const runningDate = new Date(startDate);
@@ -53,6 +64,7 @@ function buildTrailingGrid(activityMap: Map<string, number>) {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
+      timeZone: 'UTC',
     });
     days.push({
       dateStr: ymd,
@@ -60,7 +72,7 @@ function buildTrailingGrid(activityMap: Map<string, number>) {
       isFuture,
       label: isFuture ? '' : `${count} contribution${count === 1 ? '' : 's'} on ${formattedDate}`,
     });
-    runningDate.setDate(runningDate.getDate() + 1);
+    runningDate.setUTCDate(runningDate.getUTCDate() + 1);
   }
 
   // Month labels
@@ -68,12 +80,12 @@ function buildTrailingGrid(activityMap: Map<string, number>) {
   let lastMonth = -1;
   for (let col = 0; col < 53; col++) {
     const colStart = new Date(startDate);
-    colStart.setDate(startDate.getDate() + col * 7);
-    const month = colStart.getMonth();
+    colStart.setUTCDate(startDate.getUTCDate() + col * 7);
+    const month = colStart.getUTCMonth();
     if (month !== lastMonth) {
       monthLabels.push({
         col,
-        label: colStart.toLocaleDateString('en-US', { month: 'short' }),
+        label: colStart.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
       });
       lastMonth = month;
     }
