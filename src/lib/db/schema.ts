@@ -89,6 +89,10 @@ export const installationRepositories = pgTable(
       .references(() => githubInstallations.id, { onDelete: 'cascade' }),
     repoFullName: text('repo_full_name').notNull(),
     addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+    // Whether MergeShip actively manages this repo (maintainer's choice in the
+    // onboarding repo picker). Distinct from "installed" — GitHub tells us what's
+    // installed; this is the opt-in. Defaults true so existing installs are unaffected.
+    managed: boolean('managed').notNull().default(true),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.installationId, t.repoFullName] }),
