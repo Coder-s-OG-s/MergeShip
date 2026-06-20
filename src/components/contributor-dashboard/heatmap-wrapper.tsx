@@ -1,31 +1,10 @@
-import { getServiceSupabase } from '@/lib/supabase/service';
 import { ActivityHeatmap } from '@/components/activity-heatmap';
+import { totalContributions } from '@/lib/contributions/activity-history';
+import { loadActivityHistory } from '@/lib/contributions/load-activity-history';
 
 export default async function HeatmapWrapper({ userId }: { userId: string }) {
-  const service = getServiceSupabase();
-  if (!service) return null;
-
-  // Only query xp_events for git-related activity (no double-counting)
-  const { data: xpEvents } = await service
-    .from('xp_events')
-    .select('created_at')
-    .eq('user_id', userId)
-    .in('source', ['recommended_merge', 'unrecommended_merge', 'help_review']);
-
-  // Count activity per day — all time, no date filter
-  const countMap = new Map<string, number>();
-  for (const event of xpEvents ?? []) {
-    if (!event.created_at) continue;
-    const date = event.created_at.slice(0, 10);
-    countMap.set(date, (countMap.get(date) ?? 0) + 1);
-  }
-
-  const activityHistory = Array.from(countMap.entries()).map(([date, count]) => ({
-    date,
-    count,
-  }));
-
-  const totalAllTime = activityHistory.reduce((sum, d) => sum + d.count, 0);
+  const activityHistory = await loadActivityHistory(userId);
+  const totalAllTime = totalContributions(activityHistory);
   return <ActivityHeatmap activityHistory={activityHistory} allTimeContributions={totalAllTime} />;
 }
 

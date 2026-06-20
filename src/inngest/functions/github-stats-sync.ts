@@ -1,8 +1,8 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallationToken } from '@/lib/github/app';
-import { fetchMergedCount, fetchContributionStreak } from '@/app/actions/github-sync-helpers';
-import { cacheDel } from '@/lib/cache';
+import { fetchMergedCount, fetchContributionStreak, fetchContributionCalendar } from '@/app/actions/github-sync-helpers';
+import { cacheDel, cacheSet } from '@/lib/cache';
 
 type StatsSyncEvent = { data: { userId: string; githubHandle: string } };
 
@@ -33,10 +33,13 @@ export const githubStatsSync = inngest.createFunction(
       if (!installId) throw new Error('no GitHub App installation found');
 
       const token = await getInstallationToken(installId);
-      const [merges, streak] = await Promise.all([
+      const [merges, streak, calendar] = await Promise.all([
         fetchMergedCount(token, githubHandle),
         fetchContributionStreak(token, githubHandle),
+        fetchContributionCalendar(token, githubHandle),
       ]);
+
+      await cacheSet(`gh:contrib:${userId}`, { days: calendar }, 86_400);
 
       await sb
         .from('profiles')
