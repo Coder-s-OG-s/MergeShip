@@ -130,7 +130,9 @@ export default async function HelpInboxPage() {
                     </span>
                   </div>
                   {row.reason && (
-                    <p className="mt-1 truncate text-sm text-zinc-400">{row.reason}</p>
+                    <p className="mt-1 truncate text-sm text-zinc-400">
+                      {/^rec:\d+$/i.test(row.reason) ? 'Help request' : row.reason}
+                    </p>
                   )}
                   <a
                     href={row.pr_url}
