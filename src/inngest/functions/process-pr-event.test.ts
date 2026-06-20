@@ -421,12 +421,10 @@ describe('processPrEvent - auto-assign mentor chain', () => {
       }),
     });
     const seniorRowsMock = sb();
-    seniorRowsMock.eq = vi
-      .fn()
-      .mockReturnValueOnce(seniorRowsMock)
-      .mockResolvedValueOnce({
-        data: [{ user_id: 'senior-id', profiles: { github_handle: 'senior' } }],
-      });
+    seniorRowsMock.eq = vi.fn().mockReturnValue(seniorRowsMock);
+    seniorRowsMock.gte = vi.fn().mockResolvedValue({
+      data: [{ user_id: 'senior-id', profiles: { github_handle: 'senior', level: 3 } }],
+    });
 
     wire({
       installation_repositories: installationRepositoriesMock,

@@ -8,6 +8,7 @@ export const sb = (t: Record<string, unknown> = {}) => {
     'select',
     'eq',
     'neq',
+    'gte',
     'in',
     'is',
     'not',

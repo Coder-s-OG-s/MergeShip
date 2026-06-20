@@ -3,6 +3,11 @@ export type SeniorMaintainer = {
   handle: string;
 };
 
+// A mentor can only be routed a PR if they're actually allowed to verify it.
+// verifyPrAction (app/actions/mentor.ts) gates verification on profiles.level >= 2,
+// so auto-assignment must draw from the same L2+ pool.
+export const MENTOR_MIN_LEVEL = 2;
+
 export function shouldAutoAssignMentor(
   authorLevel: number | null,
   minContributorLevel: number,

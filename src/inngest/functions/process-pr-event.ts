@@ -8,6 +8,7 @@ import { unwrapJoin } from '@/lib/supabase/inner-join';
 import {
   pickMentor,
   shouldAutoAssignMentor,
+  MENTOR_MIN_LEVEL,
   type SeniorMaintainer,
 } from '@/lib/maintainer/mentor-assign';
 
@@ -195,18 +196,33 @@ async function maybeAutoAssignMentor(
     return { assigned: false, handle: null };
   }
 
+  // Senior = any install member at or above the mentor verification level (L2+),
+  // not just literal org_admins — otherwise we could assign a mentor who then
+  // fails verifyPrAction's level check, or find zero candidates on installs that
+  // have no org_admin row.
   const { data: seniorRows } = (await sb
     .from('github_installation_users')
-    .select('user_id, profiles!inner(github_handle)')
+    .select('user_id, profiles!inner(github_handle, level)')
     .eq('installation_id', installationId)
-    .eq('permission_level', 'org_admin')) as unknown as {
-    data: { user_id: string; profiles: { github_handle: string } }[] | null;
+    .gte('profiles.level', MENTOR_MIN_LEVEL)) as unknown as {
+    data:
+      | {
+          user_id: string;
+          // Supabase types a single-row !inner join as an array; normalise below.
+          profiles:
+            | { github_handle: string; level: number }
+            | { github_handle: string; level: number }[];
+        }[]
+      | null;
   };
 
-  const seniors: SeniorMaintainer[] = (seniorRows ?? []).map((row) => ({
-    userId: row.user_id,
-    handle: row.profiles.github_handle,
-  }));
+  const seniors: SeniorMaintainer[] = (seniorRows ?? []).flatMap((row) => {
+    const profile = unwrapJoin<{ github_handle: string; level: number }>(row.profiles);
+    // Guard against the foreign filter not being applied (defensive — keeps the
+    // L2+ invariant even if the join shape surprises us).
+    if (!profile || profile.level < MENTOR_MIN_LEVEL) return [];
+    return [{ userId: row.user_id, handle: profile.github_handle }];
+  });
   const chosen = pickMentor(seniors, prRow.author_user_id);
   if (!chosen) return { assigned: false, handle: null };
 
