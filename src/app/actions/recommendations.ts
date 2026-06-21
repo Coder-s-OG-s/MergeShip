@@ -364,6 +364,14 @@ export async function unlinkPrFromRec(recId: number): Promise<Result<{ id: numbe
   } = await sb.auth.getUser();
   if (!user) return err('not_authenticated', 'sign in first');
 
+  const rateRes = await rateLimit({
+    namespace: 'recs:unlink-pr',
+    key: user.id,
+    limit: 20,
+    windowSec: 60,
+  });
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
+
   const { data, error: updateErr } = await service
     .from('recommendations')
     .update({ linked_pr_url: null })
@@ -389,6 +397,14 @@ export async function unclaimRecommendation(recId: number): Promise<Result<{ id:
     data: { user },
   } = await sb.auth.getUser();
   if (!user) return err('not_authenticated', 'sign in first');
+
+  const rateRes = await rateLimit({
+    namespace: 'recs:unclaim',
+    key: user.id,
+    limit: 20,
+    windowSec: 60,
+  });
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
 
   const { data, error: updateErr } = await service
     .from('recommendations')
