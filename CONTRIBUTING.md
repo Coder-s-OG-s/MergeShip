@@ -320,6 +320,9 @@ First run pulls ~2.5GB of images. Wait 5-10 min. Stuck after 15 min: `Ctrl-C`, r
 **Supabase containers crash / out of memory**
 Docker Desktop → Settings → Resources → bump Memory to at least 4GB.
 
+**`npm run dev` works but sign-in / API calls intermittently throw `Error: fetch failed` or `TypeError: Failed to fetch`**
+The `vector` container (Supabase Studio's local log shipper) can't reach the Docker socket from inside the container — a known Docker Desktop issue, most common on Windows — and crash-loops roughly every 60s, taking the Kong gateway down with it for a few seconds each cycle. `make supabase-start` already excludes `analytics`, `vector`, and `edge-runtime` (none of which this project uses) for exactly this reason. If you're running `npx supabase start` directly, add the same flag: `npx supabase start --exclude analytics,vector,edge-runtime`.
+
 **Port 54321 / 54322 / 54323 / 3001 already in use**
 Another instance running. To free a port:
 
