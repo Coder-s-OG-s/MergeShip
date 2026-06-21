@@ -66,9 +66,10 @@ describe('rateLimit', () => {
 });
 
 describe('RATE_LIMIT_TIERS', () => {
-  it('defines standard, generous, strict, and hourly tiers', () => {
+  it('defines standard, generous, medium, strict, and hourly tiers', () => {
     expect(RATE_LIMIT_TIERS.STANDARD).toEqual({ limit: 30, windowSec: 60 });
     expect(RATE_LIMIT_TIERS.GENEROUS).toEqual({ limit: 60, windowSec: 60 });
+    expect(RATE_LIMIT_TIERS.MEDIUM).toEqual({ limit: 20, windowSec: 60 });
     expect(RATE_LIMIT_TIERS.STRICT).toEqual({ limit: 10, windowSec: 60 });
     expect(RATE_LIMIT_TIERS.HOURLY).toEqual({ limit: 5, windowSec: 3600 });
   });

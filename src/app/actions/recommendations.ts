@@ -106,7 +106,7 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
   const rateRes = await rateLimit({
     namespace: 'recs:claim',
     key: user.id,
-    ...RATE_LIMIT_TIERS.STANDARD,
+    ...RATE_LIMIT_TIERS.MEDIUM,
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
 
