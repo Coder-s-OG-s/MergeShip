@@ -12,7 +12,6 @@ import ActiveIssuesSection, { RecsSkeleton } from './active-issues';
 import GitHubPRsWrapper, { PrsSkeleton } from './github-prs-wrapper';
 import LeaderboardSnapshot, { LeaderboardSkeleton } from './leaderboard-snapshot';
 import MenteesSection, { MenteesSkeleton } from './mentees-section';
-import OnboardingChecklist from './onboarding-checklist';
 import TrendingRepos, { TrendingReposSkeleton } from './trending-repos';
 import RepositoryMatches, { RepositoryMatchesSkeleton } from './repository-matches';
 
@@ -74,16 +73,6 @@ export default async function DashboardPage() {
     .select('id', { count: 'exact', head: true })
     .eq('author_user_id', user.id);
 
-  const githubConnected = Boolean(profile?.github_handle);
-
-  const hasClaimedIssue = (claimedCount ?? 0) > 0;
-
-  const hasSubmittedPr = (prCount ?? 0) > 0;
-
-  const showChecklist =
-    (profile?.github_total_merges ?? 0) === 0 &&
-    !(githubConnected && hasClaimedIssue && hasSubmittedPr);
-
   return (
     <div className="min-h-screen bg-[#0d1117] p-6 font-mono text-white md:p-10">
       <div className="mx-auto max-w-[1400px]">
@@ -101,14 +90,6 @@ export default async function DashboardPage() {
           </div>
           <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} />
         </header>
-
-        {showChecklist && (
-          <OnboardingChecklist
-            githubConnected={githubConnected}
-            hasClaimedIssue={hasClaimedIssue}
-            hasSubmittedPr={hasSubmittedPr}
-          />
-        )}
 
         {/* Stats Row */}
         <Suspense fallback={<StatsSkeleton />}>
