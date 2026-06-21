@@ -2,7 +2,7 @@
 
 Welcome. This guide gets you from `git clone` to a running local app, then walks you through opening your first PR. Should take 15-20 minutes the first time.
 
-Works the same on **macOS**, **Linux**, and **Windows (WSL2)**. Native Windows isn't supported — Supabase CLI has known issues outside WSL2.
+Works the same on **macOS**, **Linux**, and **Windows**. WSL2 is the recommended path on Windows and gets the most testing, but native Windows + Docker Desktop also works for the core setup (Supabase CLI, migrations, `npm run dev`).
 **Got a question before you start? Join the conversation on [GitHub Discussions](https://github.com/Coder-s-OG-s/MergeShip/discussions) - introductions, setup help, feature ideas, anything.**
 
 ---
@@ -27,10 +27,8 @@ Install these once:
 
 **Windows:**
 
-- Install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) first (`wsl --install` in PowerShell, then reboot).
-- Install Docker Desktop and enable the WSL2 backend in **Settings → General**.
-- Run **all commands below from inside the WSL2 Ubuntu shell**, not PowerShell or CMD.
-- Install Node + npm inside WSL2 (`sudo apt install nodejs npm` or use nvm inside WSL2).
+- **Recommended: WSL2.** Install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) first (`wsl --install` in PowerShell, then reboot), install Docker Desktop with the WSL2 backend enabled in **Settings → General**, then run all commands from inside the WSL2 Ubuntu shell (not PowerShell or CMD). Install Node + npm inside WSL2 (`sudo apt install nodejs npm` or nvm inside WSL2).
+- **Native Windows also works** for the core setup (Supabase CLI, migrations, `npm run dev`) with Docker Desktop and a POSIX-ish shell (e.g. Git Bash). It gets less testing than WSL2 — if something behaves oddly, falling back to WSL2 is the safe bet.
 
 **Linux:**
 
@@ -64,7 +62,7 @@ Then start the local Supabase stack. **First run pulls ~2.5GB of Docker images a
 make supabase-start
 ```
 
-When it finishes, it prints URLs and keys. You need two keys from the output (or run `npx supabase status -o env` to print them again):
+When it finishes, it prints a box of URLs and keys — note the CLI labels them `Publishable`/`Secret` there, not `ANON_KEY`/`SERVICE_ROLE_KEY`. Run `npx supabase status -o env` to print the same keys under the exact names you need:
 
 - `ANON_KEY` → paste into `.env.local` as `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SERVICE_ROLE_KEY` → paste into `.env.local` as `SUPABASE_SERVICE_ROLE_KEY`
