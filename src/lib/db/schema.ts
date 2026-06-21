@@ -33,6 +33,7 @@ export const profiles = pgTable(
     id: uuid('id').primaryKey(),
     githubId: text('github_id').notNull().unique(),
     githubHandle: text('github_handle').notNull().unique(),
+    email: text('email'),
     displayName: text('display_name'),
     avatarUrl: text('avatar_url'),
     role: text('role', { enum: ['contributor', 'maintainer', 'both'] })

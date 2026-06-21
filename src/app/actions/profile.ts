@@ -58,6 +58,7 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
         github_handle: githubHandle,
         avatar_url: avatarUrl ?? null,
         display_name: displayName ?? null,
+        email: user.email ?? null,
       },
       { onConflict: 'id' },
     )
