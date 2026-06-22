@@ -22,7 +22,7 @@ export function ResolveFlagButton({
       if (isOk(res)) {
         router.refresh();
       } else {
-        alert(res.error);
+        alert(res.error.message);
         setLoading(false);
       }
     } catch (e) {
