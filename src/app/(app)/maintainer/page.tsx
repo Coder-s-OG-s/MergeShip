@@ -27,6 +27,7 @@ import AnalyticsTrends from './analytics-trends';
 import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
 import QueueSettings from './queue-settings';
+import { ResolveFlagButton } from './resolve-flag-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -226,6 +227,7 @@ export default async function MaintainerPage({
                     >
                       {flag.severity}
                     </span>
+                    <ResolveFlagButton flagId={flag.id} installationId={activeInstallId} />
                   </div>
                   <p className="mt-3 text-sm text-amber-100">{formatFlagReason(flag.reason)}</p>
                   <p className="mt-1 text-xs text-amber-200/70">{flag.summary}</p>

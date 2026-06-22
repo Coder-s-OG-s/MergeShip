@@ -1359,3 +1359,67 @@ export async function getFlaggedAccounts(args?: {
     }),
   );
 }
+
+export async function resolveFlaggedAccount(
+  flagId: number,
+  status: 'reviewed' | 'dismissed',
+  installationId: number,
+): Promise<Result<{ ok: true }>> {
+  const sb = await getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const limited = await rateLimit({
+    namespace: 'maintainer',
+    key: user.id,
+    limit: 30,
+    windowSec: 60,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  const { data: flag, error: findError } = await service
+    .from('flagged_accounts')
+    .select('id, evidence, user_id')
+    .eq('id', flagId)
+    .single();
+
+  if (findError || !flag) {
+    return err('not_found', 'Flag not found');
+  }
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  const evidence = flag.evidence as any;
+  const items = Array.isArray(evidence?.items) ? evidence.items : [];
+  const isAuthorized = items.some((item: any) => {
+    const r = item.repo || item.repoFullName;
+    return typeof r === 'string' && repos.includes(r);
+  });
+
+  if (!isAuthorized) {
+    return err('not_authorised', 'not authorized to resolve this flag');
+  }
+
+  const { error: updateError } = await service
+    .from('flagged_accounts')
+    .update({
+      status,
+      resolved_at: new Date().toISOString(),
+    })
+    .eq('id', flagId);
+
+  if (updateError) {
+    return err('persist_failed', updateError.message);
+  }
+
+  return ok({ ok: true });
+}

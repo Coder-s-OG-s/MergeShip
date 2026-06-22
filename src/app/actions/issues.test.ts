@@ -80,16 +80,18 @@ describe('getIssuesPage', () => {
     mocks.mockGetUser.mockResolvedValue({
       data: { user: { id: 'user-1' } },
     });
+    mocks.mockGetSession.mockResolvedValue({
+      data: { session: null },
+    });
   });
 
-  it('returns empty result set', async () => {
-    mocks.mockServiceFrom.mockReturnValueOnce(
-      createMockChain({
-        data: [],
-        count: 0,
-        error: null,
-      }),
-    );
+  it('returns empty result set when user has no installations', async () => {
+    mocks.mockServiceFrom.mockImplementation((table: string) => {
+      if (table === 'github_installations') {
+        return createMockChain({ data: [] });
+      }
+      return createMockChain({ data: [] });
+    });
 
     const result = await getIssuesPage({});
 
@@ -100,6 +102,49 @@ describe('getIssuesPage', () => {
       expect(result.data.total).toBe(0);
       expect(result.data.page).toBe(1);
       expect(result.data.pageSize).toBe(10);
+    }
+  });
+
+  it('returns scoped issues from user installed repos', async () => {
+    const mockChain = createMockChain({
+      data: [
+        {
+          id: 45,
+          repo_full_name: 'owner/allowed-repo',
+          title: 'Scoped Issue',
+          github_issue_number: 1,
+          difficulty: 'E',
+          xp_reward: 100,
+          labels: [],
+          state: 'open',
+          url: 'https://github.com/owner/allowed-repo/issues/1',
+          fetched_at: '2026-05-18T00:00:00Z',
+        },
+      ],
+      count: 1,
+      error: null,
+    });
+
+    mocks.mockServiceFrom.mockImplementation((table: string) => {
+      if (table === 'github_installations') {
+        return createMockChain({ data: [{ id: 10 }] });
+      }
+      if (table === 'installation_repositories') {
+        return createMockChain({ data: [{ repo_full_name: 'owner/allowed-repo' }] });
+      }
+      if (table === 'issues') {
+        return mockChain;
+      }
+      return createMockChain({ data: [] });
+    });
+
+    const result = await getIssuesPage({});
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.issues).toHaveLength(1);
+      expect(result.data.issues[0]?.title).toBe('Scoped Issue');
+      expect(mockChain.in).toHaveBeenCalledWith('repo_full_name', ['owner/allowed-repo']);
     }
   });
 });

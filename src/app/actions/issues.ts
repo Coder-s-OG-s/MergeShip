@@ -4,7 +4,7 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
 import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
-import { cacheDel } from '@/lib/cache';
+import { cacheDel, cacheGet, cacheSet } from '@/lib/cache';
 import { repoFilterPattern } from './issues-helpers';
 
 const PAGE_SIZE = 10;
@@ -45,6 +45,8 @@ export type RepoOption = {
   value: string; // upstream repo name to filter issues by
 };
 
+const inFlightRepoOptions = new Map<string, Promise<Result<RepoOption[]>>>();
+
 export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
   const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
@@ -53,66 +55,88 @@ export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
   } = await sb.auth.getUser();
   if (!user) return err('not_authenticated', 'sign in first');
 
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
+  const cacheKey = `repo-options:${user.id}`;
 
-  const { data: insts } = await service
-    .from('github_installations')
-    .select('id')
-    .eq('user_id', user.id);
+  // Return active in-flight request if there is one (deduplicates concurrent calls during page load)
+  const inFlight = inFlightRepoOptions.get(user.id);
+  if (inFlight) return inFlight;
 
-  const instIds = (insts ?? []).map((i: { id: number }) => i.id);
-  if (instIds.length === 0) return ok([]);
+  const fetchPromise = (async (): Promise<Result<RepoOption[]>> => {
+    try {
+      // Check cache first (deduplicates subsequent search/page/filter calls)
+      const cached = await cacheGet<RepoOption[]>(cacheKey);
+      if (cached) return ok(cached);
 
-  const { data: repoRows } = await service
-    .from('installation_repositories')
-    .select('repo_full_name')
-    .in('installation_id', instIds);
+      const service = getServiceSupabase();
+      if (!service) return err('not_configured', 'service role missing');
 
-  const userRepos = [
-    ...new Set((repoRows ?? []).map((r: { repo_full_name: string }) => r.repo_full_name)),
-  ];
-  if (userRepos.length === 0) return ok([]);
+      const { data: insts } = await service
+        .from('github_installations')
+        .select('id')
+        .eq('user_id', user.id);
 
-  // Get provider token so we can call GitHub API to detect forks
-  const sessionRes = await sb.auth.getSession();
-  const token = sessionRes.data.session?.provider_token;
+      const instIds = (insts ?? []).map((i: { id: number }) => i.id);
+      if (instIds.length === 0) return ok([]);
 
-  // Resolve each repo: if it's a fork, use the upstream (parent) as the issues source
-  const options = await Promise.all(
-    userRepos.map(async (repo): Promise<RepoOption> => {
-      if (!token) return { label: repo, value: repo };
-      try {
-        const res = await fetch(`https://api.github.com/repos/${repo}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
-          },
-        });
-        if (!res.ok) return { label: repo, value: repo };
-        const data = (await res.json()) as { fork?: boolean; parent?: { full_name: string } };
-        if (data.fork && data.parent?.full_name) {
-          return { label: repo, value: data.parent.full_name };
-        }
-        return { label: repo, value: repo };
-      } catch {
-        return { label: repo, value: repo };
-      }
-    }),
-  );
+      const { data: repoRows } = await service
+        .from('installation_repositories')
+        .select('repo_full_name')
+        .in('installation_id', instIds);
 
-  // Deduplicate by value (multiple forks of same upstream → one entry)
-  const seen = new Set<string>();
-  const deduped = options
-    .filter((opt) => {
-      if (seen.has(opt.value)) return false;
-      seen.add(opt.value);
-      return true;
-    })
-    .sort((a, b) => a.label.localeCompare(b.label));
+      const userRepos = [
+        ...new Set((repoRows ?? []).map((r: { repo_full_name: string }) => r.repo_full_name)),
+      ];
+      if (userRepos.length === 0) return ok([]);
 
-  return ok(deduped);
+      // Get provider token so we can call GitHub API to detect forks
+      const sessionRes = await sb.auth.getSession();
+      const token = sessionRes.data.session?.provider_token;
+
+      // Resolve each repo: if it's a fork, use the upstream (parent) as the issues source
+      const options = await Promise.all(
+        userRepos.map(async (repo): Promise<RepoOption> => {
+          if (!token) return { label: repo, value: repo };
+          try {
+            const res = await fetch(`https://api.github.com/repos/${repo}`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/vnd.github+json',
+                'X-GitHub-Api-Version': '2022-11-28',
+              },
+            });
+            if (!res.ok) return { label: repo, value: repo };
+            const data = (await res.json()) as { fork?: boolean; parent?: { full_name: string } };
+            if (data.fork && data.parent?.full_name) {
+              return { label: repo, value: data.parent.full_name };
+            }
+            return { label: repo, value: repo };
+          } catch {
+            return { label: repo, value: repo };
+          }
+        }),
+      );
+
+      // Deduplicate by value (multiple forks of same upstream → one entry)
+      const seen = new Set<string>();
+      const deduped = options
+        .filter((opt) => {
+          if (seen.has(opt.value)) return false;
+          seen.add(opt.value);
+          return true;
+        })
+        .sort((a, b) => a.label.localeCompare(b.label));
+
+      // Cache the result for 5 minutes (300 seconds)
+      await cacheSet(cacheKey, deduped, 300);
+
+      return ok(deduped);
+    } finally {
+      inFlightRepoOptions.delete(user.id);
+    }
+  })();
+
+  inFlightRepoOptions.set(user.id, fetchPromise);
+  return fetchPromise;
 }
 
 export async function getIssuesPage(filters: IssueFilter): Promise<Result<IssuesPageResult>> {
@@ -132,6 +156,21 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
 
   const isSearch = !!filters.search?.trim();
 
+  // Resolve user's allowed repositories
+  const repoOptionsRes = await getRepoOptions();
+  if (!repoOptionsRes.ok) {
+    return err(repoOptionsRes.error.code, repoOptionsRes.error.message);
+  }
+  const allowedRepos = repoOptionsRes.data.map((opt) => opt.value);
+  if (allowedRepos.length === 0) {
+    return ok({
+      issues: [],
+      total: 0,
+      page,
+      pageSize: PAGE_SIZE,
+    });
+  }
+
   // Cast to any to avoid complex union type builder errors between rpc and from
   let query: any = isSearch
     ? service.rpc('search_issues', { search_query: filters.search!.trim() })
@@ -143,6 +182,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
       { count: 'exact' },
     )
     .eq('state', filters.state ?? 'open')
+    .in('repo_full_name', allowedRepos)
     .range(from, to);
 
   // When searching via RPC, results are naturally ordered by rank (from the SQL function).
