@@ -1365,27 +1365,12 @@ export async function resolveFlaggedAccount(
   status: 'reviewed' | 'dismissed',
   installationId: number,
 ): Promise<Result<{ ok: true }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maintainer',
-    key: user.id,
-    limit: 30,
-    windowSec: 60,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', limit: 30, windowSec: 60 },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   const { data: flag, error: findError } = await service
     .from('flagged_accounts')
