@@ -1,11 +1,10 @@
 'use server';
 
-import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
-import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
+import { requireUser, requireMaintainer } from '@/lib/action-auth';
+import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import {
-  isUserMaintainer,
   listMaintainerInstalls,
   listMaintainerRepos,
   type MaintainerInstall,
@@ -97,12 +96,9 @@ const PAGE_SIZE = 25;
 const MIN_CONTRIBUTOR_LEVELS = new Set([0, 1, 2, 3]);
 
 export async function getMaintainerInstalls(): Promise<Result<MaintainerInstall[]>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
+  const authRes = await requireUser();
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
 
   const installs = await listMaintainerInstalls(user.id);
   return ok(installs);
@@ -158,26 +154,12 @@ async function readInstallationSettings(
 export async function getInstallationSettings(
   installationId: number,
 ): Promise<Result<InstallationSettingsData>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:settings',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.GENEROUS,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:settings', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   if (!(await assertMaintainerInstall(service, user.id, installationId))) {
     return err('not_authorised', 'not your install');
@@ -194,26 +176,12 @@ export async function setMinContributorLevel(opts: {
   installationId: number;
   minContributorLevel: number;
 }): Promise<Result<InstallationSettingsData>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:settings',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.STANDARD,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:settings', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   if (!MIN_CONTRIBUTOR_LEVELS.has(opts.minContributorLevel)) {
     return err('invalid_input', 'minimum contributor level must be L0, L1, L2, or L3');
@@ -249,26 +217,12 @@ export async function setAutoAssignMentorChain(opts: {
   installationId: number;
   enabled: boolean;
 }): Promise<Result<InstallationSettingsData>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:settings',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.STANDARD,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:settings', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   if (!(await assertMaintainerInstall(service, user.id, opts.installationId))) {
     return err('not_authorised', 'not your install');
@@ -299,27 +253,12 @@ export async function setAiPrDetection(opts: {
   installationId: number;
   enabled: boolean;
 }): Promise<Result<InstallationSettingsData>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:settings',
-    key: user.id,
-    limit: 30,
-    windowSec: 60,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:settings', limit: 30, windowSec: 60 },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   if (!(await assertMaintainerInstall(service, user.id, opts.installationId))) {
     return err('not_authorised', 'not your install');
@@ -351,26 +290,12 @@ export async function getMaintainerPrQueue(args: {
   filters?: Partial<QueueFilters>;
   page?: number;
 }): Promise<Result<{ rows: MaintainerPrRow[]; hasMore: boolean }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:queue',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.GENEROUS,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:queue', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   // Defense in depth: confirm the requested install actually belongs to the user.
   const repos = await listMaintainerRepos(user.id, args.installationId);
@@ -504,26 +429,12 @@ export async function getMaintainerIssueQueue(args: {
   repos?: string[];
   page?: number;
 }): Promise<Result<{ rows: MaintainerIssueRow[]; hasMore: boolean }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:issues',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.GENEROUS,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:issues', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   const repos = await listMaintainerRepos(user.id, args.installationId);
   if (repos.length === 0) {
@@ -620,23 +531,11 @@ export async function getMaintainerIssueQueue(args: {
 export async function refreshMaintainerBackfill(
   installationId: number,
 ): Promise<Result<{ ok: true }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:backfill',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.HOURLY,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:backfill', ...RATE_LIMIT_TIERS.HOURLY },
+    rateLimitMessage: 'try again in an hour',
   });
-  if (!limited.ok) return err('rate_limited', 'try again in an hour', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
 
   await inngest.send({
     name: 'pr-backfill/installation',
@@ -657,19 +556,9 @@ export type CommunityLink = {
 };
 
 export async function getCommunityLinks(installationId: number): Promise<Result<CommunityLink[]>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  const authRes = await requireMaintainer({ requireService: true });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   const { data } = await service
     .from('org_communities')
@@ -695,19 +584,9 @@ export async function upsertCommunityLink(input: {
   url: string;
   label?: string;
 }): Promise<Result<{ id: number }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  const authRes = await requireMaintainer({ requireService: true });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   // Confirm the install is one the user maintains.
   const { data: junction } = await service
@@ -742,19 +621,9 @@ export async function upsertCommunityLink(input: {
 }
 
 export async function deleteCommunityLink(linkId: number): Promise<Result<{ ok: true }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  const authRes = await requireMaintainer({ requireService: true });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   // Find link + verify install belongs to user.
   const { data: link } = await service
@@ -781,17 +650,9 @@ export async function getPrCiStatus(
   repoFullName: string,
   prNumber: number,
 ): Promise<Result<'passing' | 'failing' | 'pending' | null>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  const authRes = await requireMaintainer();
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
 
   const cacheKey = `ci:status:${repoFullName}:${prNumber}`;
   const cached = await cacheGet<'passing' | 'failing' | 'pending' | null>(cacheKey);
@@ -863,39 +724,12 @@ export async function getPrCiStatus(
 export async function getRepoHealthOverview(args: {
   installationId: number;
 }): Promise<Result<RepoHealthRow[]>> {
-  const sb = await getServerSupabase();
-
-  if (!sb) {
-    return err('not_configured', 'auth not configured');
-  }
-
-  const service = getServiceSupabase();
-
-  if (!service) {
-    return err('not_configured', 'service role missing');
-  }
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-
-  if (!user) {
-    return err('not_authenticated', 'sign in first');
-  }
-
-  const limited = await rateLimit({
-    namespace: 'maintainer',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.STANDARD,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
   });
-
-  if (!limited.ok) {
-    return err('rate_limited', 'slow down', true);
-  }
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   const repos = await listMaintainerRepos(user.id, args.installationId);
 
@@ -947,39 +781,12 @@ export async function getRepoHealthOverview(args: {
 export async function getStaleIssues(args: {
   installationId: number;
 }): Promise<Result<StaleIssueRow[]>> {
-  const sb = await getServerSupabase();
-
-  if (!sb) {
-    return err('not_configured', 'auth not configured');
-  }
-
-  const service = getServiceSupabase();
-
-  if (!service) {
-    return err('not_configured', 'service role missing');
-  }
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-
-  if (!user) {
-    return err('not_authenticated', 'sign in first');
-  }
-
-  const limited = await rateLimit({
-    namespace: 'maintainer',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.STANDARD,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
   });
-
-  if (!limited.ok) {
-    return err('rate_limited', 'slow down', true);
-  }
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   const repos = await listMaintainerRepos(user.id, args.installationId);
 
@@ -1024,39 +831,12 @@ export async function getStaleIssues(args: {
 export async function getTopContributors(args: {
   installationId: number;
 }): Promise<Result<ContributorRow[]>> {
-  const sb = await getServerSupabase();
-
-  if (!sb) {
-    return err('not_configured', 'auth not configured');
-  }
-
-  const service = getServiceSupabase();
-
-  if (!service) {
-    return err('not_configured', 'service role missing');
-  }
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-
-  if (!user) {
-    return err('not_authenticated', 'sign in first');
-  }
-
-  const limited = await rateLimit({
-    namespace: 'maintainer',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.STANDARD,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
   });
-
-  if (!limited.ok) {
-    return err('rate_limited', 'slow down', true);
-  }
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   const repos = await listMaintainerRepos(user.id, args.installationId);
 
@@ -1098,36 +878,12 @@ export async function getTopContributors(args: {
 export async function getMaintainerAnalyticsTrends(args: {
   installationId: number;
 }): Promise<Result<MaintainerAnalyticsTrends>> {
-  const sb = await getServerSupabase();
-
-  if (!sb) {
-    return err('not_configured', 'auth not configured');
-  }
-
-  const service = getServiceSupabase();
-
-  if (!service) {
-    return err('not_configured', 'service role missing');
-  }
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-
-  if (!user) {
-    return err('not_authenticated', 'sign in first');
-  }
-
-  const limited = await rateLimit({
-    namespace: 'maintainer:analytics',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.STANDARD,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer:analytics', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   const repos = await listMaintainerRepos(user.id, args.installationId);
 
@@ -1167,26 +923,12 @@ export async function exportPrQueueCsv(
   installationId: number,
   filters?: Partial<QueueFilters>,
 ): Promise<Result<string>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:csv',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.STRICT,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:csv', ...RATE_LIMIT_TIERS.STRICT },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   const repos = await listMaintainerRepos(user.id, installationId);
   if (repos.length === 0) {
@@ -1351,26 +1093,12 @@ export type RepoPickerRow = {
  * ingested PRs/issues simply show 0 / null — no live GitHub call here.
  */
 export async function getRepoPicker(installationId: number): Promise<Result<RepoPickerRow[]>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:repo-picker',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.STANDARD,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:repo-picker', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   // Scope to repos the caller actually maintains for this install.
   const scoped = new Set(await listMaintainerRepos(user.id, installationId));
@@ -1446,26 +1174,12 @@ export async function setRepoManaged(input: {
   repoFullName: string;
   managed: boolean;
 }): Promise<Result<{ ok: true }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:repo-managed',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.GENEROUS,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:repo-managed', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   const scoped = await listMaintainerRepos(user.id, input.installationId);
   if (!scoped.includes(input.repoFullName)) {
@@ -1489,39 +1203,12 @@ export async function setRepoManaged(input: {
 export async function getFlaggedAccounts(args?: {
   installationId?: number;
 }): Promise<Result<FlaggedAccountRow[]>> {
-  const sb = await getServerSupabase();
-
-  if (!sb) {
-    return err('not_configured', 'auth not configured');
-  }
-
-  const service = getServiceSupabase();
-
-  if (!service) {
-    return err('not_configured', 'service role missing');
-  }
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-
-  if (!user) {
-    return err('not_authenticated', 'sign in first');
-  }
-
-  const limited = await rateLimit({
-    namespace: 'maintainer',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.STANDARD,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
   });
-
-  if (!limited.ok) {
-    return err('rate_limited', 'slow down', true);
-  }
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   let installationId = args?.installationId;
 
