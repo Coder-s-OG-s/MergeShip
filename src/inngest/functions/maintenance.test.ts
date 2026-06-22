@@ -257,11 +257,14 @@ describe('streakDetect', () => {
                   return { created_at: d.toISOString() };
                 });
               }
-              return {
+              const gteObj = {
                 lt: vi.fn().mockResolvedValue({
                   data: events,
                   error: null,
                 }),
+              };
+              return {
+                gte: vi.fn().mockReturnValue(gteObj),
               };
             }),
           };

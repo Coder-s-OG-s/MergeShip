@@ -75,6 +75,11 @@ export const streakDetect = inngest.createFunction(
         .neq('source', XP_SOURCE.STREAK);
 
       const uniqueUsers = new Set((actives ?? []).map((r) => r.user_id));
+      const maxDays = XP_REWARDS.STREAK_CAP / XP_REWARDS.STREAK_PER_DAY;
+      const streakCutoffDate = new Date(Date.now() - (maxDays + 1) * 24 * 3600 * 1000)
+        .toISOString()
+        .slice(0, 10);
+
       let awarded = 0;
       for (const userId of uniqueUsers) {
         if (!userId) continue;
@@ -84,10 +89,10 @@ export const streakDetect = inngest.createFunction(
           .from('xp_events')
           .select('created_at')
           .eq('user_id', userId)
+          .gte('created_at', `${streakCutoffDate}T00:00:00Z`)
           .lt('created_at', `${today}T00:00:00Z`);
 
         const streakDays = computeCurrentStreak(userEvents ?? [], yesterday);
-        const maxDays = XP_REWARDS.STREAK_CAP / XP_REWARDS.STREAK_PER_DAY;
 
         if (streakDays > maxDays) {
           continue;
