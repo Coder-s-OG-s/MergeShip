@@ -3,7 +3,7 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
-import { rateLimit } from '@/lib/rate-limit';
+import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import {
   isUserMaintainer,
   listMaintainerInstalls,
@@ -83,6 +83,7 @@ export type InstallationSettingsData = {
   installationId: number;
   minContributorLevel: 0 | 1 | 2 | 3;
   autoAssignMentorChain: boolean;
+  aiPrDetection: boolean;
 };
 
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
@@ -142,7 +143,7 @@ async function readInstallationSettings(
 ): Promise<Omit<InstallationSettingsData, 'installationId'>> {
   const { data } = await service
     .from('installation_settings')
-    .select('min_contributor_level, auto_assign_mentor_chain')
+    .select('min_contributor_level, auto_assign_mentor_chain, ai_pr_detection')
     .eq('installation_id', installationId)
     .maybeSingle();
 
@@ -150,6 +151,7 @@ async function readInstallationSettings(
   return {
     minContributorLevel: MIN_CONTRIBUTOR_LEVELS.has(level) ? (level as 0 | 1 | 2 | 3) : 0,
     autoAssignMentorChain: data?.auto_assign_mentor_chain ?? false,
+    aiPrDetection: data?.ai_pr_detection ?? false,
   };
 }
 
@@ -169,8 +171,7 @@ export async function getInstallationSettings(
   const limited = await rateLimit({
     namespace: 'maint:settings',
     key: user.id,
-    limit: 60,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.GENEROUS,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -206,8 +207,7 @@ export async function setMinContributorLevel(opts: {
   const limited = await rateLimit({
     namespace: 'maint:settings',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -230,6 +230,7 @@ export async function setMinContributorLevel(opts: {
       installation_id: opts.installationId,
       min_contributor_level: minContributorLevel,
       auto_assign_mentor_chain: current.autoAssignMentorChain,
+      ai_pr_detection: current.aiPrDetection,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'installation_id' },
@@ -240,10 +241,61 @@ export async function setMinContributorLevel(opts: {
     installationId: opts.installationId,
     minContributorLevel,
     autoAssignMentorChain: current.autoAssignMentorChain,
+    aiPrDetection: current.aiPrDetection,
   });
 }
 
 export async function setAutoAssignMentorChain(opts: {
+  installationId: number;
+  enabled: boolean;
+}): Promise<Result<InstallationSettingsData>> {
+  const sb = await getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const limited = await rateLimit({
+    namespace: 'maint:settings',
+    key: user.id,
+    ...RATE_LIMIT_TIERS.STANDARD,
+  });
+  if (!limited.ok) return err('rate_limited', 'slow down', true);
+
+  if (!(await isUserMaintainer(user.id))) {
+    return err('not_authorised', 'not a maintainer');
+  }
+
+  if (!(await assertMaintainerInstall(service, user.id, opts.installationId))) {
+    return err('not_authorised', 'not your install');
+  }
+
+  const current = await readInstallationSettings(service, opts.installationId);
+  const { error } = await service.from('installation_settings').upsert(
+    {
+      installation_id: opts.installationId,
+      min_contributor_level: current.minContributorLevel,
+      auto_assign_mentor_chain: opts.enabled,
+      ai_pr_detection: current.aiPrDetection,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'installation_id' },
+  );
+  if (error) return err('persist_failed', error.message);
+
+  return ok({
+    installationId: opts.installationId,
+    minContributorLevel: current.minContributorLevel,
+    autoAssignMentorChain: opts.enabled,
+    aiPrDetection: current.aiPrDetection,
+  });
+}
+
+export async function setAiPrDetection(opts: {
   installationId: number;
   enabled: boolean;
 }): Promise<Result<InstallationSettingsData>> {
@@ -278,7 +330,8 @@ export async function setAutoAssignMentorChain(opts: {
     {
       installation_id: opts.installationId,
       min_contributor_level: current.minContributorLevel,
-      auto_assign_mentor_chain: opts.enabled,
+      auto_assign_mentor_chain: current.autoAssignMentorChain,
+      ai_pr_detection: opts.enabled,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'installation_id' },
@@ -288,7 +341,8 @@ export async function setAutoAssignMentorChain(opts: {
   return ok({
     installationId: opts.installationId,
     minContributorLevel: current.minContributorLevel,
-    autoAssignMentorChain: opts.enabled,
+    autoAssignMentorChain: current.autoAssignMentorChain,
+    aiPrDetection: opts.enabled,
   });
 }
 
@@ -310,8 +364,7 @@ export async function getMaintainerPrQueue(args: {
   const limited = await rateLimit({
     namespace: 'maint:queue',
     key: user.id,
-    limit: 60,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.GENEROUS,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -464,8 +517,7 @@ export async function getMaintainerIssueQueue(args: {
   const limited = await rateLimit({
     namespace: 'maint:issues',
     key: user.id,
-    limit: 60,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.GENEROUS,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -578,8 +630,7 @@ export async function refreshMaintainerBackfill(
   const limited = await rateLimit({
     namespace: 'maint:backfill',
     key: user.id,
-    limit: 5,
-    windowSec: 60 * 60,
+    ...RATE_LIMIT_TIERS.HOURLY,
   });
   if (!limited.ok) return err('rate_limited', 'try again in an hour', true);
 
@@ -835,8 +886,7 @@ export async function getRepoHealthOverview(args: {
   const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
 
   if (!limited.ok) {
@@ -920,8 +970,7 @@ export async function getStaleIssues(args: {
   const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
 
   if (!limited.ok) {
@@ -998,8 +1047,7 @@ export async function getTopContributors(args: {
   const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
 
   if (!limited.ok) {
@@ -1073,8 +1121,7 @@ export async function getMaintainerAnalyticsTrends(args: {
   const limited = await rateLimit({
     namespace: 'maintainer:analytics',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -1133,8 +1180,7 @@ export async function exportPrQueueCsv(
   const limited = await rateLimit({
     namespace: 'maint:csv',
     key: user.id,
-    limit: 10,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STRICT,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -1318,8 +1364,7 @@ export async function getRepoPicker(installationId: number): Promise<Result<Repo
   const limited = await rateLimit({
     namespace: 'maint:repo-picker',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -1414,8 +1459,7 @@ export async function setRepoManaged(input: {
   const limited = await rateLimit({
     namespace: 'maint:repo-managed',
     key: user.id,
-    limit: 60,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.GENEROUS,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
@@ -1468,8 +1512,7 @@ export async function getFlaggedAccounts(args?: {
   const limited = await rateLimit({
     namespace: 'maintainer',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
 
   if (!limited.ok) {

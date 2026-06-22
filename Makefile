@@ -25,7 +25,7 @@ install:
 	npm install
 
 supabase-start:
-	npx supabase start
+	npx supabase start --exclude analytics,vector,edge-runtime
 
 supabase-stop:
 	npx supabase stop

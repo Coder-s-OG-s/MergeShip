@@ -57,7 +57,7 @@ The codebase follows a domain-driven design structure:
 
 ## Quick Start
 
-Works on macOS, Linux, and Windows (WSL2). Full step-by-step in [CONTRIBUTING.md](./CONTRIBUTING.md).
+Works on macOS, Linux, and Windows (WSL2 recommended; native Windows + Docker Desktop also works for the core setup). Full step-by-step in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 1. **Verify Prerequisites:** Ensure you have Node.js 20+ and Docker installed and running.
 2. **Clone the repository:**
@@ -77,7 +77,7 @@ Works on macOS, Linux, and Windows (WSL2). Full step-by-step in [CONTRIBUTING.md
    ```bash
    make supabase-start
    ```
-6. **Configure Keys:** Copy the `ANON_KEY` and `SERVICE_ROLE_KEY` from the previous command's output into your `.env.local` file.
+6. **Configure Keys:** Run `npx supabase status -o env` and copy the `ANON_KEY` and `SERVICE_ROLE_KEY` values into your `.env.local` file. (The CLI's pretty-printed startup output labels these `Publishable`/`Secret` — use the `-o env` form to get the exact names you need.)
 7. **Initialize Database:** Run migrations and auto-seed personas.
    ```bash
    make db-reset

@@ -3,7 +3,7 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
-import { rateLimit } from '@/lib/rate-limit';
+import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { cacheDel, cacheGet, cacheSet } from '@/lib/cache';
 import { repoFilterPattern } from './issues-helpers';
 
@@ -266,8 +266,7 @@ export async function claimIssue(issueId: number): Promise<Result<{ recId: numbe
   const rateRes = await rateLimit({
     namespace: 'issues:claim',
     key: user.id,
-    limit: 20,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.MEDIUM,
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 
@@ -344,8 +343,7 @@ export async function unclaimIssue(recId: number): Promise<Result<void>> {
   const rateRes = await rateLimit({
     namespace: 'issues:unclaim',
     key: user.id,
-    limit: 20,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.MEDIUM,
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 

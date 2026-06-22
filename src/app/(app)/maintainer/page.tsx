@@ -105,7 +105,12 @@ export default async function MaintainerPage({
   const settingsRes = await getInstallationSettings(activeInstallId);
   const settings: InstallationSettingsData = isOk(settingsRes)
     ? settingsRes.data
-    : { installationId: activeInstallId, minContributorLevel: 0, autoAssignMentorChain: false };
+    : {
+        installationId: activeInstallId,
+        minContributorLevel: 0,
+        autoAssignMentorChain: false,
+        aiPrDetection: false,
+      };
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
