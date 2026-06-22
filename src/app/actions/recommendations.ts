@@ -367,8 +367,7 @@ export async function unlinkPrFromRec(recId: number): Promise<Result<{ id: numbe
   const rateRes = await rateLimit({
     namespace: 'recs:unlink-pr',
     key: user.id,
-    limit: 20,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.MEDIUM,
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
 
@@ -401,8 +400,7 @@ export async function unclaimRecommendation(recId: number): Promise<Result<{ id:
   const rateRes = await rateLimit({
     namespace: 'recs:unclaim',
     key: user.id,
-    limit: 20,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.MEDIUM,
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
 
