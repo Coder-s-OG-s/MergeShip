@@ -15,6 +15,7 @@ import {
   setAutoAssignMentorChain,
   getRepoPicker,
   setRepoManaged,
+  resolveFlaggedAccount,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -58,9 +59,13 @@ vi.mock('@/lib/maintainer/detect', () => ({
   listMaintainerRepos: vi.fn(),
 }));
 
-vi.mock('@/lib/rate-limit', () => ({
-  rateLimit: vi.fn(),
-}));
+vi.mock('@/lib/rate-limit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/rate-limit')>();
+  return {
+    ...actual,
+    rateLimit: vi.fn(),
+  };
+});
 
 vi.mock('@/inngest/client', () => ({
   inngest: { send: vi.fn() },
@@ -703,6 +708,60 @@ describe('maintainer actions', () => {
       if (res.ok) {
         expect(res.data).toHaveLength(0);
       }
+    });
+  });
+
+  // resolveFlaggedAccount
+
+  describe('resolveFlaggedAccount', () => {
+    it('returns not_authorised when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+      const res = await resolveFlaggedAccount(1, 'dismissed', 1);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns not_found if flag does not exist', async () => {
+      mockFrom.mockReturnValue(chain(null));
+      const res = await resolveFlaggedAccount(1, 'dismissed', 1);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_found');
+    });
+
+    it('returns not_authorised if flag evidence has no repos in maintainer scope', async () => {
+      mockFrom.mockReturnValue(
+        chain({
+          id: 1,
+          evidence: { items: [{ repoFullName: 'other-org/other-repo' }] },
+          user_id: 'user-1',
+        }),
+      );
+      vi.mocked(detect.listMaintainerInstalls).mockResolvedValue([{ installationId: 1 }] as never);
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['my-org/my-repo']);
+
+      const res = await resolveFlaggedAccount(1, 'dismissed', 1);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+
+    it('updates status when flag is in maintainer scope', async () => {
+      const c1 = chain({
+        id: 1,
+        evidence: { items: [{ repoFullName: 'my-org/my-repo' }] },
+        user_id: 'user-1',
+      });
+      const c2 = chain({ id: 1 });
+
+      mockFrom
+        .mockReturnValueOnce(c1) // For select
+        .mockReturnValueOnce(c2); // For update
+
+      vi.mocked(detect.listMaintainerInstalls).mockResolvedValue([{ installationId: 1 }] as never);
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['my-org/my-repo']);
+
+      const res = await resolveFlaggedAccount(1, 'dismissed', 1);
+      expect(res.ok).toBe(true);
+      expect(c2.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'dismissed' }));
     });
   });
 });

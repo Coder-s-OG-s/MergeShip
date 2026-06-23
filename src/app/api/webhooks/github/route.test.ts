@@ -15,9 +15,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockRateLimit = vi.fn();
 const mockSend = vi.fn();
 
-vi.mock('@/lib/rate-limit', () => ({
-  rateLimit: mockRateLimit,
-}));
+vi.mock('@/lib/rate-limit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/rate-limit')>();
+  return {
+    ...actual,
+    rateLimit: mockRateLimit,
+  };
+});
 
 vi.mock('@/inngest/client', () => ({
   inngest: { send: mockSend },

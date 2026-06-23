@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import {
   setAutoAssignMentorChain,
+  setAiPrDetection,
   setMinContributorLevel,
   type InstallationSettingsData,
 } from '@/app/actions/maintainer';
@@ -12,6 +13,7 @@ const LEVELS = [0, 1, 2, 3] as const;
 export default function QueueSettings({ settings }: { settings: InstallationSettingsData }) {
   const [minLevel, setMinLevel] = useState(settings.minContributorLevel);
   const [autoAssign, setAutoAssign] = useState(settings.autoAssignMentorChain);
+  const [aiDetection, setAiDetection] = useState(settings.aiPrDetection);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -56,6 +58,30 @@ export default function QueueSettings({ settings }: { settings: InstallationSett
 
       setMinLevel(res.data.minContributorLevel);
       setAutoAssign(res.data.autoAssignMentorChain);
+      setAiDetection(res.data.aiPrDetection);
+    });
+  }
+
+  function changeAiDetection(enabled: boolean) {
+    const previous = aiDetection;
+    setAiDetection(enabled);
+    setError(null);
+
+    startTransition(async () => {
+      const res = await setAiPrDetection({
+        installationId: settings.installationId,
+        enabled,
+      });
+
+      if (!res.ok) {
+        setAiDetection(previous);
+        setError(res.error.message);
+        return;
+      }
+
+      setMinLevel(res.data.minContributorLevel);
+      setAutoAssign(res.data.autoAssignMentorChain);
+      setAiDetection(res.data.aiPrDetection);
     });
   }
 
@@ -113,6 +139,34 @@ export default function QueueSettings({ settings }: { settings: InstallationSett
               }`}
             />
             <span className="sr-only">Auto-assign mentor chain</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-zinc-200">Flag likely automated contributions</p>
+            <p className="mt-1 text-xs text-zinc-500">
+              Highlight PRs with strong signs of AI-generation.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={aiDetection}
+            disabled={isPending}
+            onClick={() => changeAiDetection(!aiDetection)}
+            className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              aiDetection ? 'bg-emerald-500' : 'bg-zinc-700'
+            }`}
+          >
+            <span
+              className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+                aiDetection ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+            <span className="sr-only">Flag likely automated contributions</span>
           </button>
         </div>
       </div>
