@@ -1,5 +1,6 @@
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { cacheGet, cacheSet } from '@/lib/cache';
+import { unwrapJoin } from '@/lib/supabase/inner-join';
 
 /**
  * "Is this user a maintainer?" — true if they have at least one active
@@ -30,8 +31,7 @@ export async function isUserMaintainer(userId: string): Promise<boolean> {
     .limit(20);
 
   const has = (data ?? []).some((row) => {
-    const i = (row as unknown as { github_installations: { uninstalled_at: string | null } | null })
-      .github_installations;
+    const i = unwrapJoin<{ uninstalled_at: string | null }>((row as any).github_installations);
     return i && i.uninstalled_at === null;
   });
 
@@ -64,15 +64,23 @@ export async function listMaintainerInstalls(userId: string): Promise<Maintainer
   type Row = {
     installation_id: number;
     permission_level: MaintainerInstall['permissionLevel'];
-    github_installations: {
-      account_login: string;
-      account_type: 'User' | 'Organization';
-      uninstalled_at: string | null;
-    } | null;
+    github_installations: unknown;
+  };
+
+  type JoinedInstall = {
+    account_login: string;
+    account_type: 'User' | 'Organization';
+    uninstalled_at: string | null;
   };
 
   return (data ?? [])
-    .map((row) => row as unknown as Row)
+    .map((row) => {
+      const r = row as unknown as Row;
+      return {
+        ...r,
+        github_installations: unwrapJoin<JoinedInstall>(r.github_installations),
+      };
+    })
     .filter((r) => r.github_installations && r.github_installations.uninstalled_at === null)
     .map((r) => ({
       installationId: r.installation_id,
