@@ -283,10 +283,6 @@ export default function LandingPage() {
 
       {/* ════════ HERO ═════════════════════════════════════════════════════ */}
       <header className="hero">
-        <div className="beta-pill">
-          <span className="beta-star">★</span> NOW IN OPEN BETA
-        </div>
-
         <h1 className="hero-h1">
           Open source,<br />done <span className="accent">right.</span>
         </h1>

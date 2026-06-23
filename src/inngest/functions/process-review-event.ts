@@ -227,7 +227,11 @@ async function upsertReviewRow(payload: ReviewPayload): Promise<void> {
     // here can't roll back the verified flag we just set.
     await inngest.send({
       name: 'mentor/post-comment',
-      data: { prId: prRow.id, reviewerId: reviewer.id },
+      data: {
+        prId: prRow.id,
+        reviewerId: reviewer.id,
+        previousReviewerId: prRow.mentor_reviewer_id,
+      },
     });
   }
 }

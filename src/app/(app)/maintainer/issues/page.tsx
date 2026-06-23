@@ -32,8 +32,9 @@ const BUCKET_COLOR: Record<IssueTriageBucket, string> = {
 export default async function MaintainerIssuesPage({
   searchParams,
 }: {
-  searchParams: { install?: string; bucket?: string };
+  searchParams: Promise<{ install?: string; bucket?: string }>;
 }) {
+  const resolvedSearchParams = await searchParams;
   const sb = await getServerSupabase();
   if (!sb) return <NotConfigured />;
   const {
@@ -52,13 +53,14 @@ export default async function MaintainerIssuesPage({
   }
 
   const activeInstallId =
-    searchParams.install && installs.find((i) => i.installationId === Number(searchParams.install))
-      ? Number(searchParams.install)
+    resolvedSearchParams.install &&
+    installs.find((i) => i.installationId === Number(resolvedSearchParams.install))
+      ? Number(resolvedSearchParams.install)
       : installs[0]!.installationId;
 
   const activeInstall = installs.find((i) => i.installationId === activeInstallId)!;
 
-  const requestedBuckets = (searchParams.bucket ?? '')
+  const requestedBuckets = (resolvedSearchParams.bucket ?? '')
     .split(',')
     .filter((b): b is IssueTriageBucket => ALL_BUCKETS.includes(b as IssueTriageBucket));
   const buckets: IssueTriageBucket[] =

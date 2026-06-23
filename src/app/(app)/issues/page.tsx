@@ -16,7 +16,12 @@ type SearchParams = {
   page?: string;
 };
 
-export default async function IssuesPage({ searchParams }: { searchParams: SearchParams }) {
+export default async function IssuesPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const resolvedSearchParams = await searchParams;
   const sb = await getServerSupabase();
   if (!sb)
     return (
@@ -29,14 +34,14 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
   if (!user) redirect('/');
 
   const filters = {
-    search: searchParams.q,
-    state: (searchParams.state === 'closed' ? 'closed' : 'open') as 'open' | 'closed',
-    difficulty: (['E', 'M', 'H'].includes(searchParams.difficulty ?? '')
-      ? searchParams.difficulty
+    search: resolvedSearchParams.q,
+    state: (resolvedSearchParams.state === 'closed' ? 'closed' : 'open') as 'open' | 'closed',
+    difficulty: (['E', 'M', 'H'].includes(resolvedSearchParams.difficulty ?? '')
+      ? resolvedSearchParams.difficulty
       : undefined) as 'E' | 'M' | 'H' | undefined,
-    repo: searchParams.repo,
-    showClaimed: searchParams.claimed === 'true',
-    page: Math.max(1, parseInt(searchParams.page ?? '1') || 1),
+    repo: resolvedSearchParams.repo,
+    showClaimed: resolvedSearchParams.claimed === 'true',
+    page: Math.max(1, parseInt(resolvedSearchParams.page ?? '1') || 1),
   };
 
   const service = getServiceSupabase();

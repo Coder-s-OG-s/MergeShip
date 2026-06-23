@@ -7,10 +7,12 @@ export const dynamic = 'force-dynamic';
 export default async function LeaderboardPage({
   searchParams,
 }: {
-  searchParams: { scope?: string; id?: string };
+  searchParams: Promise<{ scope?: string; id?: string }>;
 }) {
-  const scope = (searchParams.scope as 'global' | 'cohort' | 'language' | 'tag') ?? 'global';
-  const scopeId = searchParams.id ?? null;
+  const resolvedSearchParams = await searchParams;
+  const scope =
+    (resolvedSearchParams.scope as 'global' | 'cohort' | 'language' | 'tag') ?? 'global';
+  const scopeId = resolvedSearchParams.id ?? null;
   const result = await getLeaderboard(scope, scopeId, 50);
 
   return (

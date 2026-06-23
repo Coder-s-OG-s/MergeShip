@@ -16,8 +16,9 @@ export const dynamic = 'force-dynamic';
 export default async function CommunityPage({
   searchParams,
 }: {
-  searchParams: { install?: string };
+  searchParams: Promise<{ install?: string }>;
 }) {
+  const resolvedSearchParams = await searchParams;
   const sb = await getServerSupabase();
   if (!sb) return null;
   const {
@@ -31,8 +32,9 @@ export default async function CommunityPage({
   if (installs.length === 0) redirect('/maintainer');
 
   const installId =
-    searchParams.install && installs.find((i) => i.installationId === Number(searchParams.install))
-      ? Number(searchParams.install)
+    resolvedSearchParams.install &&
+    installs.find((i) => i.installationId === Number(resolvedSearchParams.install))
+      ? Number(resolvedSearchParams.install)
       : installs[0]!.installationId;
 
   const linksRes = await getCommunityLinks(installId);
