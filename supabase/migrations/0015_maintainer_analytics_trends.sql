@@ -81,20 +81,30 @@ as $$
     join profiles p on p.id = ci.user_id
     where p.created_at <= least(ms.month_start + interval '1 month' - interval '1 second', as_of)
   ),
+  monthly_counts as (
+    select 
+      ms.month_start,
+      coalesce(count(ls.id) filter (where ls.level <= 0), 0) as l0,
+      coalesce(count(ls.id) filter (where ls.level = 1), 0) as l1,
+      coalesce(count(ls.id) filter (where ls.level = 2), 0) as l2,
+      coalesce(count(ls.id) filter (where ls.level >= 3), 0) as l3Plus
+    from month_series ms
+    left join level_snapshots ls on ls.month_start = ms.month_start
+    group by ms.month_start
+  ),
   level_distribution as (
     select jsonb_agg(
       jsonb_build_object(
-        'monthStart', to_char(ms.month_start::date, 'YYYY-MM-DD'),
-        'label', to_char(ms.month_start, 'Mon YYYY'),
-        'l0', coalesce(count(ls.id) filter (where ls.level <= 0), 0),
-        'l1', coalesce(count(ls.id) filter (where ls.level = 1), 0),
-        'l2', coalesce(count(ls.id) filter (where ls.level = 2), 0),
-        'l3Plus', coalesce(count(ls.id) filter (where ls.level >= 3), 0)
+        'monthStart', to_char(month_start::date, 'YYYY-MM-DD'),
+        'label', to_char(month_start, 'Mon YYYY'),
+        'l0', l0,
+        'l1', l1,
+        'l2', l2,
+        'l3Plus', l3Plus
       )
-      order by ms.month_start
+      order by month_start
     ) as data
-    from month_series ms
-    left join level_snapshots ls on ls.month_start = ms.month_start
+    from monthly_counts
   )
   select jsonb_build_object(
     'weekly', coalesce((select data from weekly), '[]'::jsonb),

@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { ExternalLink, ArrowLeft } from 'lucide-react';
 import { CopyButton } from '@/components/copy-button';
 import { ActivityHeatmap } from '@/components/activity-heatmap';
+import { totalContributions } from '@/lib/contributions/activity-history';
+import { loadActivityHistory } from '@/lib/contributions/load-activity-history';
 
 export const revalidate = 300;
 
@@ -108,6 +110,7 @@ type ProfileData = {
   orgs: OrgEntry[];
   activeTasks: ActiveTask[];
   activityHistory: ActivityDay[];
+  allTimeContributions: number;
 };
 
 async function loadProfileData(handle: string): Promise<ProfileData | null> {
@@ -129,10 +132,6 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
 
   if (!profile) return null;
 
-  const oneYearAgo = new Date();
-  oneYearAgo.setDate(oneYearAgo.getDate() - 365);
-  oneYearAgo.setHours(0, 0, 0, 0);
-
   // Fetch all data in parallel
   const [
     prsResult,
@@ -141,7 +140,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     claimedRecsResult,
     recentPRsResult,
     recentRecsResult,
-    activityResult,
+    activityHistory,
   ] = await Promise.all([
     // Merged PRs count
     service
@@ -188,13 +187,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
       .order('claimed_at', { ascending: false })
       .limit(5),
 
-    // Public activity from xp_events for the past year
-    service
-      .from('xp_events')
-      .select('created_at')
-      .eq('user_id', profile.id)
-      .gte('created_at', oneYearAgo.toISOString())
-      .in('source', ['recommended_merge', 'unrecommended_merge', 'help_review']),
+    loadActivityHistory(profile.id),
   ]);
 
   const prsMerged = prsResult.count ?? 0;
@@ -296,16 +289,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
   const { getPublicStreak } = await import('@/app/actions/streak');
   const { days: streakDays } = await getPublicStreak(profile.id);
 
-  // Group events by day in UTC
-  const activityMap: Record<string, number> = {};
-  for (const event of activityResult.data ?? []) {
-    const dateStr = new Date(event.created_at).toISOString().slice(0, 10);
-    activityMap[dateStr] = (activityMap[dateStr] || 0) + 1;
-  }
-  const activityHistory = Object.entries(activityMap).map(([date, count]) => ({
-    date,
-    count,
-  }));
+  const allTimeContributions = totalContributions(activityHistory);
 
   const data: ProfileData = {
     profileId: profile.id,
@@ -324,6 +308,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     orgs,
     activeTasks,
     activityHistory,
+    allTimeContributions,
   };
 
   await cacheSet(cacheKey, data, 300);
@@ -578,7 +563,10 @@ export default async function PublicProfile({ params }: { params: Promise<{ hand
 
             {/* Activity Heatmap */}
             <div className="border-t border-[#21262d] pt-8">
-              <ActivityHeatmap activityHistory={profile.activityHistory} />
+              <ActivityHeatmap
+                activityHistory={profile.activityHistory}
+                allTimeContributions={profile.allTimeContributions}
+              />
             </div>
           </div>
 

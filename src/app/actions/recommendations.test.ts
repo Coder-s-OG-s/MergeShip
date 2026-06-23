@@ -35,9 +35,13 @@ vi.mock('@/lib/cache', () => ({
   cacheDel: mocks.mockCacheDel,
 }));
 
-vi.mock('@/lib/rate-limit', () => ({
-  rateLimit: mocks.mockRateLimit,
-}));
+vi.mock('@/lib/rate-limit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/rate-limit')>();
+  return {
+    ...actual,
+    rateLimit: mocks.mockRateLimit,
+  };
+});
 
 vi.mock('@/lib/db/client', () => ({
   tryGetDb: mocks.mockTryGetDb,

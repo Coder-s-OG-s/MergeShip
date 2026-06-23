@@ -8,6 +8,7 @@ import {
   type SuspiciousReview,
   type SuspiciousXpEvent,
 } from '@/lib/xp/suspicious-patterns';
+import { computeCurrentStreak } from '@/lib/xp/streak';
 
 const AUDIT_PAGE_SIZE = 1000;
 const AUDIT_FILTER_CHUNK_SIZE = 500;
@@ -74,8 +75,29 @@ export const streakDetect = inngest.createFunction(
         .neq('source', XP_SOURCE.STREAK);
 
       const uniqueUsers = new Set((actives ?? []).map((r) => r.user_id));
+      const maxDays = XP_REWARDS.STREAK_CAP / XP_REWARDS.STREAK_PER_DAY;
+      const streakCutoffDate = new Date(Date.now() - (maxDays + 1) * 24 * 3600 * 1000)
+        .toISOString()
+        .slice(0, 10);
+
       let awarded = 0;
       for (const userId of uniqueUsers) {
+        if (!userId) continue;
+
+        // Fetch user's XP events before today to check their streak.
+        const { data: userEvents } = await sb
+          .from('xp_events')
+          .select('created_at')
+          .eq('user_id', userId)
+          .gte('created_at', `${streakCutoffDate}T00:00:00Z`)
+          .lt('created_at', `${today}T00:00:00Z`);
+
+        const streakDays = computeCurrentStreak(userEvents ?? [], yesterday);
+
+        if (streakDays > maxDays) {
+          continue;
+        }
+
         const inserted = await insertXpEvent({
           userId,
           source: XP_SOURCE.STREAK,

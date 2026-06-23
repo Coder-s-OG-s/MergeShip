@@ -4,7 +4,7 @@ import { ilike, desc } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { issues, profiles } from '@/lib/db/schema';
 import { getServerSupabase } from '@/lib/supabase/server';
-import { rateLimit } from '@/lib/rate-limit';
+import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { ok, err, type Result } from '@/lib/result';
 
 export type SearchResult = {
@@ -42,8 +42,7 @@ export async function searchGlobal(query: string): Promise<Result<SearchResult>>
   const limited = await rateLimit({
     namespace: 'search',
     key: user.id,
-    limit: 30,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STANDARD,
   });
   if (!limited.ok) return err('rate_limited', 'slow down', true);
 
