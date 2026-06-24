@@ -36,18 +36,18 @@ export async function POST(req: NextRequest) {
   const payload = JSON.parse(raw);
 
   const installationId = payload.installation?.id;
+  const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
+  const rateLimitKey = installationId ? String(installationId) : `ip:${ip}`;
 
-  if (installationId) {
-    const limited = await rateLimit({
-      namespace: 'webhook',
-      key: String(installationId),
-      limit: 100,
-      windowSec: 60,
-    });
+  const limited = await rateLimit({
+    namespace: 'webhook',
+    key: rateLimitKey,
+    limit: 100,
+    windowSec: 60,
+  });
 
-    if (!limited.ok) {
-      return NextResponse.json({ error: 'too many requests' }, { status: 429 });
-    }
+  if (!limited.ok) {
+    return NextResponse.json({ error: 'too many requests' }, { status: 429 });
   }
 
   const payloadHash = crypto.createHash('sha256').update(raw).digest('hex');
