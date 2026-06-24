@@ -34,9 +34,14 @@ export default async function OnboardingCompletePage() {
     getInstallationSettings(install.installationId),
   ]);
 
-  const managedRepos = repoRes.ok ? repoRes.data.filter((r) => r.managed) : [];
-  const managedNames = managedRepos.map((r) => r.repoFullName);
-  const autoAssignMentorChain = settingsRes.ok ? settingsRes.data.autoAssignMentorChain : false;
+  // Surface a load failure via the nearest error boundary rather than silently
+  // rendering "no repos connected" / "Off" right after the maintainer set these
+  // up in step 2. Mirrors how /onboarding/repos handles the same fetch.
+  if (!repoRes.ok) throw new Error(`Failed to load repos: ${repoRes.error.message}`);
+  if (!settingsRes.ok) throw new Error(`Failed to load settings: ${settingsRes.error.message}`);
+
+  const managedNames = repoRes.data.filter((r) => r.managed).map((r) => r.repoFullName);
+  const autoAssignMentorChain = settingsRes.data.autoAssignMentorChain;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#0D0E12] px-6 py-16 text-white">
