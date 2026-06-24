@@ -31,7 +31,8 @@ export async function isUserMaintainer(userId: string): Promise<boolean> {
     .limit(20);
 
   const has = (data ?? []).some((row) => {
-    const i = unwrapJoin<{ uninstalled_at: string | null }>((row as any).github_installations);
+    const r = row as unknown as { github_installations: unknown };
+    const i = unwrapJoin<{ uninstalled_at: string | null }>(r.github_installations);
     return i && i.uninstalled_at === null;
   });
 
