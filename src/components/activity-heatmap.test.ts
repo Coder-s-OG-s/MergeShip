@@ -1,5 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { buildYearGrid } from './activity-heatmap';
+import { buildTrailingGrid, buildYearGrid } from './activity-heatmap';
+
+describe('buildTrailingGrid', () => {
+  it('uses the local calendar day with UTC date math', () => {
+    const originalTimeZone = process.env.TZ;
+    process.env.TZ = 'Asia/Kolkata';
+
+    try {
+      const result = buildTrailingGrid(
+        new Map([
+          ['2024-03-14', 2],
+          ['2024-03-15', 7],
+        ]),
+        new Date(2024, 2, 15, 0, 30),
+      );
+
+      expect(result.days[0]!.dateStr).toBe('2023-03-12');
+
+      const march14 = result.days.find((d) => d.dateStr === '2024-03-14');
+      const march15 = result.days.find((d) => d.dateStr === '2024-03-15');
+
+      expect(march14?.count).toBe(2);
+      expect(march15?.count).toBe(7);
+      expect(march15?.isFuture).toBe(false);
+      expect(result.contributions).toBe(9);
+    } finally {
+      process.env.TZ = originalTimeZone;
+    }
+  });
+});
 
 describe('buildYearGrid', () => {
   it('starts on a Sunday on or before Jan 1', () => {

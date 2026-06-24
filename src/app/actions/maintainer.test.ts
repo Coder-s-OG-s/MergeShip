@@ -16,6 +16,7 @@ import {
   getRepoPicker,
   setRepoManaged,
   resolveFlaggedAccount,
+  getPrCiStatus,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -762,6 +763,30 @@ describe('maintainer actions', () => {
       const res = await resolveFlaggedAccount(1, 'dismissed', 1);
       expect(res.ok).toBe(true);
       expect(c2.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'dismissed' }));
+    });
+  });
+
+  // getPrCiStatus
+
+  describe('getPrCiStatus', () => {
+    it('returns not_authorised when install does not belong to user', async () => {
+      // mock assertMaintainerInstall failure (no junction row)
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await getPrCiStatus(999, 'org/repo', 1);
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+
+    it('returns status when install belongs to user', async () => {
+      // mock assertMaintainerInstall success
+      mockFrom.mockReturnValueOnce(chain({ installation_id: 1 }));
+
+      // Using demo/repo hits the fallback path without mocking Octokit
+      const res = await getPrCiStatus(1, 'demo/repo', 1);
+
+      expect(res.ok).toBe(true);
     });
   });
 });
