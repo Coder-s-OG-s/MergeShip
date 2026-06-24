@@ -23,6 +23,62 @@ export type LeaderboardEntry = {
 
 const TTL = 60 * 10;
 
+async function getFollowedHandles(
+  userId: string,
+  userHandle: string | null,
+  db: any,
+): Promise<string[]> {
+  const cacheKey = `user:following:${userId}`;
+  const cached = await cacheGet<string[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  let followedHandles: string[] = [];
+  let activeHandle = userHandle;
+  if (!activeHandle) {
+    const userProfileRows = await db.execute(sql`
+      select github_handle from profiles where id = ${userId} limit 1
+    `);
+    const firstProfileRow = Array.isArray(userProfileRows)
+      ? userProfileRows[0]
+      : (userProfileRows as any).rows?.[0];
+    activeHandle = firstProfileRow?.github_handle || null;
+  }
+
+  if (activeHandle) {
+    try {
+      const installRows = await db.execute(sql`
+        select id from github_installations where user_id = ${userId} and uninstalled_at is null limit 1
+      `);
+      const firstInstallRow = Array.isArray(installRows)
+        ? installRows[0]
+        : (installRows as any).rows?.[0];
+      const installId = firstInstallRow?.id;
+      let octokit;
+      if (installId) {
+        octokit = await getInstallOctokit(Number(installId));
+      } else {
+        octokit = getAppOctokit();
+      }
+      const following = await octokit.paginate(octokit.users.listFollowingForUser, {
+        username: activeHandle,
+        per_page: 100,
+      });
+      followedHandles = following.map((f: any) => f.login);
+    } catch (err) {
+      console.error('Failed to fetch github following list:', err);
+    }
+    followedHandles.push(activeHandle);
+  }
+
+  if (followedHandles.length > 0) {
+    await cacheSet(cacheKey, followedHandles, 600); // 10 minutes cache
+  }
+
+  return followedHandles;
+}
+
 export async function getLeaderboard(
   scope: LeaderboardScope,
   scopeId: string | null,
@@ -124,42 +180,7 @@ export async function getLeaderboard(
       } else if (scope === 'friends') {
         let followedHandles: string[] = [];
         if (userId) {
-          // If userHandle is not fetched from identity, get it from profile
-          if (!userHandle) {
-            const userProfileRows = await db.execute(sql`
-              select github_handle from profiles where id = ${userId} limit 1
-            `);
-            const firstProfileRow = Array.isArray(userProfileRows)
-              ? userProfileRows[0]
-              : (userProfileRows as any).rows?.[0];
-            userHandle = firstProfileRow?.github_handle || null;
-          }
-
-          if (userHandle) {
-            try {
-              const installRows = await db.execute(sql`
-                select id from github_installations where user_id = ${userId} and uninstalled_at is null limit 1
-              `);
-              const firstInstallRow = Array.isArray(installRows)
-                ? installRows[0]
-                : (installRows as any).rows?.[0];
-              const installId = firstInstallRow?.id;
-              let octokit;
-              if (installId) {
-                octokit = await getInstallOctokit(Number(installId));
-              } else {
-                octokit = getAppOctokit();
-              }
-              const following = await octokit.paginate(octokit.users.listFollowingForUser, {
-                username: userHandle,
-                per_page: 100,
-              });
-              followedHandles = following.map((f) => f.login);
-            } catch (err) {
-              console.error('Failed to fetch github following list:', err);
-            }
-            followedHandles.push(userHandle);
-          }
+          followedHandles = await getFollowedHandles(userId, userHandle, db);
         }
 
         if (followedHandles.length > 0) {
@@ -298,43 +319,7 @@ export async function getLeaderboard(
             limit 1
           `;
         } else if (scope === 'friends') {
-          // Re-fetch followed handles if caching was hit
-          let followedHandles: string[] = [];
-          if (!userHandle) {
-            const userProfileRows = await db.execute(sql`
-              select github_handle from profiles where id = ${userId} limit 1
-            `);
-            const firstProfileRow = Array.isArray(userProfileRows)
-              ? userProfileRows[0]
-              : (userProfileRows as any).rows?.[0];
-            userHandle = firstProfileRow?.github_handle || null;
-          }
-
-          if (userHandle) {
-            try {
-              const installRows = await db.execute(sql`
-                select id from github_installations where user_id = ${userId} and uninstalled_at is null limit 1
-              `);
-              const firstInstallRow = Array.isArray(installRows)
-                ? installRows[0]
-                : (installRows as any).rows?.[0];
-              const installId = firstInstallRow?.id;
-              let octokit;
-              if (installId) {
-                octokit = await getInstallOctokit(Number(installId));
-              } else {
-                octokit = getAppOctokit();
-              }
-              const following = await octokit.paginate(octokit.users.listFollowingForUser, {
-                username: userHandle,
-                per_page: 100,
-              });
-              followedHandles = following.map((f) => f.login);
-            } catch (err) {
-              console.error('Failed to fetch github following list:', err);
-            }
-            followedHandles.push(userHandle);
-          }
+          const followedHandles = await getFollowedHandles(userId, userHandle, db);
 
           if (followedHandles.length > 0) {
             rankQuery = sql`

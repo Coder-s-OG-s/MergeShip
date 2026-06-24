@@ -5,6 +5,7 @@ import { isOk } from '@/lib/result';
 import { LeaderboardContent } from './leaderboard-content';
 import { tryGetDb } from '@/lib/db/client';
 import { sql } from 'drizzle-orm';
+import type { User } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export default async function LeaderboardPage({
 
   const sb = await getServerSupabase();
 
-  let user: any = null;
+  let user: User | null = null;
   let userHandle: string | null = null;
   let userXp = 0;
   let userLevel = 0;
@@ -31,7 +32,7 @@ export default async function LeaderboardPage({
     const { data } = await sb.auth.getUser();
     user = data.user;
     if (user) {
-      const identity = user.identities?.find((i: any) => i.provider === 'github');
+      const identity = user.identities?.find((i) => i.provider === 'github');
       avatarUrl = (identity?.identity_data?.['avatar_url'] as string) ?? null;
 
       const service = getServiceSupabase();
@@ -66,7 +67,9 @@ export default async function LeaderboardPage({
           order by cm.joined_at desc
           limit 1
         `);
-        const firstRow = Array.isArray(cohortRows) ? cohortRows[0] : (cohortRows as any).rows?.[0];
+        const firstRow = Array.isArray(cohortRows)
+          ? cohortRows[0]
+          : (cohortRows as unknown as { rows: { slug: string }[] }).rows?.[0];
         if (firstRow?.slug) {
           scopeId = firstRow.slug;
         }
