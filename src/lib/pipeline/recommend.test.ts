@@ -114,6 +114,9 @@ describe('filterAndRank', () => {
     // L1 wants 2 E + 2 M.
     // Pool has 1 H, 1 M, 1 E.
     // It will take M and E. Fallback should NOT take H.
+  it('does not fallback to higher difficulty tiers', () => {
+    const issues = [issue({ id: 1, difficulty: 'M' }), issue({ id: 2, difficulty: 'M' })];
+
     const result = filterAndRank(issues, {
       level: 1,
       excludeIssueIds: new Set(),
@@ -121,6 +124,8 @@ describe('filterAndRank', () => {
     });
     expect(result).toHaveLength(2);
     expect(result.map((r) => r.difficulty).sort()).toEqual(['E', 'M']);
+
+    expect(result).toEqual([]);
   });
 
   it('without fallback returns empty when tier is missing', () => {

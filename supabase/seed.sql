@@ -41,17 +41,17 @@ VALUES
   (1000006, '00000000-0000-0000-0000-000000000006', 'org_admin', 'install_creator')
 ON CONFLICT (installation_id, user_id) DO NOTHING;
 
--- 4. Set XP events
-INSERT INTO xp_events (user_id, source, ref_type, ref_id, repo, difficulty, xp_delta, metadata) VALUES
-  ('00000000-0000-0000-0000-000000000002', 'github_audit', 'audit', 'audit:seed:bob', null, null, 200, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000003', 'github_audit', 'audit', 'audit:seed:carol', null, null, 600, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000004', 'github_audit', 'audit', 'audit:seed:dave', null, null, 1400, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000005', 'github_audit', 'audit', 'audit:seed:eve', null, null, 2300, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000006', 'github_audit', 'audit', 'audit:seed:frank-mtnr', null, null, 1800, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000002', 'recommended_merge', 'pr', 'pr:demo/eclipse-cli:1020', 'demo/eclipse-cli', 'E', 50, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000003', 'recommended_merge', 'pr', 'pr:demo/notebook-rs:2130', 'demo/notebook-rs', 'M', 150, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000004', 'recommended_merge', 'pr', 'pr:demo/eclipse-cli:1040', 'demo/eclipse-cli', 'H', 400, '{"synthetic":true}'),
-  ('00000000-0000-0000-0000-000000000005', 'recommended_merge', 'pr', 'pr:demo/notebook-rs:2140', 'demo/notebook-rs', 'H', 400, '{"synthetic":true}')
+-- 4. Set XP events (created_at aligned with seeded merge history for heatmap)
+INSERT INTO xp_events (user_id, source, ref_type, ref_id, repo, difficulty, xp_delta, metadata, created_at) VALUES
+  ('00000000-0000-0000-0000-000000000002', 'github_audit', 'audit', 'audit:seed:bob', null, null, 200, '{"synthetic":true}', now() - interval '30 days'),
+  ('00000000-0000-0000-0000-000000000003', 'github_audit', 'audit', 'audit:seed:carol', null, null, 600, '{"synthetic":true}', now() - interval '45 days'),
+  ('00000000-0000-0000-0000-000000000004', 'github_audit', 'audit', 'audit:seed:dave', null, null, 1400, '{"synthetic":true}', now() - interval '60 days'),
+  ('00000000-0000-0000-0000-000000000005', 'github_audit', 'audit', 'audit:seed:eve', null, null, 2300, '{"synthetic":true}', now() - interval '75 days'),
+  ('00000000-0000-0000-0000-000000000006', 'github_audit', 'audit', 'audit:seed:frank-mtnr', null, null, 1800, '{"synthetic":true}', now() - interval '90 days'),
+  ('00000000-0000-0000-0000-000000000002', 'recommended_merge', 'pr', 'pr:demo/eclipse-cli:1020', 'demo/eclipse-cli', 'E', 50, '{"synthetic":true}', now() - interval '5 days'),
+  ('00000000-0000-0000-0000-000000000003', 'recommended_merge', 'pr', 'pr:demo/notebook-rs:2130', 'demo/notebook-rs', 'M', 150, '{"synthetic":true}', now() - interval '9 days'),
+  ('00000000-0000-0000-0000-000000000004', 'recommended_merge', 'pr', 'pr:demo/eclipse-cli:1040', 'demo/eclipse-cli', 'H', 400, '{"synthetic":true}', now() - interval '12 days'),
+  ('00000000-0000-0000-0000-000000000005', 'recommended_merge', 'pr', 'pr:demo/notebook-rs:2140', 'demo/notebook-rs', 'H', 400, '{"synthetic":true}', now() - interval '18 days')
 ON CONFLICT (user_id, source, ref_id) DO NOTHING;
 
 -- 5. Seed issues (20+ issues across different repos and difficulties)

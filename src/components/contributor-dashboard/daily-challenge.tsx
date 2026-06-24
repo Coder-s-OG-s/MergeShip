@@ -31,11 +31,14 @@ function formatCountdown(secs: number): string {
 }
 
 export function DailyChallenge() {
-  const [secs, setSecs] = useState(getSecondsUntilMidnightUTC());
+  // Countdown is client-only — computing it during SSR causes hydration mismatch.
+  const [secs, setSecs] = useState<number | null>(null);
 
   useEffect(() => {
+    const tick = () => setSecs(getSecondsUntilMidnightUTC());
+    tick();
     const id = setInterval(() => {
-      setSecs((prev) => (prev <= 1 ? getSecondsUntilMidnightUTC() : prev - 1));
+      setSecs((prev) => (prev === null || prev <= 1 ? getSecondsUntilMidnightUTC() : prev - 1));
     }, 1000);
     return () => clearInterval(id);
   }, []);
@@ -50,7 +53,7 @@ export function DailyChallenge() {
         <span
           className={`font-mono text-[11px] uppercase tracking-widest ${done ? 'text-[#10b981]' : 'text-amber-400'}`}
         >
-          {done ? 'COMPLETE ✓' : formatCountdown(secs)}
+          {done ? 'COMPLETE ✓' : secs === null ? '--:--:--' : formatCountdown(secs)}
         </span>
       </div>
 

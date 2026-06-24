@@ -1,5 +1,13 @@
 import { cacheRateLimitHit } from './cache';
 
+export const RATE_LIMIT_TIERS = {
+  STANDARD: { limit: 30, windowSec: 60 },
+  GENEROUS: { limit: 60, windowSec: 60 },
+  MEDIUM: { limit: 20, windowSec: 60 },
+  STRICT: { limit: 10, windowSec: 60 },
+  HOURLY: { limit: 5, windowSec: 3600 },
+} as const;
+
 export type RateLimitOptions = {
   namespace: string;
   key: string;

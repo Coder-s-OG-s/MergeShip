@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 describe('RLS migrations', () => {
   it('keeps the failed_webhook_events RLS migration statement intact', () => {
     const migration = readFileSync(
-      join(process.cwd(), 'supabase/migrations/0017_failed_webhook_events_rls.sql'),
+      join(process.cwd(), 'supabase/migrations/0016_failed_webhook_events_rls.sql'),
       'utf8',
     );
 

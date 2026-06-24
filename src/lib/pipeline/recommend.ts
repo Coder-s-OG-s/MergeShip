@@ -107,6 +107,11 @@ export function filterAndRank(pool: readonly ScoredIssue[], opts: RecommendOptio
 
     const extras = eligible
       .filter((i) => !seen.has(i.id) && allowed.has(i.difficulty))
+    const allowedDifficulties: Difficulty[] =
+      opts.level <= 0 ? ['E'] : opts.level === 1 ? ['E', 'M'] : ['E', 'M', 'H'];
+
+    const extras = eligible
+      .filter((i) => !seen.has(i.id) && allowedDifficulties.includes(i.difficulty))
       .sort((a, b) => rankScore(b, opts) - rankScore(a, opts));
     const needed = totalDesired(mix) - result.length;
     result.push(...extras.slice(0, needed));

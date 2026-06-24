@@ -10,7 +10,9 @@ import {
   getStaleIssues,
   getFlaggedAccounts,
   getTopContributors,
+  getInstallationSettings,
   type FlaggedAccountRow,
+  type InstallationSettingsData,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
@@ -24,6 +26,8 @@ import CiStatusBadge from './ci-status-badge';
 import AnalyticsTrends from './analytics-trends';
 import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
+import QueueSettings from './queue-settings';
+import { ResolveFlagButton } from './resolve-flag-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,18 +91,27 @@ export default async function MaintainerPage({
   const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
     ? trendsRes.data
     : { weekly: [], levelDistribution: [] };
-  const repoHealthRes = await getRepoHealthOverview();
+  const repoHealthRes = await getRepoHealthOverview({ installationId: activeInstallId });
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
-  const staleIssuesRes = await getStaleIssues();
+  const staleIssuesRes = await getStaleIssues({ installationId: activeInstallId });
   const staleIssues: StaleIssueRow[] = isOk(staleIssuesRes) ? staleIssuesRes.data : [];
 
-  const contributorsRes = await getTopContributors();
+  const contributorsRes = await getTopContributors({ installationId: activeInstallId });
   const topContributors: ContributorRow[] = isOk(contributorsRes) ? contributorsRes.data : [];
-  const flaggedAccountsRes = await getFlaggedAccounts();
+  const flaggedAccountsRes = await getFlaggedAccounts({ installationId: activeInstallId });
   const flaggedAccounts: FlaggedAccountRow[] = isOk(flaggedAccountsRes)
     ? flaggedAccountsRes.data
     : [];
+  const settingsRes = await getInstallationSettings(activeInstallId);
+  const settings: InstallationSettingsData = isOk(settingsRes)
+    ? settingsRes.data
+    : {
+        installationId: activeInstallId,
+        minContributorLevel: 0,
+        autoAssignMentorChain: false,
+        aiPrDetection: false,
+      };
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -179,6 +192,7 @@ export default async function MaintainerPage({
         <p className="mb-4 text-xs text-zinc-500">
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
+        <QueueSettings settings={settings} />
         <AnalyticsTrends data={analyticsTrends} />
         {flaggedAccounts.length > 0 && (
           <section className="mb-8 rounded-2xl border border-amber-900/60 bg-amber-950/20 p-5">
@@ -213,6 +227,7 @@ export default async function MaintainerPage({
                     >
                       {flag.severity}
                     </span>
+                    <ResolveFlagButton flagId={flag.id} installationId={activeInstallId} />
                   </div>
                   <p className="mt-3 text-sm text-amber-100">{formatFlagReason(flag.reason)}</p>
                   <p className="mt-1 text-xs text-amber-200/70">{flag.summary}</p>
