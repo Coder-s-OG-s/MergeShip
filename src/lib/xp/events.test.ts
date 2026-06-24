@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { TransactionRollbackError } from 'drizzle-orm';
 
 const mockReturning = vi.fn();
 const mockOnConflictDoNothing = vi.fn(() => ({ returning: mockReturning }));
@@ -14,11 +15,20 @@ vi.mock('../db/client', () => ({
 
 /* Mock drizzle-orm's sql tag so vitest doesn't load the full package
    (which takes 4+ seconds on some machines and causes timeouts). */
-vi.mock('drizzle-orm', () => ({
-  sql: Object.assign((strings: TemplateStringsArray, ..._values: unknown[]) => ({ strings }), {
-    raw: (s: string) => s,
-  }),
-}));
+vi.mock('drizzle-orm', () => {
+  class TransactionRollbackError extends Error {
+    constructor() {
+      super('Rollback');
+      this.name = 'TransactionRollbackError';
+    }
+  }
+  return {
+    sql: Object.assign((strings: TemplateStringsArray, ..._values: unknown[]) => ({ strings }), {
+      raw: (s: string) => s,
+    }),
+    TransactionRollbackError,
+  };
+});
 
 beforeEach(() => {
   mockReturning.mockReset();
@@ -33,7 +43,7 @@ beforeEach(() => {
       insert: mockInsert,
       execute: mockExecute,
       rollback: () => {
-        throw new Error('Rollback');
+        throw new TransactionRollbackError();
       },
     }),
   );
@@ -227,5 +237,24 @@ describe('insertXpEvent dailyCapLimit', () => {
     });
 
     expect(inserted).toBe(false);
+  });
+
+  it('rethrows generic database transaction errors', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
+    mockExecute.mockRejectedValueOnce(new Error('Connection timeout')); // generic db failure
+
+    const { insertXpEvent } = await import('./events');
+    await expect(
+      insertXpEvent({
+        userId: 'u1',
+        source: 'help_review',
+        refId: 'help-review:1:alice',
+        xpDelta: 30,
+        dailyCapLimit: {
+          action: 'review',
+          limit: 5,
+        },
+      }),
+    ).rejects.toThrow('Connection timeout');
   });
 });

@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, TransactionRollbackError } from 'drizzle-orm';
 import { getDb, schema } from '../db/client';
 import { shouldFireTripwire, TRIPWIRE_THRESHOLD } from './tripwire';
 
@@ -90,7 +90,11 @@ export async function insertXpEvent(event: XpEventInsert): Promise<boolean> {
       if (err.message === 'daily_review_cap_reached') {
         throw err;
       }
-      inserted = false;
+      if (err instanceof TransactionRollbackError) {
+        inserted = false;
+      } else {
+        throw err;
+      }
     }
   } else {
     const result = await db
