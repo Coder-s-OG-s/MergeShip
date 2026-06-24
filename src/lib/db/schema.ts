@@ -61,6 +61,15 @@ export const profiles = pgTable(
   }),
 );
 
+export const profileEmails = pgTable('profile_emails', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- GitHub App installations (the gate) ----------
 
 export const githubInstallations = pgTable(
