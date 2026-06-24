@@ -16,13 +16,3 @@ DROP POLICY IF EXISTS profile_emails_read_own ON profile_emails;
 CREATE POLICY profile_emails_read_own ON profile_emails FOR SELECT
   USING (auth.uid() = user_id);
 
--- Drop the email column from the public profiles table (if it exists)
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_name = 'profiles' AND column_name = 'email'
-  ) THEN
-    ALTER TABLE profiles DROP COLUMN email;
-  END IF;
-END$$;
