@@ -1204,6 +1204,24 @@ export async function setRepoManaged(input: {
   return ok({ ok: true });
 }
 
+function repoFromEvidenceItem(item: any): string | undefined {
+  const r = item.repo || item.repoFullName;
+  return typeof r === 'string' ? r : undefined;
+}
+
+function filterEvidenceItemsByRepos(flag: { evidence: unknown }, repos: string[]): any[] {
+  const evidence = flag.evidence as any;
+  const items: any[] = Array.isArray(evidence?.items) ? evidence.items : [];
+  return items.filter((item) => {
+    const r = repoFromEvidenceItem(item);
+    return r !== undefined && repos.includes(r);
+  });
+}
+
+function flagTouchesRepos(flag: { evidence: unknown }, repos: string[]): boolean {
+  return filterEvidenceItemsByRepos(flag, repos).length > 0;
+}
+
 export async function getFlaggedAccounts(args?: {
   installationId?: number;
 }): Promise<Result<FlaggedAccountRow[]>> {
@@ -1289,12 +1307,7 @@ export async function getFlaggedAccounts(args?: {
     if (!flag.user_id || !activeUserIds.has(flag.user_id)) {
       return false;
     }
-    const evidence = flag.evidence as any;
-    const items = Array.isArray(evidence?.items) ? evidence.items : [];
-    return items.some((item: any) => {
-      const r = item.repo || item.repoFullName;
-      return typeof r === 'string' && repos.includes(r);
-    });
+    return flagTouchesRepos(flag, repos);
   });
 
   const limitedFlags = allowedFlags.slice(0, 10);
@@ -1329,12 +1342,7 @@ export async function getFlaggedAccounts(args?: {
     limitedFlags.map((flag) => {
       const profile = profilesById.get(flag.user_id ?? '');
 
-      const evidence = flag.evidence as any;
-      const items = Array.isArray(evidence?.items) ? evidence.items : [];
-      const filteredItems = items.filter((item: any) => {
-        const r = item.repo || item.repoFullName;
-        return typeof r === 'string' && repos.includes(r);
-      });
+      const filteredItems = filterEvidenceItemsByRepos(flag, repos);
       const count = filteredItems.length;
       let summary = 'Suspicious activity pattern detected.';
       if (flag.reason === 'daily_xp_event_spike') {
@@ -1387,12 +1395,7 @@ export async function resolveFlaggedAccount(
   }
 
   const repos = await listMaintainerRepos(user.id, installationId);
-  const evidence = flag.evidence as any;
-  const items = Array.isArray(evidence?.items) ? evidence.items : [];
-  const isAuthorized = items.some((item: any) => {
-    const r = item.repo || item.repoFullName;
-    return typeof r === 'string' && repos.includes(r);
-  });
+  const isAuthorized = flagTouchesRepos(flag, repos);
 
   if (!isAuthorized) {
     return err('not_authorised', 'not authorized to resolve this flag');
