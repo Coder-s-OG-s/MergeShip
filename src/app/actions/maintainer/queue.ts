@@ -1,10 +1,10 @@
 'use server';
 
-import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
-import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
-import { isUserMaintainer, listMaintainerRepos } from '@/lib/maintainer/detect';
+import { requireMaintainer } from '@/lib/action-auth';
+import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
+import { listMaintainerRepos } from '@/lib/maintainer/detect';
 import {
   comparePrRows,
   validateFilters,
@@ -25,6 +25,21 @@ const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
   'closed',
 ]);
 
+async function assertMaintainerInstall(
+  service: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  userId: string,
+  installationId: number,
+): Promise<boolean> {
+  const { data: junction } = await service
+    .from('github_installation_users')
+    .select('installation_id')
+    .eq('user_id', userId)
+    .eq('installation_id', installationId)
+    .maybeSingle();
+
+  return !!junction;
+}
+
 async function readMinContributorLevel(
   service: NonNullable<ReturnType<typeof getServiceSupabase>>,
   installationId: number,
@@ -44,27 +59,14 @@ export async function getMaintainerPrQueue(args: {
   filters?: Partial<QueueFilters>;
   page?: number;
 }): Promise<Result<{ rows: MaintainerPrRow[]; hasMore: boolean }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:queue',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.GENEROUS,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:queue', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
-
+  // Defense in depth: confirm the requested install actually belongs to the user.
   const repos = await listMaintainerRepos(user.id, args.installationId);
   if (repos.length === 0) {
     return ok({ rows: [], hasMore: false });
@@ -73,6 +75,7 @@ export async function getMaintainerPrQueue(args: {
   const filters = validateFilters(args.filters ?? {});
   const page = Math.max(0, args.page ?? 0);
 
+  // Apply repo filter on top of scope (intersection).
   const scopedRepos =
     filters.repos.length > 0 ? repos.filter((r) => filters.repos.includes(r)) : repos;
   if (scopedRepos.length === 0) {
@@ -93,6 +96,7 @@ export async function getMaintainerPrQueue(args: {
   if (filters.mentorVerified === 'yes') q = q.eq('mentor_verified', true);
   else if (filters.mentorVerified === 'no') q = q.eq('mentor_verified', false);
 
+  // Pull a generous slice; we re-sort by tier client-side.
   type RawPr = {
     id: number;
     repo_full_name: string;
@@ -109,10 +113,11 @@ export async function getMaintainerPrQueue(args: {
   };
   const { data: prs } = await q
     .order('github_updated_at', { ascending: false })
-    .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE * 4);
+    .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE * 4); // overscan for tier resort
 
   const prRows = (prs ?? []) as unknown as RawPr[];
 
+  // Profile lookups for level + xp + merged count, batched.
   const authorIds = Array.from(
     new Set(prRows.map((r) => r.author_user_id).filter((id): id is string => !!id)),
   );
@@ -173,6 +178,8 @@ export async function getMaintainerPrQueue(args: {
     };
   });
 
+  // Apply author-level filter after the join (since author level isn't on
+  // the pull_requests row).
   let filtered = rows.filter((row) => (row.authorLevel ?? 0) >= minContributorLevel);
   if (filters.authorLevel.length > 0) {
     filtered = filtered.filter((row) => filters.authorLevel.includes(row.authorLevel ?? 0));
@@ -191,26 +198,12 @@ export async function getMaintainerIssueQueue(args: {
   repos?: string[];
   page?: number;
 }): Promise<Result<{ rows: MaintainerIssueRow[]; hasMore: boolean }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:issues',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.GENEROUS,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:issues', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   const repos = await listMaintainerRepos(user.id, args.installationId);
   if (repos.length === 0) {
@@ -223,10 +216,12 @@ export async function getMaintainerIssueQueue(args: {
     return ok({ rows: [], hasMore: false });
   }
 
+  // Default: open issues only. Buckets validated against the enum.
   const buckets = (args.buckets ?? ['needs-triage', 'in-progress', 'stale']).filter((b) =>
     ISSUE_BUCKETS.has(b),
   );
 
+  // Pull a generous slice — we classify in app code, can't filter buckets in SQL.
   const page = Math.max(0, args.page ?? 0);
   const states: ('open' | 'closed')[] = buckets.includes('closed') ? ['open', 'closed'] : ['open'];
 
@@ -282,6 +277,7 @@ export async function getMaintainerIssueQueue(args: {
   });
 
   const filtered = rows.filter((r) => buckets.includes(r.triage));
+  // needs-triage first, then stale, then in-progress, then closed.
   const bucketOrder: Record<IssueTriageBucket, number> = {
     'needs-triage': 0,
     stale: 1,
@@ -291,6 +287,7 @@ export async function getMaintainerIssueQueue(args: {
   filtered.sort((a, b) => {
     const d = bucketOrder[a.triage] - bucketOrder[b.triage];
     if (d !== 0) return d;
+    // Within a bucket: most recent event first; nulls last.
     const at = a.lastEventAt ? Date.parse(a.lastEventAt) : 0;
     const bt = b.lastEventAt ? Date.parse(b.lastEventAt) : 0;
     return bt - at;
@@ -303,23 +300,11 @@ export async function getMaintainerIssueQueue(args: {
 export async function refreshMaintainerBackfill(
   installationId: number,
 ): Promise<Result<{ ok: true }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maint:backfill',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.HOURLY,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:backfill', ...RATE_LIMIT_TIERS.HOURLY },
+    rateLimitMessage: 'try again in an hour',
   });
-  if (!limited.ok) return err('rate_limited', 'try again in an hour', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
 
   await inngest.send({
     name: 'pr-backfill/installation',
@@ -333,16 +318,12 @@ export async function getPrCiStatus(
   repoFullName: string,
   prNumber: number,
 ): Promise<Result<'passing' | 'failing' | 'pending' | null>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
+  const authRes = await requireMaintainer({ requireService: true });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
+  if (!(await assertMaintainerInstall(service, user.id, installationId))) {
+    return err('not_authorised', 'not your install');
   }
 
   const cacheKey = `ci:status:${repoFullName}:${prNumber}`;
@@ -351,6 +332,7 @@ export async function getPrCiStatus(
     return ok(cached);
   }
 
+  // Fallback for local development using mock/demo seed repositories or if App Credentials are not configured
   if (repoFullName.startsWith('demo/') || !process.env.GITHUB_APP_ID) {
     const mockStatuses: ('passing' | 'failing' | 'pending')[] = ['passing', 'failing', 'pending'];
     const status = mockStatuses[prNumber % mockStatuses.length]!;
@@ -365,6 +347,7 @@ export async function getPrCiStatus(
       return ok(null);
     }
 
+    // Fetch the pull request to get the head SHA.
     const prRes = await octokit.pulls.get({
       owner,
       repo,
@@ -372,6 +355,7 @@ export async function getPrCiStatus(
     });
     const headSha = prRes.data.head.sha;
 
+    // Fetch check runs for the head SHA.
     const checksRes = await octokit.checks.listForRef({
       owner,
       repo,
@@ -401,6 +385,7 @@ export async function getPrCiStatus(
     await cacheSet(cacheKey, status, 120);
     return ok(status);
   } catch (error) {
+    // Fall back to no badge
     return ok(null);
   }
 }

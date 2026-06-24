@@ -1,49 +1,24 @@
 'use server';
 
-import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
-import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
-import {
-  isUserMaintainer,
-  listMaintainerInstalls,
-  listMaintainerRepos,
-} from '@/lib/maintainer/detect';
+import { requireMaintainer } from '@/lib/action-auth';
+import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
+import { listMaintainerInstalls, listMaintainerRepos } from '@/lib/maintainer/detect';
 import { type FlaggedAccountRow } from './types';
 
 export async function getFlaggedAccounts(args?: {
   installationId?: number;
 }): Promise<Result<FlaggedAccountRow[]>> {
-  const sb = await getServerSupabase();
-  if (!sb) {
-    return err('not_configured', 'auth not configured');
-  }
-  const service = getServiceSupabase();
-  if (!service) {
-    return err('not_configured', 'service role missing');
-  }
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) {
-    return err('not_authenticated', 'sign in first');
-  }
-
-  const limited = await rateLimit({
-    namespace: 'maintainer',
-    key: user.id,
-    ...RATE_LIMIT_TIERS.STANDARD,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
   });
-  if (!limited.ok) {
-    return err('rate_limited', 'slow down', true);
-  }
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   let installationId = args?.installationId;
+
   if (!installationId) {
     const installs = await listMaintainerInstalls(user.id);
     const installationIds = installs.map((i) => i.installationId);
@@ -117,7 +92,6 @@ export async function getFlaggedAccounts(args?: {
     if (!flag.user_id || !activeUserIds.has(flag.user_id)) {
       return false;
     }
-
     const evidence = flag.evidence as any;
     const items = Array.isArray(evidence?.items) ? evidence.items : [];
     return items.some((item: any) => {
@@ -127,6 +101,7 @@ export async function getFlaggedAccounts(args?: {
   });
 
   const limitedFlags = allowedFlags.slice(0, 10);
+
   const allowedUserIds = Array.from(
     new Set(limitedFlags.map((flag) => flag.user_id).filter(Boolean)),
   );
@@ -156,6 +131,7 @@ export async function getFlaggedAccounts(args?: {
   return ok(
     limitedFlags.map((flag) => {
       const profile = profilesById.get(flag.user_id ?? '');
+
       const evidence = flag.evidence as any;
       const items = Array.isArray(evidence?.items) ? evidence.items : [];
       const filteredItems = items.filter((item: any) => {
@@ -196,27 +172,12 @@ export async function resolveFlaggedAccount(
   status: 'reviewed' | 'dismissed',
   installationId: number,
 ): Promise<Result<{ ok: true }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const limited = await rateLimit({
-    namespace: 'maintainer',
-    key: user.id,
-    limit: 30,
-    windowSec: 60,
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', limit: 30, windowSec: 60 },
+    requireService: true,
   });
-  if (!limited.ok) return err('rate_limited', 'slow down', true);
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   const { data: flag, error: findError } = await service
     .from('flagged_accounts')

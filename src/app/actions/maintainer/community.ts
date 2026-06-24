@@ -1,26 +1,14 @@
 'use server';
 
-import { getServerSupabase } from '@/lib/supabase/server';
-import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
-import { isUserMaintainer } from '@/lib/maintainer/detect';
+import { requireMaintainer } from '@/lib/action-auth';
 import { validateCommunityUrl, type CommunityKind } from '@/lib/maintainer/community';
 import { type CommunityLink } from './types';
 
 export async function getCommunityLinks(installationId: number): Promise<Result<CommunityLink[]>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
+  const authRes = await requireMaintainer({ requireService: true });
+  if (!authRes.ok) return authRes;
+  const { service } = authRes.data;
 
   const { data } = await service
     .from('org_communities')
@@ -46,20 +34,11 @@ export async function upsertCommunityLink(input: {
   url: string;
   label?: string;
 }): Promise<Result<{ id: number }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
+  const authRes = await requireMaintainer({ requireService: true });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
-
+  // Confirm the install is one the user maintains.
   const { data: junction } = await service
     .from('github_installation_users')
     .select('installation_id')
@@ -92,20 +71,11 @@ export async function upsertCommunityLink(input: {
 }
 
 export async function deleteCommunityLink(linkId: number): Promise<Result<{ ok: true }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
+  const authRes = await requireMaintainer({ requireService: true });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  if (!(await isUserMaintainer(user.id))) {
-    return err('not_authorised', 'not a maintainer');
-  }
-
+  // Find link + verify install belongs to user.
   const { data: link } = await service
     .from('org_communities')
     .select('installation_id')
