@@ -36,8 +36,10 @@ export async function POST(req: NextRequest) {
   const payload = JSON.parse(raw);
 
   const installationId = payload.installation?.id;
-  const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
-  const rateLimitKey = installationId ? String(installationId) : `ip:${ip}`;
+  // If there is no installation ID (e.g. meta, security_advisory events),
+  // we fall back to a global bucket per event type. This prevents DDoS
+  // via IP spoofing (e.g. forging x-forwarded-for) with leaked secrets.
+  const rateLimitKey = installationId ? String(installationId) : `global:${eventType}`;
 
   const limited = await rateLimit({
     namespace: 'webhook',
