@@ -43,7 +43,7 @@ export const helpDispatch = inngest.createFunction(
       // Pool: all L2+ profiles. In production we'd narrow by recent activity etc.
       const { data: pool } = await sb
         .from('profiles')
-        .select('id, level, primary_language, github_handle, email')
+        .select('id, level, primary_language, github_handle')
         .gte('level', 2)
         .neq('id', userId);
 
@@ -69,6 +69,15 @@ export const helpDispatch = inngest.createFunction(
 
       if (targets.length === 0) return { notified: 0 };
 
+      // Fetch emails for the selected targets
+      const targetUserIds = targets.map((t) => t.userId);
+      const { data: emailsData } = await sb
+        .from('profile_emails')
+        .select('user_id, email')
+        .in('user_id', targetUserIds);
+
+      const emailMap = new Map(emailsData?.map((row) => [row.user_id, row.email]));
+
       const { data: helpRequest } = await sb
         .from('help_requests')
         .select('reason, pr_url')
@@ -85,13 +94,14 @@ export const helpDispatch = inngest.createFunction(
 
       for (const target of targets) {
         const mentor = pool?.find((p) => p.id === target.userId);
+        const mentorEmail = emailMap.get(target.userId);
 
-        if (!mentor?.email) continue;
+        if (!mentorEmail) continue;
 
         try {
           await sendHelpDispatchEmail({
-            to: mentor.email,
-            mentorHandle: mentor.github_handle ?? 'mentor',
+            to: mentorEmail,
+            mentorHandle: mentor?.github_handle ?? 'mentor',
             menteeHandle: mentee?.github_handle ?? 'contributor',
             prUrl: helpRequest?.pr_url ?? '',
             helpReason: helpRequest?.reason ?? null,

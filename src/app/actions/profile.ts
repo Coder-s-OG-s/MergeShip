@@ -68,6 +68,21 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
     return err('persist_failed', upsertErr?.message ?? 'profile upsert returned nothing');
   }
 
+  // Upsert the user's email into the private profile_emails table
+  if (user.email) {
+    const { error: emailErr } = await service.from('profile_emails').upsert(
+      {
+        user_id: user.id,
+        email: user.email,
+      },
+      { onConflict: 'user_id' },
+    );
+
+    if (emailErr) {
+      console.error('Failed to upsert profile email', emailErr);
+    }
+  }
+
   let auditQueued = false;
 
   if (!profile.audit_completed) {
