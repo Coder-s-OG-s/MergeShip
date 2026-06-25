@@ -5,7 +5,9 @@ const mocks = vi.hoisted(() => ({
   mockExecute: vi.fn(),
   mockCacheGet: vi.fn(),
   mockCacheSet: vi.fn(),
+  mockCacheRateLimitHit: vi.fn(),
   mockPaginate: vi.fn(),
+  mockRequest: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -25,17 +27,18 @@ vi.mock('@/lib/db/client', () => ({
 vi.mock('@/lib/cache', () => ({
   cacheGet: mocks.mockCacheGet,
   cacheSet: mocks.mockCacheSet,
+  cacheRateLimitHit: mocks.mockCacheRateLimitHit,
 }));
 
 vi.mock('@/lib/github/app', () => ({
   getAppOctokit: vi.fn(() => ({
-    paginate: mocks.mockPaginate,
+    request: mocks.mockRequest,
     users: {
       listFollowingForUser: 'listFollowingForUser',
     },
   })),
   getInstallOctokit: vi.fn(() => ({
-    paginate: mocks.mockPaginate,
+    request: mocks.mockRequest,
     users: {
       listFollowingForUser: 'listFollowingForUser',
     },
@@ -57,6 +60,7 @@ describe('getLeaderboard', () => {
       },
     });
     mocks.mockCacheGet.mockResolvedValue(null);
+    mocks.mockCacheRateLimitHit.mockResolvedValue({ count: 1, resetAt: null });
   });
 
   it('successfully fetches global leaderboard', async () => {
@@ -136,7 +140,7 @@ describe('getLeaderboard', () => {
         rank: 2,
       },
     ];
-    mocks.mockPaginate.mockResolvedValue([{ login: 'bob' }]);
+    mocks.mockRequest.mockResolvedValue({ data: [{ login: 'bob' }] });
     mocks.mockExecute.mockResolvedValueOnce([]); // no installations lookup
     mocks.mockExecute.mockResolvedValueOnce(mockRows); // rows query
 
