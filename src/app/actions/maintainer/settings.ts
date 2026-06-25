@@ -9,7 +9,8 @@ import {
   listMaintainerRepos,
   type MaintainerInstall,
 } from '@/lib/maintainer/detect';
-import { type InstallationSettingsData, type RepoPickerRow, MIN_CONTRIBUTOR_LEVELS } from './types';
+import { type InstallationSettingsData, type RepoPickerRow } from './types';
+import { MIN_CONTRIBUTOR_LEVELS } from './constants';
 
 async function assertMaintainerInstall(
   service: NonNullable<ReturnType<typeof getServiceSupabase>>,

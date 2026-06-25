@@ -15,7 +15,8 @@ import { classifyTriage, type IssueTriageBucket } from '@/lib/maintainer/issue-t
 import { inngest } from '@/inngest/client';
 import { getInstallOctokit } from '@/lib/github/app';
 import { cacheGet, cacheSet } from '@/lib/cache';
-import { type MaintainerIssueRow, MIN_CONTRIBUTOR_LEVELS } from './types';
+import { type MaintainerIssueRow } from './types';
+import { MIN_CONTRIBUTOR_LEVELS } from './constants';
 
 const PAGE_SIZE = 25;
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
