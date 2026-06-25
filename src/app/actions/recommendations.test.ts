@@ -111,6 +111,24 @@ const createMockChain = (chainResult: unknown, singleResult: unknown = null) => 
   return chain;
 };
 
+const createIssuesPoolChain = (
+  pool: Array<{ id: number; difficulty: string; [key: string]: unknown }>,
+) => {
+  let difficultyFilter: string[] | null = null;
+  const chain = createMockChain({ data: [] });
+  chain.in = vi.fn((col: string, vals: string[]) => {
+    if (col === 'difficulty') difficultyFilter = vals;
+    return chain;
+  });
+  chain.then = function (resolve: (value: unknown) => void, reject: (reason?: unknown) => void) {
+    const data = difficultyFilter
+      ? pool.filter((issue) => difficultyFilter!.includes(issue.difficulty))
+      : pool;
+    return Promise.resolve({ data }).then(resolve, reject);
+  };
+  return chain;
+};
+
 describe('Recommendations Server Actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -272,6 +290,7 @@ describe('Recommendations Server Actions', () => {
         .mockReturnValueOnce(
           createMockChain(null, { data: { id: 1, difficulty: 'E', issue_id: 10 }, error: null }),
         ) // update rec
+        .mockReturnValueOnce(createMockChain(null, { data: { level: 1 }, error: null })) // profile level
         .mockReturnValueOnce(createMockChain({ data: [{ issue_id: 10 }] })) // select seen
         .mockReturnValueOnce(
           createMockChain({
@@ -305,9 +324,41 @@ describe('Recommendations Server Actions', () => {
         .mockReturnValueOnce(
           createMockChain(null, { data: { id: 1, difficulty: 'E', issue_id: 10 }, error: null }),
         ) // update rec
+        .mockReturnValueOnce(createMockChain(null, { data: { level: 1 }, error: null })) // profile level
         .mockReturnValueOnce(createMockChain({ data: [{ issue_id: 10 }] })) // select seen
         .mockReturnValueOnce(createMockChain({ data: [] })) // select pool E
-        .mockReturnValueOnce(createMockChain({ data: [] })); // select pool Any
+        .mockReturnValueOnce(createMockChain({ data: [] })); // select pool fallback
+
+      const result = await skipRecommendation(1);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.id).toBe(1);
+        expect(result.data.replacement).toBeNull();
+      }
+    });
+
+    it('returns null replacement when fallback pool only has issues above user level', async () => {
+      const hardOnlyPool = [
+        {
+          id: 11,
+          difficulty: 'H',
+          xp_reward: 300,
+          repo_full_name: 'a/b',
+          github_issue_number: 2,
+          title: 'Hard issue',
+          url: 'http',
+        },
+      ];
+
+      mocks.mockServiceFrom
+        .mockReturnValueOnce(
+          createMockChain(null, { data: { id: 1, difficulty: 'E', issue_id: 10 }, error: null }),
+        ) // update rec
+        .mockReturnValueOnce(createMockChain(null, { data: { level: 0 }, error: null })) // profile level
+        .mockReturnValueOnce(createMockChain({ data: [{ issue_id: 10 }] })) // select seen
+        .mockReturnValueOnce(createIssuesPoolChain([])) // same-difficulty pool empty
+        .mockReturnValueOnce(createIssuesPoolChain(hardOnlyPool)); // fallback excludes Hard for L0
 
       const result = await skipRecommendation(1);
 
