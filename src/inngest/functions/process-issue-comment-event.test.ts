@@ -3,6 +3,9 @@ import { processIssueCommentEvent } from './process-issue-comment-event';
 import { sb, wire, step } from './__tests__/test-helpers';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
+vi.mock('@/lib/daily-challenge/progress', () => ({
+  incrementChallengeProgress: vi.fn().mockResolvedValue({ ok: true }),
+}));
 vi.mock('../client', () => ({
   inngest: { createFunction: (_c: unknown, _t: unknown, h: Function) => h },
 }));

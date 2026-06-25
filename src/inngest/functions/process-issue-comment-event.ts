@@ -17,6 +17,10 @@ type IssueCommentPayload = {
     comments: number;
     pull_request?: unknown;
   };
+  comment?: {
+    user: { login: string };
+  };
+  sender?: { login: string };
   repository: { full_name: string };
 };
 
@@ -56,6 +60,23 @@ export const processIssueCommentEvent = inngest.createFunction(
         .eq('github_issue_number', payload.issue.number);
 
       if (error) return { error: error.message };
+
+      const commentatorHandle = payload.comment?.user?.login || payload.sender?.login;
+      if (payload.action === 'created' && commentatorHandle) {
+        const { data: profile } = await sb
+          .from('profiles')
+          .select('id')
+          .eq('github_handle', commentatorHandle)
+          .maybeSingle();
+        if (profile?.id) {
+          const { incrementChallengeProgress } = await import('@/lib/daily-challenge/progress');
+          await incrementChallengeProgress({
+            userId: profile.id,
+            type: 'issue_comment',
+          });
+        }
+      }
+
       return { ok: true, action: payload.action };
     });
   },

@@ -93,6 +93,22 @@ export const processPrEvent = inngest.createFunction(
         await step.run('maybe-auto-assign-mentor', async () =>
           maybeAutoAssignMentor(repo, pr.number),
         );
+        await step.run('increment-challenge-progress', async () => {
+          const sb = getServiceSupabase();
+          if (!sb) return;
+          const { data: authorProfile } = await sb
+            .from('profiles')
+            .select('id')
+            .eq('github_handle', pr.user.login)
+            .maybeSingle();
+          if (authorProfile?.id) {
+            const { incrementChallengeProgress } = await import('@/lib/daily-challenge/progress');
+            await incrementChallengeProgress({
+              userId: authorProfile.id,
+              type: 'pr_opened',
+            });
+          }
+        });
         return await step.run('link-pr-to-claim', async () => linkPrToClaim(prUrl, repo, pr));
       }
       if (action === 'closed' && pr.merged === true) {
