@@ -4,23 +4,22 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { XP_SOURCE, XP_REWARDS, refIds } from '@/lib/xp/sources';
 import { insertXpEvent } from '@/lib/xp/events';
-import { Result, ok, err } from '@/lib/result';
+import { Result, err, ok } from '@/lib/result';
 import { revalidatePath } from 'next/cache';
+import { requireMaintainer } from '@/lib/action-auth';
+import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
+import { listMaintainerInstalls, listMaintainerRepos } from '@/lib/maintainer/detect';
 
 export async function verifyPrAction(opts: {
   prId?: number;
   prUrl?: string;
 }): Promise<Result<{ xpAwarded: number }>> {
-  const sb = await getServerSupabase();
-  if (!sb) return err('not_configured', 'auth not configured');
-
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) return err('not_authenticated', 'sign in first');
-
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service missing');
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'mentor:verify-pr', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
 
   // Verify user is L2+
   const { data: mentor } = await service
@@ -48,6 +47,21 @@ export async function verifyPrAction(opts: {
   if (pr.mentor_verified) return err('already_verified', 'This PR is already verified');
   if (pr.author_user_id === user.id)
     return err('cannot_verify_own', 'Mentors cannot verify their own PRs');
+
+  // Verify the caller maintains this specific repo
+  const installs = await listMaintainerInstalls(user.id);
+  let maintainsRepo = false;
+  for (const install of installs) {
+    const repos = await listMaintainerRepos(user.id, install.installationId);
+    if (repos.includes(pr.repo_full_name)) {
+      maintainsRepo = true;
+      break;
+    }
+  }
+
+  if (!maintainsRepo) {
+    return err('not_authorised', 'You do not maintain the repository for this PR');
+  }
 
   // Mark PR verified
   const { error: updateErr } = await service
