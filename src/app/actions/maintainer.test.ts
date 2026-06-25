@@ -306,6 +306,44 @@ describe('maintainer actions', () => {
         expect(res.data.rows[0]?.title).toBe('senior trust');
       }
     });
+
+    it('paginates using non-overlapping 100-row blocks', async () => {
+      const mockBlock = Array.from({ length: 100 }).map((_, i) => ({
+        ...rawPr,
+        id: i + 1,
+        number: i + 1,
+        title: `PR ${i + 1}`,
+      }));
+
+      const c = chain(mockBlock);
+      mockFrom.mockReturnValue(c);
+
+      const allFetchedIds = new Set<number>();
+      let totalRows = 0;
+
+      for (let page = 0; page < 4; page++) {
+        const res = await getMaintainerPrQueue({ installationId: 1, page });
+        expect(res.ok).toBe(true);
+        if (!res.ok) continue;
+
+        expect(c.range).toHaveBeenCalledWith(0, 99);
+        expect(res.data.rows).toHaveLength(25);
+
+        for (const row of res.data.rows) {
+          expect(allFetchedIds.has(row.id)).toBe(false);
+          allFetchedIds.add(row.id);
+        }
+        totalRows += res.data.rows.length;
+      }
+
+      expect(totalRows).toBe(100);
+      expect(allFetchedIds.size).toBe(100);
+
+      const cNext = chain([]);
+      mockFrom.mockReturnValue(cNext);
+      await getMaintainerPrQueue({ installationId: 1, page: 4 });
+      expect(cNext.range).toHaveBeenCalledWith(100, 199);
+    });
   });
 
   //   getMaintainerIssueQueue
