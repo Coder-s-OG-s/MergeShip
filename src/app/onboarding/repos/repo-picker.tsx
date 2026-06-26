@@ -43,9 +43,11 @@ function relativeTime(iso: string | null): string {
 export function RepoPicker({
   installationId,
   initialRepos,
+  onNext,
 }: {
   installationId: number;
   initialRepos: RepoPickerRow[];
+  onNext?: () => void;
 }) {
   const router = useRouter();
   const [repos, setRepos] = useState<RepoPickerRow[]>(initialRepos);
@@ -165,7 +167,7 @@ export function RepoPicker({
       <button
         type="button"
         disabled={managedCount === 0}
-        onClick={() => router.push('/maintainer')}
+        onClick={() => (onNext ? onNext() : router.push('/maintainer'))}
         className="mt-2 w-full rounded-md bg-neon-green px-5 py-3.5 text-center font-medium text-black transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
       >
         Connect {managedCount} {managedCount === 1 ? 'repo' : 'repos'} and continue
