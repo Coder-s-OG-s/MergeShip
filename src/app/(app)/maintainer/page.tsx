@@ -11,11 +11,13 @@ import {
   getFlaggedAccounts,
   getTopContributors,
   getInstallationSettings,
+  getReviewerLoad,
   type FlaggedAccountRow,
   type InstallationSettingsData,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
+  type ReviewerLoadRow,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import type { MaintainerPrRow } from '@/lib/maintainer/queue';
@@ -112,6 +114,10 @@ export default async function MaintainerPage({
         autoAssignMentorChain: false,
         aiPrDetection: false,
       };
+
+  const reviewerLoadsRes = await getReviewerLoad({ installationId: activeInstallId });
+  const reviewerLoads: ReviewerLoadRow[] = isOk(reviewerLoadsRes) ? reviewerLoadsRes.data : [];
+  const maxLoad = reviewerLoads.length > 0 ? Math.max(...reviewerLoads.map((r) => r.prCount)) : 0;
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -239,7 +245,7 @@ export default async function MaintainerPage({
             </div>
           </section>
         )}
-        <div className="mb-8 grid gap-6 lg:grid-cols-3">
+        <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>
 
@@ -306,6 +312,34 @@ export default async function MaintainerPage({
                   <span className="text-sm text-emerald-400">{contributor.xp} XP</span>
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+            <h2 className="mb-4 text-sm font-semibold text-white">Reviewer Load</h2>
+
+            <div className="space-y-3">
+              {reviewerLoads.length === 0 ? (
+                <p className="text-xs text-zinc-500">No active reviewer load.</p>
+              ) : (
+                reviewerLoads.map((rev) => {
+                  const percentage = maxLoad > 0 ? (rev.prCount / maxLoad) * 100 : 0;
+                  return (
+                    <div key={rev.reviewerId} className="rounded-lg border border-zinc-800 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-zinc-200">@{rev.githubHandle}</span>
+                        <span className="text-xs text-zinc-400">{rev.prCount} PRs</span>
+                      </div>
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-300"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </section>
         </div>

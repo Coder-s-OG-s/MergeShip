@@ -5,8 +5,8 @@ import { requireMaintainer } from '@/lib/action-auth';
 import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerRepos } from '@/lib/maintainer/detect';
 import { tryGetDb } from '@/lib/db/client';
-import { profiles, xpEvents } from '@/lib/db/schema';
-import { eq, inArray, sum, desc } from 'drizzle-orm';
+import { profiles, xpEvents, pullRequests } from '@/lib/db/schema';
+import { eq, inArray, sum, desc, and, count } from 'drizzle-orm';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
 import {
@@ -15,7 +15,12 @@ import {
   type MaintainerPrRow,
   type QueueFilters,
 } from '@/lib/maintainer/queue';
-import { type RepoHealthRow, type StaleIssueRow, type ContributorRow } from './types';
+import {
+  type RepoHealthRow,
+  type StaleIssueRow,
+  type ContributorRow,
+  type ReviewerLoadRow,
+} from './types';
 
 export async function getRepoHealthOverview(args: {
   installationId: number;
@@ -356,4 +361,62 @@ export async function exportPrQueueCsv(
   }
 
   return ok(csvLines.join('\n'));
+}
+
+export async function getReviewerLoad(args: {
+  installationId: number;
+}): Promise<Result<ReviewerLoadRow[]>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) {
+    return ok([]);
+  }
+
+  const db = tryGetDb();
+  if (!db) {
+    return err('not_configured', 'database not configured');
+  }
+
+  try {
+    const rows = await db
+      .select({
+        reviewerId: pullRequests.mentorReviewerId,
+        githubHandle: profiles.githubHandle,
+        avatarUrl: profiles.avatarUrl,
+        prCount: count(pullRequests.id),
+      })
+      .from(pullRequests)
+      .innerJoin(profiles, eq(pullRequests.mentorReviewerId, profiles.id))
+      .where(
+        and(
+          inArray(pullRequests.repoFullName, repos),
+          eq(pullRequests.state, 'open'),
+          eq(pullRequests.mentorVerified, false),
+        ),
+      )
+      .groupBy(
+        pullRequests.mentorReviewerId,
+        profiles.id,
+        profiles.githubHandle,
+        profiles.avatarUrl,
+      )
+      .orderBy(desc(count(pullRequests.id)));
+
+    return ok(
+      rows.map((row) => ({
+        reviewerId: row.reviewerId as string,
+        githubHandle: row.githubHandle,
+        avatarUrl: row.avatarUrl,
+        prCount: row.prCount,
+      })),
+    );
+  } catch (error: any) {
+    return err('query_failed', error.message || 'Drizzle query failed');
+  }
 }
