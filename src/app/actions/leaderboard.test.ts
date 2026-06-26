@@ -142,9 +142,13 @@ describe('getLeaderboard', () => {
         rank: 2,
       },
     ];
-    mocks.mockPaginate.mockResolvedValue([{ login: 'bob' }]);
-    mocks.mockExecute.mockResolvedValueOnce([]); // no installations lookup
-    mocks.mockExecute.mockResolvedValueOnce(mockRows); // rows query
+    mocks.mockRequest.mockResolvedValueOnce({ data: [{ login: 'bob' }, { login: 'carol' }] });
+    mocks.mockCacheGet
+      .mockResolvedValueOnce(null) // leaderboard cache
+      .mockResolvedValueOnce(null) // following cache miss, fetch from GitHub
+      .mockResolvedValueOnce(['bob', 'carol', 'alice']); // following cache hit on currentUserRank re-fetch
+    mocks.mockExecute.mockResolvedValueOnce([]); // installations lookup
+    mocks.mockExecute.mockResolvedValueOnce(mockRows); // friends leaderboard rows
 
     const result = await getLeaderboard('friends', null, 50);
 
