@@ -80,19 +80,35 @@ export const streakDetect = inngest.createFunction(
         .toISOString()
         .slice(0, 10);
 
+      // Bulk-fetch XP events for all active users in the streak window
+      // to avoid N+1 per-user queries.
+      const activeUserIds = [...uniqueUsers].filter((id): id is string => !!id);
+      const eventsByUser = new Map<string, Array<{ created_at: string }>>();
+      for (let i = 0; i < activeUserIds.length; i += 100) {
+        const chunk = activeUserIds.slice(i, i + 100);
+        for (let from = 0; ; from += 1000) {
+          const { data: eventsPage } = await sb
+            .from('xp_events')
+            .select('user_id, created_at')
+            .in('user_id', chunk)
+            .gte('created_at', `${streakCutoffDate}T00:00:00Z`)
+            .lt('created_at', `${today}T00:00:00Z`)
+            .range(from, from + 999);
+          for (const row of eventsPage ?? []) {
+            if (!row.user_id) continue;
+            if (!eventsByUser.has(row.user_id)) {
+              eventsByUser.set(row.user_id, []);
+            }
+            eventsByUser.get(row.user_id)!.push({ created_at: row.created_at });
+          }
+          if (!eventsPage || eventsPage.length < 1000) break;
+        }
+      }
+
       let awarded = 0;
-      for (const userId of uniqueUsers) {
-        if (!userId) continue;
-
-        // Fetch user's XP events before today to check their streak.
-        const { data: userEvents } = await sb
-          .from('xp_events')
-          .select('created_at')
-          .eq('user_id', userId)
-          .gte('created_at', `${streakCutoffDate}T00:00:00Z`)
-          .lt('created_at', `${today}T00:00:00Z`);
-
-        const streakDays = computeCurrentStreak(userEvents ?? [], yesterday);
+      for (const userId of activeUserIds) {
+        const userEvents = eventsByUser.get(userId) ?? [];
+        const streakDays = computeCurrentStreak(userEvents, yesterday);
 
         if (streakDays > maxDays) {
           continue;
@@ -121,7 +137,7 @@ export const streakDetect = inngest.createFunction(
  */
 export const recsExpire = inngest.createFunction(
   { id: 'recs-expire' },
-  { cron: '0 * * * *' }, // hourly
+  { cron: '0 */6 * * *' }, // every 6 hours
   async ({ step }) => {
     return await step.run('expire-stale-recs', async () => {
       const sb = getServiceSupabase();
