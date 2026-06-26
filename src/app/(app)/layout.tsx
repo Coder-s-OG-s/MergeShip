@@ -3,6 +3,9 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { Sidebar } from './sidebar';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
+import type { MaintainerInstall } from '@/lib/maintainer/detect';
+import { getMaintainerInstalls } from '@/app/actions/maintainer';
+import { isOk } from '@/lib/result';
 import { ToastProvider } from '@/components/toast';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -65,8 +68,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   let isMaintainer = false;
+  let installs: MaintainerInstall[] = [];
   try {
     isMaintainer = await isUserMaintainer(user.id);
+    if (isMaintainer) {
+      const installsRes = await getMaintainerInstalls();
+      if (isOk(installsRes)) {
+        installs = installsRes.data;
+      }
+    }
   } catch {
     // never break the layout
   }
@@ -84,6 +94,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           openIssuesCount={openIssuesCount}
           isMaintainer={isMaintainer}
           mentorHandle={mentorHandle}
+          installs={installs}
         />
 
         {/* Main Content Area */}
