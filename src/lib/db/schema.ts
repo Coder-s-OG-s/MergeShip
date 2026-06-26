@@ -54,6 +54,7 @@ export const profiles = pgTable(
     skills: text('skills').array(),
     websiteUrl: text('website_url'),
     twitterHandle: text('twitter_handle'),
+    weeklyDigest: boolean('weekly_digest').notNull().default(true),
   },
   (t) => ({
     xpDescIdx: index('profiles_xp_desc_idx').on(t.xp),

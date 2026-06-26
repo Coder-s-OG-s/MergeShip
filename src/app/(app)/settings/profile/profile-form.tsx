@@ -11,6 +11,7 @@ type ProfileFormProps = {
     skills: string[] | null;
     website_url: string | null;
     twitter_handle: string | null;
+    weekly_digest: boolean;
   };
 };
 
@@ -21,6 +22,7 @@ export function ProfileForm({ initialData }: ProfileFormProps) {
   const [skillInput, setSkillInput] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState(initialData.website_url || '');
   const [twitterHandle, setTwitterHandle] = useState(initialData.twitter_handle || '');
+  const [weeklyDigest, setWeeklyDigest] = useState(initialData.weekly_digest);
 
   // UI state
   const [isPending, startTransition] = useTransition();
@@ -67,6 +69,7 @@ export function ProfileForm({ initialData }: ProfileFormProps) {
       skills: skills.length > 0 ? skills : null,
       website_url: websiteUrl.trim() || null,
       twitter_handle: twitterHandle.trim() || null,
+      weekly_digest: weeklyDigest,
     };
 
     startTransition(async () => {
@@ -217,6 +220,20 @@ export function ProfileForm({ initialData }: ProfileFormProps) {
         {fieldErrors.twitter_handle && (
           <p className="mt-1 text-sm text-red-600">{fieldErrors.twitter_handle[0]}</p>
         )}
+      </div>
+
+      {/* Weekly Digest Toggle */}
+      <div className="flex items-center space-x-3">
+        <input
+          id="weekly_digest"
+          type="checkbox"
+          checked={weeklyDigest}
+          onChange={(e) => setWeeklyDigest(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+        />
+        <label htmlFor="weekly_digest" className="text-sm font-medium text-gray-700">
+          Receive Weekly Progress Digest
+        </label>
       </div>
 
       {/* Submit Button */}

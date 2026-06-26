@@ -4,10 +4,14 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { RepoPicker } from '@/app/onboarding/repos/repo-picker';
+import type { RepoPickerRow } from '@/app/actions/maintainer';
 
 type InstallWizardProps = {
   initialStep: number;
   installUrl: string;
+  installationId?: number;
+  initialRepos?: RepoPickerRow[];
 };
 
 function clampStep(value: number): 1 | 2 | 3 {
@@ -15,7 +19,12 @@ function clampStep(value: number): 1 | 2 | 3 {
   return value as 1 | 2 | 3;
 }
 
-export function InstallWizard({ initialStep, installUrl }: InstallWizardProps) {
+export function InstallWizard({
+  initialStep,
+  installUrl,
+  installationId,
+  initialRepos,
+}: InstallWizardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [step, setStep] = useState(initialStep);
@@ -73,7 +82,14 @@ export function InstallWizard({ initialStep, installUrl }: InstallWizardProps) {
         </div>
 
         {step === 1 && <Step1 installUrl={installUrl} />}
-        {step === 2 && <Step2 onNext={() => goToStep(3)} onBack={() => goToStep(1)} />}
+        {step === 2 && (
+          <Step2
+            onNext={() => goToStep(3)}
+            onBack={() => goToStep(1)}
+            installationId={installationId}
+            initialRepos={initialRepos}
+          />
+        )}
         {step === 3 && <Step3 onBack={() => goToStep(2)} />}
       </main>
     </div>
@@ -104,23 +120,43 @@ function Step1({ installUrl }: { installUrl: string }) {
   );
 }
 
-function Step2({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <h1 className="mb-4 font-display text-4xl font-bold">Select Repositories</h1>
-      <p className="mb-6 text-gray-300">(Repo picker coming soon in #326)</p>
-
-      <div className="flex items-center gap-4">
+function Step2({
+  onNext,
+  onBack,
+  installationId,
+  initialRepos,
+}: {
+  onNext: () => void;
+  onBack: () => void;
+  installationId?: number;
+  initialRepos?: RepoPickerRow[];
+}) {
+  if (!installationId || !initialRepos) {
+    return (
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <h1 className="mb-4 font-display text-4xl font-bold">Select Repositories</h1>
+        <p className="mb-6 text-gray-300">Please complete the GitHub installation first.</p>
         <button
           onClick={onBack}
           className="rounded-xl border border-gray-600 px-6 py-3 font-semibold text-gray-300 hover:bg-white/5"
         >
           Back
         </button>
-        <button onClick={onNext} className="btn-primary rounded-xl px-6 py-3 font-semibold">
-          Continue
+      </div>
+    );
+  }
+
+  return (
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="mb-6">
+        <button
+          onClick={onBack}
+          className="rounded-xl border border-gray-600 px-4 py-2 text-sm font-semibold text-gray-300 hover:bg-white/5"
+        >
+          Back
         </button>
       </div>
+      <RepoPicker installationId={installationId} initialRepos={initialRepos} onNext={onNext} />
     </div>
   );
 }
@@ -129,7 +165,7 @@ function Step3({ onBack }: { onBack: () => void }) {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
       <h1 className="mb-4 font-display text-4xl font-bold">You&apos;re all set</h1>
-      <p className="mb-6 text-gray-300">(Completion screen coming soon)</p>
+      <p className="mb-6 text-gray-300">Your repositories have been successfully configured.</p>
 
       <div className="flex items-center gap-4">
         <button

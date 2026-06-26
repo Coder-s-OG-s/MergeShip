@@ -25,6 +25,7 @@ const ANNOUNCEMENTS = [
 ];
 
 export function RightSidebar() {
+  const hasScheduledSession = NEXT_SESSION.date !== 'TBD';
   return (
     <aside className="space-y-10">
       {/* Browse Issues CTA */}
@@ -52,13 +53,13 @@ export function RightSidebar() {
           </div>
           <div className="flex gap-2">
             <button
-              disabled
+              disabled={!hasScheduledSession}
               className="border border-zinc-700 px-3 py-1.5 text-[10px] uppercase tracking-widest text-zinc-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
               RESCHEDULE
             </button>
             <button
-              disabled
+              disabled={!hasScheduledSession}
               className="border border-zinc-700 px-3 py-1.5 text-[10px] uppercase tracking-widest text-zinc-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
               JOIN CALL

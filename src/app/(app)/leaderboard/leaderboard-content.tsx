@@ -392,9 +392,6 @@ export function LeaderboardContent({
                       </div>
                     </div>
                   </div>
-                  <button className="rounded-lg border border-zinc-700 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 transition-colors hover:border-[#00FF87] hover:text-[#00FF87]">
-                    Duel
-                  </button>
                 </div>
               ))}
             </div>

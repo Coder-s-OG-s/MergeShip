@@ -114,7 +114,10 @@ export async function getMaintainerPrQueue(args: {
   };
   const { data: prs } = await q
     .order('github_updated_at', { ascending: false })
-    .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE * 4); // overscan for tier resort
+    .range(
+      Math.floor(page / 4) * PAGE_SIZE * 4,
+      Math.floor(page / 4) * PAGE_SIZE * 4 + PAGE_SIZE * 4 - 1,
+    ); // fetch non-overlapping blocks for tier resort
 
   const prRows = (prs ?? []) as unknown as RawPr[];
 
@@ -188,8 +191,9 @@ export async function getMaintainerPrQueue(args: {
 
   filtered.sort(comparePrRows);
 
-  const page_rows = filtered.slice(0, PAGE_SIZE);
-  const hasMore = filtered.length > PAGE_SIZE;
+  const startIdx = (page % 4) * PAGE_SIZE;
+  const page_rows = filtered.slice(startIdx, startIdx + PAGE_SIZE);
+  const hasMore = startIdx + PAGE_SIZE < filtered.length || prRows.length === PAGE_SIZE * 4;
   return ok({ rows: page_rows, hasMore });
 }
 
@@ -250,7 +254,10 @@ export async function getMaintainerIssueQueue(args: {
     .in('repo_full_name', scopedRepos)
     .in('state', states)
     .order('last_event_at', { ascending: false, nullsFirst: false })
-    .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE * 4);
+    .range(
+      Math.floor(page / 4) * PAGE_SIZE * 4,
+      Math.floor(page / 4) * PAGE_SIZE * 4 + PAGE_SIZE * 4 - 1,
+    );
 
   const rows: MaintainerIssueRow[] = ((issuesRaw ?? []) as unknown as RawIssue[]).map((r) => {
     const triage = classifyTriage({
@@ -294,8 +301,11 @@ export async function getMaintainerIssueQueue(args: {
     return bt - at;
   });
 
-  const pageRows = filtered.slice(0, PAGE_SIZE);
-  return ok({ rows: pageRows, hasMore: filtered.length > PAGE_SIZE });
+  const startIdx = (page % 4) * PAGE_SIZE;
+  const pageRows = filtered.slice(startIdx, startIdx + PAGE_SIZE);
+  const hasMore =
+    startIdx + PAGE_SIZE < filtered.length || (issuesRaw?.length ?? 0) === PAGE_SIZE * 4;
+  return ok({ rows: pageRows, hasMore });
 }
 
 export async function refreshMaintainerBackfill(
