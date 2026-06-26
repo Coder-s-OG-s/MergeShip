@@ -162,18 +162,28 @@ describe('getLeaderboard', () => {
       mocks.mockRequest
         .mockResolvedValueOnce({ data: page1 })
         .mockResolvedValueOnce({ data: page2 });
+      mocks.mockCacheGet.mockResolvedValueOnce(null).mockResolvedValueOnce(['bob', 'carol']);
       mocks.mockExecute.mockResolvedValueOnce([]); // installations
-      mocks.mockExecute.mockResolvedValueOnce([]); // leaderboard rows
-      await getLeaderboard('friends', null, 50);
+      mocks.mockExecute.mockResolvedValueOnce([]); // friends leaderboard rows
+      mocks.mockExecute.mockResolvedValueOnce([]); // currentUserRank query
+      mocks.mockExecute.mockResolvedValueOnce([]); // user profile query
+      const result = await getLeaderboard('friends', null, 50);
+      expect(isOk(result)).toBe(true);
       expect(mocks.mockRequest).toHaveBeenCalledTimes(2);
     });
 
     it('stops at 5 pages even when every page returns 100 results', async () => {
       const fullPage = Array.from({ length: 100 }, (_, i) => ({ login: `user${i}` }));
       mocks.mockRequest.mockResolvedValue({ data: fullPage });
+      mocks.mockCacheGet
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(Array.from({ length: 500 }, (_, i) => `user${i}`));
       mocks.mockExecute.mockResolvedValueOnce([]); // installations
-      mocks.mockExecute.mockResolvedValueOnce([]); // leaderboard rows
-      await getLeaderboard('friends', null, 50);
+      mocks.mockExecute.mockResolvedValueOnce([]); // friends leaderboard rows
+      mocks.mockExecute.mockResolvedValueOnce([]); // currentUserRank query
+      mocks.mockExecute.mockResolvedValueOnce([]); // user profile query
+      const result = await getLeaderboard('friends', null, 50);
+      expect(isOk(result)).toBe(true);
       expect(mocks.mockRequest).toHaveBeenCalledTimes(5);
     });
   });
