@@ -2,7 +2,7 @@
 
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
-import { XP_SOURCE, XP_REWARDS, refIds } from '@/lib/xp/sources';
+import { XP_SOURCE, XP_REWARDS, refIds, DAILY_CAPS } from '@/lib/xp/sources';
 import { insertXpEvent } from '@/lib/xp/events';
 import { Result, err, ok } from '@/lib/result';
 import { revalidatePath } from 'next/cache';
@@ -98,6 +98,7 @@ export async function verifyPrAction(opts: {
     repo: pr.repo_full_name,
     xpDelta: xp,
     metadata: { isMentor, menteeLevel, manual_verify: true },
+    dailyCapLimit: { action: 'review', limit: DAILY_CAPS.REVIEWS },
   });
 
   revalidatePath('/maintainer');
