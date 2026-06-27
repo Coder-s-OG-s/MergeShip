@@ -89,17 +89,25 @@ export async function verifyPrAction(opts: {
   if (isMentor) xp += XP_REWARDS.HELP_REVIEW_MENTOR_BONUS;
 
   // Exclude speed bonus for manual verification
-  const inserted = await insertXpEvent({
-    userId: user.id,
-    source: XP_SOURCE.HELP_REVIEW,
-    refType: 'review',
-    // Ensure refId is unique per PR and mentor
-    refId: refIds.helpReview(pr.id, mentor.github_handle),
-    repo: pr.repo_full_name,
-    xpDelta: xp,
-    metadata: { isMentor, menteeLevel, manual_verify: true },
-    dailyCapLimit: { action: 'review', limit: DAILY_CAPS.REVIEWS },
-  });
+  let inserted = false;
+  try {
+    inserted = await insertXpEvent({
+      userId: user.id,
+      source: XP_SOURCE.HELP_REVIEW,
+      refType: 'review',
+      // Ensure refId is unique per PR and mentor
+      refId: refIds.helpReview(pr.id, mentor.github_handle),
+      repo: pr.repo_full_name,
+      xpDelta: xp,
+      metadata: { isMentor, menteeLevel, manual_verify: true },
+      dailyCapLimit: { action: 'review', limit: DAILY_CAPS.REVIEWS },
+    });
+  } catch (error: any) {
+    if (error?.message === 'daily_review_cap_reached') {
+      return err('daily_review_cap_reached', 'Daily review cap reached');
+    }
+    return err('xp_error', error?.message || 'Failed to award XP');
+  }
 
   revalidatePath('/maintainer');
   revalidatePath('/issues');
