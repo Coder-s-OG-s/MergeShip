@@ -64,9 +64,9 @@ export default function AnalyticsTrends({ data }: { data: MaintainerAnalyticsTre
           <h2 className="text-sm font-semibold text-white">Level Distribution</h2>
           <span className="text-xs text-zinc-500">6 months</span>
         </div>
-        {hasLevelData ? (
+        {hasLevelData && data.levelDistribution.length > 0 ? (
           <LevelDistributionBar
-            current={data.levelDistribution[data.levelDistribution.length - 1]}
+            current={data.levelDistribution[data.levelDistribution.length - 1]!}
           />
         ) : (
           <EmptyChart label="No contributor levels available for these repositories." />
