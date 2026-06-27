@@ -1,12 +1,12 @@
 <div align="center">
 
-  # MergeShip
-  
-  ### An Open Source Ecosystem and Organisation Management Platform
-  
-  Helping contributors learn the right way and helping maintainers stay sane.
-  
-  [About](#about-the-project) • [Core Features](#core-features) • [Tech Stack](#tech-stack) • [Architecture](#architecture-overview) • [Quick Start](#quick-start) • [Community](#community) • [Contributing](#contributing) • [Project Support](#project-support) • [License](#license)
+# MergeShip
+
+### An Open Source Ecosystem and Organisation Management Platform
+
+Helping contributors learn the right way and helping maintainers stay sane.
+
+[About](#about-the-project) • [Core Features](#core-features) • [Tech Stack](#tech-stack) • [Architecture](#architecture-overview) • [Quick Start](#quick-start) • [Community](#community) • [Contributing](#contributing) • [Project Support](#project-support) • [License](#license)
 
 </div>
 
@@ -42,23 +42,29 @@ Open source today faces two major hurdles: contributors often lack a structured 
 MergeShip is built with a modern and scalable engineering stack:
 
 **Framework:**
+
 - Next.js
 - React
 
 **Database & Auth:**
+
 - Supabase
 - PostgreSQL (Local + Auth Studio)
 
 **ORM:**
+
 - Drizzle ORM
 
 **Background Jobs:**
+
 - Inngest (Webhooks, Audits, PR processing)
 
 **AI / LLM:**
+
 - Groq (Router)
 
 **Testing:**
+
 - Vitest (Integration & Unit Testing)
 
 ---
@@ -87,6 +93,7 @@ Works on macOS, Linux, and Windows (WSL2 recommended; native Windows + Docker De
 1. **Verify Prerequisites:** Ensure you have Node.js 20+ and Docker installed and running.
 
 2. **Clone the repository:**
+
    ```bash
    git clone https://github.com/Coder-s-OG-s/MergeShip.git
    cd MergeShip
@@ -96,13 +103,12 @@ Works on macOS, Linux, and Windows (WSL2 recommended; native Windows + Docker De
    ```bash
    npm install
    ```
-   
 4. **Set up environment variables:**
    ```bash
    cp .env.example .env.local
    ```
-   
 5. **Start Supabase:** (Local Postgres + Auth Studio)
+
    ```bash
    make supabase-start
    ```
@@ -113,17 +119,15 @@ Works on macOS, Linux, and Windows (WSL2 recommended; native Windows + Docker De
    ```bash
    make db-reset
    ```
-   
 8. **Start Redis:** (Optional, will fall back to in-memory if skipped)
    ```bash
    make redis-start
    ```
-   
 9. **Start Development Server:**
    ```bash
    npm run dev
    ```
-11. **Sign In:** Open [http://localhost:3001/dev/login](http://localhost:3001/dev/login) and click any persona to sign in. No GitHub OAuth or external accounts are required for local work.
+10. **Sign In:** Open [http://localhost:3001/dev/login](http://localhost:3001/dev/login) and click any persona to sign in. No GitHub OAuth or external accounts are required for local work.
 
 For prerequisites, troubleshooting, and the full contributor workflow, read [CONTRIBUTING.md](./CONTRIBUTING.md).
 
