@@ -42,24 +42,24 @@ Open source today faces two major hurdles: contributors often lack a structured 
 MergeShip is built with a modern and scalable engineering stack:
 
 **Framework:**
-- ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white)
-- ![React](https://img.shields.io/badge/React-61DAFB?style=flat-square&logo=react&logoColor=black)
+- Next.js
+- React
 
 **Database & Auth:**
-- ![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=flat-square&logo=supabase&logoColor=white)
-- ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)  `(Local + Auth Studio)`
+- Supabase
+- PostgreSQL (Local + Auth Studio)
 
 **ORM:**
-- ![Drizzle ORM](https://img.shields.io/badge/Drizzle_ORM-C5F74F?style=flat-square&logo=drizzle&logoColor=black)
+- Drizzle ORM
 
 **Background Jobs:**
-- ![Inngest](https://img.shields.io/badge/Inngest-FF4F00?style=flat-square&logo=inngest&logoColor=white)  `(Webhooks, Audits, PR processing)`
+- Inngest (Webhooks, Audits, PR processing)
 
 **AI / LLM:**
-- ![Groq](https://img.shields.io/badge/Groq-F55036?style=flat-square&logo=groq&logoColor=white)  `Router`
+- Groq (Router)
 
 **Testing:**
-- ![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=flat-square&logo=vitest&logoColor=white)  `(Integration & Unit Testing)`
+- Vitest (Integration & Unit Testing)
 
 ---
 
