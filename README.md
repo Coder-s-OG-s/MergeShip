@@ -1,12 +1,12 @@
 <div align="center">
 
-  # 🛳️ MergeShip
+  # MergeShip
   
   ### An Open Source Ecosystem and Organisation Management Platform
   
   Helping contributors learn the right way and helping maintainers stay sane.
   
-  [🎯 About](#about-the-project) • [📌 Core Features](#core-features) • [🛠️ Tech Stack](#tech-stack) • [🖧 Architecture](#architecture-overview) • [🚀 Quick Start](#quick-start) • [👥 Community](#community) • [🤝 Contributing](#contributing) • [❤️ Project Support](#project-support) • [📜 License](#license)
+  [About](#about-the-project) • [Core Features](#core-features) • [Tech Stack](#tech-stack) • [Architecture](#architecture-overview) • [Quick Start](#quick-start) • [Community](#community) • [Contributing](#contributing) • [Project Support](#project-support) • [License](#license)
 
 </div>
 
@@ -22,14 +22,14 @@ Open source today faces two major hurdles: contributors often lack a structured 
 
 ## Core Features
 
-### 👩‍💻 For Contributors
+### For Contributors
 
 - **Smart Placement:** Upon signing in, MergeShip analyzes your public GitHub profile and places you at the appropriate level (Level 0 to Level 2 maximum).
 - **Foundational Course:** Level 0 contributors take a 5-day course covering Git basics, workflow, and open source etiquette before accessing codebases.
 - **Hierarchical Peer Mentorship:** Level 2 contributors help Level 1, and Level 3 mentors Level 2, ensuring every PR is peer-reviewed.
 - **Gamification:** Earn points and badges for merged PRs and mentorship to unlock higher-level, more complex issues.
 
-### 💼 For Maintainers
+### For Maintainers
 
 - **Smart Dashboard:** A unified, sorted view of all organisation activity, eliminating the need to jump between multiple GitHub pages.
 - **Pre-Verified PRs:** Pull Requests arrive with verification tags from mentors, allowing maintainers to focus on high-trust contributions.
