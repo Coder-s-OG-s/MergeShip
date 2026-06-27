@@ -1,10 +1,14 @@
-# MergeShip
+<div align="center">
 
-An Open Source Ecosystem and Organisation Management Platform
+  # 🛳️ MergeShip
+  
+  ### An Open Source Ecosystem and Organisation Management Platform
+  
+  Helping contributors learn the right way and helping maintainers stay sane.
+  
+  [🎯 About](#about-the-project) • [📌 Core Features](#core-features) • [🛠️ Tech Stack](#tech-stack) • [🖧 Architecture](#architecture-overview) • [🚀 Quick Start](#quick-start) • [👥 Community](#community) • [🤝 Contributing](#contributing) • [❤️ Project Support](#project-support) • [📜 License](#license)
 
-Helping contributors learn the right way and helping maintainers stay sane.
-
-[About](#about-the-project) • [Features](#core-features) • [Tech Stack](#tech-stack) • [Architecture](#architecture-overview) • [Quick Start](#quick-start-local-setup) • [Community](#community) • [Contributing](#contributing)
+</div>
 
 ---
 
@@ -14,31 +18,50 @@ MergeShip is an open source platform that works for two groups at the same time 
 
 Open source today faces two major hurdles: contributors often lack a structured path and basic Git/GitHub knowledge, while maintainers are overwhelmed by low-quality AI-generated PRs and scattered data. MergeShip solves both problems together through gamified learning for contributors and a smart organised dashboard for maintainers.
 
+---
+
 ## Core Features
 
-### For Contributors
+### 👩‍💻 For Contributors
 
 - **Smart Placement:** Upon signing in, MergeShip analyzes your public GitHub profile and places you at the appropriate level (Level 0 to Level 2 maximum).
 - **Foundational Course:** Level 0 contributors take a 5-day course covering Git basics, workflow, and open source etiquette before accessing codebases.
 - **Hierarchical Peer Mentorship:** Level 2 contributors help Level 1, and Level 3 mentors Level 2, ensuring every PR is peer-reviewed.
 - **Gamification:** Earn points and badges for merged PRs and mentorship to unlock higher-level, more complex issues.
 
-### For Maintainers
+### 💼 For Maintainers
 
 - **Smart Dashboard:** A unified, sorted view of all organisation activity, eliminating the need to jump between multiple GitHub pages.
 - **Pre-Verified PRs:** Pull Requests arrive with verification tags from mentors, allowing maintainers to focus on high-trust contributions.
 - **Direct Communication:** Chat directly with contributors or schedule 1:1 meetings from within the platform.
 
+---
+
 ## Tech Stack
 
 MergeShip is built with a modern and scalable engineering stack:
 
-- **Framework:** Next.js (App Router) & React
-- **Database & Auth:** Supabase (Local Postgres + Auth Studio)
-- **ORM:** Drizzle ORM
-- **Background Jobs:** Inngest (Webhooks, Audits, PR processing)
-- **AI / LLM:** Groq Router
-- **Testing:** Vitest (Integration & Unit Testing)
+**Framework:**
+- ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white)
+- ![React](https://img.shields.io/badge/React-61DAFB?style=flat-square&logo=react&logoColor=black)
+
+**Database & Auth:**
+- ![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=flat-square&logo=supabase&logoColor=white)
+- ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)  `(Local + Auth Studio)`
+
+**ORM:**
+- ![Drizzle ORM](https://img.shields.io/badge/Drizzle_ORM-C5F74F?style=flat-square&logo=drizzle&logoColor=black)
+
+**Background Jobs:**
+- ![Inngest](https://img.shields.io/badge/Inngest-FF4F00?style=flat-square&logo=inngest&logoColor=white)  `(Webhooks, Audits, PR processing)`
+
+**AI / LLM:**
+- ![Groq](https://img.shields.io/badge/Groq-F55036?style=flat-square&logo=groq&logoColor=white)  `Router`
+
+**Testing:**
+- ![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=flat-square&logo=vitest&logoColor=white)  `(Integration & Unit Testing)`
+
+---
 
 ## Architecture Overview
 
@@ -55,44 +78,56 @@ The codebase follows a domain-driven design structure:
 - `supabase/` - SQL migrations and Docker configurations.
 - `tests/` & `__fixtures__/` - High-coverage test suites and mock data.
 
+---
+
 ## Quick Start
 
 Works on macOS, Linux, and Windows (WSL2 recommended; native Windows + Docker Desktop also works for the core setup). Full step-by-step in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 1. **Verify Prerequisites:** Ensure you have Node.js 20+ and Docker installed and running.
+
 2. **Clone the repository:**
    ```bash
    git clone https://github.com/Coder-s-OG-s/MergeShip.git
    cd MergeShip
    ```
+
 3. **Install dependencies:**
    ```bash
    npm install
    ```
+   
 4. **Set up environment variables:**
    ```bash
    cp .env.example .env.local
    ```
+   
 5. **Start Supabase:** (Local Postgres + Auth Studio)
    ```bash
    make supabase-start
    ```
+
 6. **Configure Keys:** Run `npx supabase status -o env` and copy the `ANON_KEY` and `SERVICE_ROLE_KEY` values into your `.env.local` file. (The CLI's pretty-printed startup output labels these `Publishable`/`Secret` — use the `-o env` form to get the exact names you need.)
+
 7. **Initialize Database:** Run migrations and auto-seed personas.
    ```bash
    make db-reset
    ```
+   
 8. **Start Redis:** (Optional, will fall back to in-memory if skipped)
    ```bash
    make redis-start
    ```
+   
 9. **Start Development Server:**
    ```bash
    npm run dev
    ```
-10. **Sign In:** Open [http://localhost:3001/dev/login](http://localhost:3001/dev/login) and click any persona to sign in. No GitHub OAuth or external accounts are required for local work.
+11. **Sign In:** Open [http://localhost:3001/dev/login](http://localhost:3001/dev/login) and click any persona to sign in. No GitHub OAuth or external accounts are required for local work.
 
 For prerequisites, troubleshooting, and the full contributor workflow, read [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+---
 
 ## Community
 
@@ -104,6 +139,8 @@ Have a question, idea, or want to introduce yourself? **[GitHub Discussions](htt
 - **Show and tell** - share what you built or contributed
 
 Issues are for confirmed bugs and accepted feature work. Everything else goes in Discussions.
+
+---
 
 ## Contributing
 
@@ -126,6 +163,8 @@ Thanks to all the amazing people who contribute to **MergeShip** 🚀
 
 <br>
 
+---
+
 ## Project Support
 
 <p align="center">
@@ -137,6 +176,8 @@ Thanks to all the amazing people who contribute to **MergeShip** 🚀
     <img src="https://img.shields.io/github/forks/Coder-s-OG-s/MergeShip?style=social" alt="Forks">
   </a>
 </p>
+
+---
 
 ## License
 
