@@ -8,7 +8,7 @@ import { Bell } from 'lucide-react';
 
 // New Extracted Components
 import { AnnouncementsCard, AnnouncementsSkeleton } from './announcements-card';
-import { SyncMatcherCard, SyncMatcherSkeleton } from './sync-matcher-card';
+import { SyncButton } from './sync-button';
 import { MentorCard, MentorSkeleton } from './mentor-card';
 
 // Existing dashboard components
@@ -18,6 +18,8 @@ import StatsRow, {
   TotalMergesSkeleton,
   MentorPointsCard,
   MentorPointsSkeleton,
+  CurrentStreakCard,
+  CurrentStreakSkeleton,
 } from './stats-row';
 import ActiveIssuesSection, { RecsSkeleton } from './active-issues';
 import GitHubPRsWrapper, { PrsSkeleton } from './github-prs-wrapper';
@@ -85,28 +87,13 @@ export default async function DashboardPage() {
             <h1 className="font-serif text-3xl text-white md:text-4xl">
               Welcome back, {githubHandle}.
             </h1>
-            <div className="mt-2 text-sm text-zinc-400">
-              No recommendations? Check{' '}
-              <Link href="#" className="text-[#00FF87] hover:underline">
-                Pick of the month
-              </Link>{' '}
-              |{' '}
-              <Link href="/issues" className="text-[#00FF87] hover:underline">
-                BROWSE ISSUES &gt;
-              </Link>
-            </div>
           </div>
           <div className="flex items-center gap-6">
             <div className="text-right">
               <div className="text-[10px] uppercase tracking-widest text-zinc-500">LEVEL</div>
               <div className="font-serif text-2xl font-bold text-white">L{level}</div>
             </div>
-            <div className="text-right">
-              <div className="text-[10px] uppercase tracking-widest text-zinc-500">STREAK</div>
-              <div className="font-serif text-2xl font-bold text-[#00FF87]">
-                {streak} <span className="text-sm font-normal text-zinc-500">(DAYS)</span>
-              </div>
-            </div>
+            <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} />
             <div className="relative flex h-10 w-10 items-center justify-center rounded-full border border-zinc-800 bg-[#161b22]">
               <Bell className="h-4 w-4 text-zinc-400" />
               <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500" />
@@ -115,7 +102,7 @@ export default async function DashboardPage() {
         </header>
 
         {/* Profile Stats Row */}
-        <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-4">
+        <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-5">
           <Suspense fallback={<ProfileIdentitySkeleton />}>
             <ProfileIdentityCard githubHandle={githubHandle} level={level} trustScore={0} />
           </Suspense>
@@ -128,6 +115,9 @@ export default async function DashboardPage() {
           <Suspense fallback={<MentorPointsSkeleton />}>
             <MentorPointsCard userId={user.id} />
           </Suspense>
+          <Suspense fallback={<CurrentStreakSkeleton />}>
+            <CurrentStreakCard userId={user.id} profile={profile} />
+          </Suspense>
         </div>
 
         {/* Journey Progress Bar (Full Width) */}
@@ -139,7 +129,19 @@ export default async function DashboardPage() {
 
         {/* Main Grid Layout */}
         <main className="space-y-6">
-          {/* Row 1 */}
+          {/* Row 1 (Formerly Row 2) */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <Suspense fallback={<HeatmapSkeleton />}>
+                <HeatmapWrapper userId={user.id} />
+              </Suspense>
+            </div>
+            <div className="lg:col-span-1">
+              <DailyChallenge />
+            </div>
+          </div>
+
+          {/* Row 2 (Formerly Row 1) */}
           <div className="grid grid-cols-1 gap-6 lg:h-[420px] lg:grid-cols-3">
             <div className="h-[400px] min-h-0 lg:col-span-1 lg:h-full">
               <Suspense fallback={<RecentActivitySkeleton />}>
@@ -150,26 +152,11 @@ export default async function DashboardPage() {
               <Suspense fallback={<AnnouncementsSkeleton />}>
                 <AnnouncementsCard />
               </Suspense>
-              <Suspense fallback={<SyncMatcherSkeleton />}>
-                <SyncMatcherCard lastSyncedAt={profile?.github_stats_synced_at ?? null} />
-              </Suspense>
             </div>
             <div className="h-[400px] min-h-0 lg:col-span-1 lg:h-full">
               <Suspense fallback={<LeaderboardSkeleton />}>
                 <LeaderboardSnapshot githubHandle={githubHandle} />
               </Suspense>
-            </div>
-          </div>
-
-          {/* Row 2 */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <Suspense fallback={<HeatmapSkeleton />}>
-                <HeatmapWrapper userId={user.id} />
-              </Suspense>
-            </div>
-            <div className="lg:col-span-1">
-              <DailyChallenge />
             </div>
           </div>
 

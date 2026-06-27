@@ -260,3 +260,49 @@ export function MentorPointsSkeleton() {
     </div>
   );
 }
+
+export async function CurrentStreakCard({
+  userId,
+  profile,
+}: {
+  userId: string;
+  profile: PartialProfile;
+}) {
+  const cacheKey = `gh:dashboard:${userId}`;
+  let dashCache = await cacheGet<DashboardCache>(cacheKey);
+
+  if (!dashCache) {
+    dashCache = {
+      merges: (profile?.github_total_merges as number | null) ?? null,
+      streak: (profile?.github_streak as number | null) ?? null,
+      syncedAt: (profile?.github_stats_synced_at as string | null) ?? null,
+    };
+    await cacheSet(cacheKey, dashCache, 300);
+  }
+
+  const streak = dashCache.streak;
+
+  return (
+    <div className="flex h-full flex-col justify-center border border-zinc-800 bg-[#000E12] p-5">
+      <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">CURRENT STREAK</div>
+      <div className="flex items-end gap-2">
+        <span className="font-serif text-4xl leading-none">
+          {(streak ?? 0).toString().padStart(2, '0')}
+        </span>
+        <span className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">DAYS 🔥</span>
+      </div>
+    </div>
+  );
+}
+
+export function CurrentStreakSkeleton() {
+  return (
+    <div className="flex h-full flex-col justify-center border border-zinc-800 bg-[#000E12] p-5">
+      <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">CURRENT STREAK</div>
+      <div className="flex items-end gap-2">
+        <div className="h-9 w-16 animate-pulse rounded bg-zinc-800" />
+        <div className="mb-1 h-4 w-12 animate-pulse rounded bg-zinc-800" />
+      </div>
+    </div>
+  );
+}
