@@ -76,3 +76,10 @@ export type RepoPickerRow = {
   openPrCount: number;
   lastUpdatedAt: string | null;
 };
+
+export type ReviewerLoadRow = {
+  reviewerId: string;
+  githubHandle: string;
+  avatarUrl: string | null;
+  prCount: number;
+};

@@ -17,6 +17,7 @@ import {
   setRepoManaged,
   resolveFlaggedAccount,
   getPrCiStatus,
+  getReviewerLoad,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -34,7 +35,10 @@ vi.mock('@/lib/supabase/service', () => ({
 }));
 
 const mockDbLimit = vi.fn();
-const mockDbOrderBy = vi.fn(() => ({ limit: mockDbLimit }));
+const mockDbOrderBy = vi.fn(() => ({
+  limit: mockDbLimit,
+  then: (resolve: any) => resolve([]),
+}));
 const mockDbGroupBy = vi.fn(() => ({ orderBy: mockDbOrderBy }));
 const mockDbWhere = vi.fn(() => ({ groupBy: mockDbGroupBy }));
 const mockDbInnerJoin = vi.fn(() => ({ where: mockDbWhere }));
@@ -52,6 +56,8 @@ vi.mock('drizzle-orm', () => ({
   inArray: vi.fn(),
   sum: vi.fn(),
   desc: vi.fn(),
+  and: vi.fn(),
+  count: vi.fn(),
 }));
 
 vi.mock('@/lib/maintainer/detect', () => ({
@@ -825,6 +831,61 @@ describe('maintainer actions', () => {
       const res = await getPrCiStatus(1, 'demo/repo', 1);
 
       expect(res.ok).toBe(true);
+    });
+  });
+
+  // getReviewerLoad
+
+  describe('getReviewerLoad', () => {
+    it('returns rate_limited when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+      const res = await getReviewerLoad({ installationId: 1 });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns empty array if maintainer has no repos in install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+      const res = await getReviewerLoad({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('returns empty array if no reviewer loads found', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+      mockDbOrderBy.mockReturnValueOnce({
+        limit: mockDbLimit,
+        then: (resolve: any) => resolve([]),
+      });
+      const res = await getReviewerLoad({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('returns reviewer load data', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+
+      const mockRows = [
+        { reviewerId: 'user-1', githubHandle: 'alice', avatarUrl: 'url1', prCount: 3 },
+        { reviewerId: 'user-2', githubHandle: 'bob', avatarUrl: 'url2', prCount: 1 },
+      ];
+
+      mockDbOrderBy.mockReturnValueOnce({
+        limit: mockDbLimit,
+        then: (resolve: any) => resolve(mockRows),
+      });
+
+      const res = await getReviewerLoad({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(2);
+        expect(res.data[0]?.githubHandle).toBe('alice');
+        expect(res.data[0]?.prCount).toBe(3);
+        expect(res.data[1]?.githubHandle).toBe('bob');
+        expect(res.data[1]?.prCount).toBe(1);
+      }
     });
   });
 });

@@ -118,8 +118,12 @@ export function LeaderboardContent({
               <StatItem label="Streak" value={`${userStreak}d`} />
             </div>
 
-            <button className="mt-6 w-full rounded-xl bg-[#00FF87] py-3 text-sm font-bold text-black transition-colors hover:bg-[#00CC6A]">
-              Deploy Agent
+            <button
+              disabled
+              title="Coming soon"
+              className="mt-6 w-full cursor-not-allowed rounded-xl bg-[#00FF87]/40 py-3 text-sm font-bold text-black/60"
+            >
+              Deploy Agent (Coming Soon)
             </button>
           </>
         ) : (
