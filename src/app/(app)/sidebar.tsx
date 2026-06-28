@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { NavItems } from './nav-items';
 import { MaintainerNavItems } from './maintainer-nav-items';
+import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { CommandPalette } from '@/components/command-palette';
 import { ThemeToggle } from './theme-toggle';
 import { LogoutButton } from './logout-button';
@@ -18,6 +19,7 @@ export function Sidebar({
   openIssuesCount,
   isMaintainer,
   mentorHandle,
+  installs = [],
 }: {
   handle: string | null;
   profileHref: string;
@@ -28,6 +30,7 @@ export function Sidebar({
   openIssuesCount: number;
   isMaintainer: boolean;
   mentorHandle: string | null;
+  installs?: MaintainerInstall[];
 }) {
   const pathname = usePathname();
   const inMaintainerSection = isMaintainer && pathname.startsWith('/maintainer');
@@ -47,7 +50,7 @@ export function Sidebar({
 
         <nav className="flex flex-col gap-1 px-4">
           {inMaintainerSection ? (
-            <MaintainerNavItems />
+            <MaintainerNavItems installs={installs} />
           ) : (
             <NavItems profileHref={profileHref} level={level} isMaintainer={isMaintainer} />
           )}

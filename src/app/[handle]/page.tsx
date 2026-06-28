@@ -656,10 +656,10 @@ export default async function PublicProfile({ params }: { params: Promise<{ hand
         <div className="mx-auto flex max-w-6xl justify-between">
           <span>© 2024 MERGESHIP — ALL SYSTEMS NOMINAL</span>
           <div className="flex gap-6">
-            <Link href="#" className="hover:text-zinc-500">
+            <Link href="/privacy" className="hover:text-zinc-500">
               PRIVACY
             </Link>
-            <Link href="#" className="hover:text-zinc-500">
+            <Link href="/terms" className="hover:text-zinc-500">
               TERMS
             </Link>
           </div>

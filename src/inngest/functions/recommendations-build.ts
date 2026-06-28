@@ -28,7 +28,7 @@ type IssueRow = {
 
 export const recommendationsBuild = inngest.createFunction(
   { id: 'recommendations-build', concurrency: { limit: 1 } },
-  [{ event: 'recommendations/build' }, { cron: '*/45 * * * *' }],
+  [{ event: 'recommendations/build' }],
   async ({ step }) => {
     const built = await step.run('build-all', async () => {
       const sb = getServiceSupabase();
@@ -96,6 +96,29 @@ export const recommendationsBuild = inngest.createFunction(
         }
       }
 
+      // Bulk-fetch all seen recommendation issue_ids to avoid N+1 per-user queries.
+      const allUserIds = userList.map((u) => u.user_id);
+      const seenByUser = new Map<string, Set<number>>();
+      for (let i = 0; i < allUserIds.length; i += 100) {
+        const chunk = allUserIds.slice(i, i + 100);
+        for (let from = 0; ; from += 1000) {
+          const { data: seenPage } = await sb
+            .from('recommendations')
+            .select('user_id, issue_id')
+            .in('user_id', chunk)
+            .order('user_id')
+            .order('issue_id')
+            .range(from, from + 999);
+          for (const row of seenPage ?? []) {
+            if (!seenByUser.has(row.user_id)) {
+              seenByUser.set(row.user_id, new Set());
+            }
+            seenByUser.get(row.user_id)!.add(row.issue_id);
+          }
+          if (!seenPage || seenPage.length < 1000) break;
+        }
+      }
+
       let totalInserted = 0;
       for (const u of userList) {
         const level = u.profiles?.level ?? 0;
@@ -117,13 +140,8 @@ export const recommendationsBuild = inngest.createFunction(
             userLang !== null && i.repo_language !== null && i.repo_language === userLang,
         }));
 
-        // Skip issues this user has already seen — any prior rec, regardless
-        // of status. Reassigned / expired ones aren't worth re-offering.
-        const { data: seen } = await sb
-          .from('recommendations')
-          .select('issue_id')
-          .eq('user_id', u.user_id);
-        const excludeIds = new Set((seen ?? []).map((r) => r.issue_id));
+        // Use bulk-fetched seen set instead of per-user query.
+        const excludeIds = seenByUser.get(u.user_id) ?? new Set<number>();
         const skipCounts = skipHistoryMap[u.user_id];
 
         const picks = filterAndRank(candidates, {

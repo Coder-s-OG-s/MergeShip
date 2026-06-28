@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { CheckCircle2, GitBranch, ShieldCheck, Users } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { listMaintainerInstalls } from '@/lib/maintainer/detect';
 import { getRepoPicker, getInstallationSettings } from '@/app/actions/maintainer';
-import RepoNameTicker from './repo-name-ticker';
+import CompletionSummaryCard from './completion-summary-card';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,39 +57,10 @@ export default async function OnboardingCompletePage() {
           Your review queue is set up. Here&apos;s what you just configured.
         </p>
 
-        <div className="mt-10 w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40 text-left">
-          <SummaryRow
-            icon={<GitBranch className="h-4 w-4 text-zinc-400" />}
-            label="Repos connected"
-            badge={managedNames.length > 0 ? String(managedNames.length) : undefined}
-          >
-            <RepoNameTicker
-              names={managedNames}
-              className="text-sm font-medium text-white"
-              emptyLabel="No repos connected"
-            />
-          </SummaryRow>
-
-          <SummaryRow
-            icon={<ShieldCheck className="h-4 w-4 text-zinc-400" />}
-            label="AI-generated PR detection"
-          >
-            {/* Placeholder until #329 adds the detection setting. */}
-            <span className="text-sm text-zinc-500">Not configured yet</span>
-          </SummaryRow>
-
-          <SummaryRow icon={<Users className="h-4 w-4 text-zinc-400" />} label="Mentor chain" last>
-            <span className="text-sm font-medium text-white">
-              {autoAssignMentorChain ? (
-                <>
-                  On <span className="text-zinc-500">— routing L0/L1 to senior maintainers</span>
-                </>
-              ) : (
-                <span className="text-zinc-500">Off</span>
-              )}
-            </span>
-          </SummaryRow>
-        </div>
+        <CompletionSummaryCard
+          managedNames={managedNames}
+          autoAssignMentorChain={autoAssignMentorChain}
+        />
 
         <div className="mt-10 flex w-full flex-col gap-3 sm:flex-row">
           <Link
@@ -107,38 +78,5 @@ export default async function OnboardingCompletePage() {
         </div>
       </section>
     </main>
-  );
-}
-
-function SummaryRow({
-  icon,
-  label,
-  badge,
-  last,
-  children,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  badge?: string;
-  last?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className={`flex items-center justify-between gap-4 px-5 py-4 ${
-        last ? '' : 'border-b border-zinc-800/60'
-      }`}
-    >
-      <div className="flex items-center gap-2.5">
-        {icon}
-        <span className="text-sm text-zinc-300">{label}</span>
-        {badge && (
-          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[11px] font-medium tabular-nums text-zinc-300">
-            {badge}
-          </span>
-        )}
-      </div>
-      <div className="min-w-0 max-w-[55%] text-right">{children}</div>
-    </div>
   );
 }

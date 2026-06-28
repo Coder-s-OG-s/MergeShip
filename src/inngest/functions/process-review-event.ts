@@ -74,6 +74,27 @@ export const processReviewEvent = inngest.createFunction(
       }
     });
 
+    await step.run('increment-challenge-progress', async () => {
+      try {
+        const sb = getServiceSupabase();
+        if (!sb) return;
+        const { data: reviewer } = await sb
+          .from('profiles')
+          .select('id')
+          .eq('github_handle', payload.review.user.login)
+          .maybeSingle();
+        if (reviewer?.id) {
+          const { incrementChallengeProgress } = await import('@/lib/daily-challenge/progress');
+          await incrementChallengeProgress({
+            userId: reviewer.id,
+            type: 'review_submitted',
+          });
+        }
+      } catch (err) {
+        console.error('Failed to increment daily challenge progress:', err);
+      }
+    });
+
     return await step.run('award-help-review', async () => {
       const sb = getServiceSupabase();
       if (!sb) throw new Error('service role missing');

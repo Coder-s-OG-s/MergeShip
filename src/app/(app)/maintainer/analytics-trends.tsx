@@ -1,8 +1,6 @@
 'use client';
 
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -64,38 +62,10 @@ export default function AnalyticsTrends({ data }: { data: MaintainerAnalyticsTre
           <h2 className="text-sm font-semibold text-white">Level Distribution</h2>
           <span className="text-xs text-zinc-500">6 months</span>
         </div>
-        {hasLevelData ? (
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={data.levelDistribution}
-                margin={{ left: -24, right: 8, top: 8, bottom: 0 }}
-              >
-                <CartesianGrid stroke="#27272a" vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: '#a1a1aa', fontSize: 12 }} tickLine={false} />
-                <YAxis tick={{ fill: '#a1a1aa', fontSize: 12 }} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    background: '#18181b',
-                    border: '1px solid #3f3f46',
-                    borderRadius: 8,
-                    color: '#fafafa',
-                  }}
-                />
-                <Legend wrapperStyle={{ color: '#d4d4d8', fontSize: 12 }} />
-                <Area dataKey="l0" name="L0" stackId="levels" stroke="#f87171" fill="#7f1d1d" />
-                <Area dataKey="l1" name="L1" stackId="levels" stroke="#fbbf24" fill="#713f12" />
-                <Area dataKey="l2" name="L2" stackId="levels" stroke="#38bdf8" fill="#075985" />
-                <Area
-                  dataKey="l3Plus"
-                  name="L3+"
-                  stackId="levels"
-                  stroke="#a78bfa"
-                  fill="#4c1d95"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+        {hasLevelData && data.levelDistribution.length > 0 ? (
+          <LevelDistributionBar
+            current={data.levelDistribution[data.levelDistribution.length - 1]!}
+          />
         ) : (
           <EmptyChart label="No contributor levels available for these repositories." />
         )}
@@ -108,6 +78,52 @@ function EmptyChart({ label }: { label: string }) {
   return (
     <div className="flex h-72 items-center justify-center rounded-lg border border-dashed border-zinc-800 text-sm text-zinc-500">
       {label}
+    </div>
+  );
+}
+
+function LevelDistributionBar({
+  current,
+}: {
+  current: { l0: number; l1: number; l2: number; l3Plus: number };
+}) {
+  const total = current.l0 + current.l1 + current.l2 + current.l3Plus;
+  const segments = [
+    { key: 'l0', label: 'L0', value: current.l0, color: '#4ade80' },
+    { key: 'l1', label: 'L1', value: current.l1, color: '#fbbf24' },
+    { key: 'l2', label: 'L2', value: current.l2, color: '#38bdf8' },
+    { key: 'l3Plus', label: 'L3+', value: current.l3Plus, color: '#a78bfa' },
+  ];
+
+  return (
+    <div className="flex h-72 flex-col justify-center gap-4">
+      <div className="flex h-6 w-full overflow-hidden rounded-full bg-zinc-800">
+        {segments.map((segment) => {
+          const pct = total > 0 ? (segment.value / total) * 100 : 0;
+          if (pct === 0) return null;
+          return (
+            <div
+              key={segment.key}
+              style={{ width: `${pct}%`, backgroundColor: segment.color }}
+              className="h-full"
+            />
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-4">
+        {segments.map((segment) => {
+          const pct = total > 0 ? Math.round((segment.value / total) * 100) : 0;
+          return (
+            <div key={segment.key} className="flex items-center gap-2 text-sm text-zinc-300">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: segment.color }}
+              />
+              {segment.label} ({pct}%)
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
