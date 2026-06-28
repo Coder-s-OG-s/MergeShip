@@ -82,8 +82,8 @@ export default async function MyPRsPage() {
 
     const recentlySynced = await cacheGet<boolean>(syncCacheKey);
 
-    // Fetch from GitHub API if no PRs in DB yet OR we haven't synced recently
-    if ((rawPRs.length === 0 || !recentlySynced) && profile?.github_handle) {
+    // Fetch from GitHub API if we haven't synced recently
+    if (!recentlySynced && profile?.github_handle) {
       const { data: installRow } = await service
         .from('github_installations')
         .select('id')
