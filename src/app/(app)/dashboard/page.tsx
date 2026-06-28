@@ -141,7 +141,7 @@ export default async function DashboardPage() {
           {/* ── Right Sidebar ── */}
           <div className="space-y-12">
             <Suspense fallback={<RightSidebarSkeleton />}>
-              <RightSidebar />
+              <RightSidebar userId={user.id} />
             </Suspense>
 
             {/* Leaderboard */}

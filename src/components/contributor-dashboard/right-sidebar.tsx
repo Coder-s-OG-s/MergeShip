@@ -1,31 +1,28 @@
 import Link from 'next/link';
 import { ArrowRight, Calendar, Megaphone } from 'lucide-react';
 
-// Static data — replace with DB queries when `mentor_sessions` and `announcements` tables exist
-const NEXT_SESSION = {
-  mentor: 'priya.codes',
-  date: 'TBD',
-  time: '—',
-  note: 'No session scheduled yet.',
-};
+import { getServiceSupabase } from '@/lib/supabase/service';
 
-const ANNOUNCEMENTS = [
-  {
-    id: 1,
-    title: "GSSoC '26 has started!",
-    body: 'Welcome to the program. Check your assigned issues and start contributing.',
-    date: 'Jun 2026',
-  },
-  {
-    id: 2,
-    title: 'New repos added to MergeShip',
-    body: 'Three new repositories are now available for contributions.',
-    date: 'Jun 2026',
-  },
-];
+export async function RightSidebar({ userId }: { userId: string }) {
+  const service = getServiceSupabase();
+  if (!service) return <RightSidebarSkeleton />;
 
-export function RightSidebar() {
-  const hasScheduledSession = NEXT_SESSION.date !== 'TBD';
+  const [sessionRes, announcementsRes] = await Promise.all([
+    service
+      .from('mentor_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('scheduled_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    service.from('announcements').select('*').order('published_at', { ascending: false }).limit(5),
+  ]);
+
+  const session = sessionRes.data;
+  const announcementsList = announcementsRes.data ?? [];
+
+  const hasScheduledSession = session?.scheduled_at != null;
+
   return (
     <aside className="space-y-10">
       {/* Browse Issues CTA */}
@@ -47,9 +44,11 @@ export function RightSidebar() {
           </h2>
         </div>
         <div className="border border-zinc-800 bg-[#161b22] p-4">
-          <div className="mb-1 text-[12px] text-zinc-300">{NEXT_SESSION.mentor}</div>
+          <div className="mb-1 text-[12px] text-zinc-300">
+            {session?.mentor_login ?? 'No mentor assigned'}
+          </div>
           <div className="mb-3 text-[11px] uppercase tracking-widest text-zinc-600">
-            {NEXT_SESSION.note}
+            {session?.note ?? 'No session scheduled yet.'}
           </div>
           <div className="flex gap-2">
             <button
@@ -75,17 +74,24 @@ export function RightSidebar() {
           <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">ANNOUNCEMENTS</h2>
         </div>
         <div className="space-y-0">
-          {ANNOUNCEMENTS.map((a) => (
-            <div key={a.id} className="border-b border-zinc-800 py-3 last:border-0">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[12px] text-zinc-300">{a.title}</span>
-                <span className="ml-2 shrink-0 text-[10px] uppercase tracking-widest text-zinc-600">
-                  {a.date}
-                </span>
+          {announcementsList.length === 0 ? (
+            <div className="py-3 text-[11px] text-zinc-500">No announcements at this time.</div>
+          ) : (
+            announcementsList.map((a) => (
+              <div key={a.id} className="border-b border-zinc-800 py-3 last:border-0">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[12px] text-zinc-300">{a.title}</span>
+                  <span className="ml-2 shrink-0 text-[10px] uppercase tracking-widest text-zinc-600">
+                    {new Date(a.published_at).toLocaleDateString('en-US', {
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                  </span>
+                </div>
+                <div className="text-[11px] text-zinc-500">{a.body}</div>
               </div>
-              <div className="text-[11px] text-zinc-500">{a.body}</div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </section>
     </aside>
