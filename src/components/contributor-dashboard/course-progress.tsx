@@ -6,29 +6,32 @@ export async function CourseProgress({ userId }: { userId: string }) {
   const service = getServiceSupabase();
   if (!service) return null;
 
-  const [recsRes, prsRes, commentsRes] = await Promise.all([
+  const [recsRes, prsRes] = await Promise.all([
     service
       .from('recommendations')
       .select('id')
       .eq('user_id', userId)
       .in('status', ['claimed', 'completed'])
       .limit(1),
-    service.from('pull_requests').select('id, state, merged_at').eq('author_user_id', userId),
-    service.from('xp_events').select('id').eq('user_id', userId).eq('source', 'comment').limit(1),
+    service
+      .from('pull_requests')
+      .select('id, state, merged_at, mentor_verified')
+      .eq('author_user_id', userId),
   ]);
 
   const hasClaimedIssue = (recsRes.data?.length ?? 0) > 0;
-  const hasOpenedPR = (prsRes.data?.length ?? 0) > 0;
-  const hasCommented = (commentsRes.data?.length ?? 0) > 0;
-  const hasMergedPR =
-    prsRes.data?.some((pr) => pr.state === 'merged' || pr.merged_at !== null) ?? false;
+  const prs = prsRes.data ?? [];
+  const hasOpenedPR = prs.length > 0;
+  const hasMentorVerified = prs.some(
+    (pr) => pr.mentor_verified || pr.state === 'merged' || pr.merged_at !== null,
+  );
+  const hasMergedPR = prs.some((pr) => pr.state === 'merged' || pr.merged_at !== null);
 
   const STEPS = [
-    { id: 1, title: 'Fork & clone a repository', done: hasClaimedIssue || hasOpenedPR },
-    { id: 2, title: 'Make your first commit', done: hasOpenedPR },
-    { id: 3, title: 'Open a pull request', done: hasOpenedPR },
-    { id: 4, title: 'Respond to review feedback', done: hasCommented || hasMergedPR },
-    { id: 5, title: 'Get your PR merged', done: hasMergedPR },
+    { id: 1, title: 'Claim an open issue', done: hasClaimedIssue || hasOpenedPR },
+    { id: 2, title: 'Open a pull request', done: hasOpenedPR },
+    { id: 3, title: 'Pass mentor review', done: hasMentorVerified },
+    { id: 4, title: 'Get your PR merged', done: hasMergedPR },
   ];
 
   const completedCount = STEPS.filter((s) => s.done).length;
