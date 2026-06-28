@@ -165,16 +165,6 @@ Thanks to all the amazing people who contribute to **MergeShip** 🚀
   </a>
 </p>
 
-## Added
-
-Thanks to all the amazing people who contribute to **MergeShip** 🚀
-
-<p align="center">
-  <a href="https://github.com/Coder-s-OG-s/MergeShip/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=Coder-s-OG-s/MergeShip" alt="Contributors"/>
-  </a>
-</p>
-
 <br>
 
 ---
