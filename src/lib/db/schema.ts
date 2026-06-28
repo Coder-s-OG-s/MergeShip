@@ -549,3 +549,36 @@ export const failedWebhookEvents = pgTable(
     eventTypeIdx: index('failed_webhook_event_type_idx').on(t.eventType),
   }),
 );
+
+// ---------- daily challenges ----------
+
+export const dailyChallenges = pgTable('daily_challenges', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  goal: integer('goal').notNull(),
+  xpReward: integer('xp_reward').notNull(),
+  type: text('type', { enum: ['pr_opened', 'issue_comment', 'review_submitted'] }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userChallengeProgress = pgTable(
+  'user_challenge_progress',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    date: date('date').notNull(),
+    challengeId: bigint('challenge_id', { mode: 'number' })
+      .notNull()
+      .references(() => dailyChallenges.id, { onDelete: 'cascade' }),
+    current: integer('current').notNull().default(0),
+    completed: boolean('completed').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.date] }),
+  }),
+);

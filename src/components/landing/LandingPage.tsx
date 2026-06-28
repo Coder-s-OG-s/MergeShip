@@ -442,11 +442,11 @@ export default function LandingPage() {
           <div className="footer-copy">
             © 2026 MergeShip. <span>Built for performance.</span>
           </div>
-          <div className="footer-links">
-            <a href="#">Security</a>
-            <a href="#">Terms</a>
-            <a href="#">Privacy</a>
-          </div>
+         <div className="footer-links">
+            <Link href="/security">Security</Link>
+           <Link href="/terms">Terms</Link>
+          <Link href="/privacy">Privacy</Link>
+        </div>
         </div>
       </footer>
     </div>

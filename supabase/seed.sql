@@ -122,6 +122,16 @@ ON CONFLICT (github_pr_id) DO NOTHING;
 
 -- Note: pull_request_reviews and help_requests have been omitted for brevity.
 
+-- 10. Seed daily challenges
+INSERT INTO daily_challenges (id, title, description, goal, xp_reward, type) VALUES
+  (1, 'Comment on 2 open issues today', 'Leave a helpful comment on any 2 open issues in the org.', 2, 50, 'issue_comment'),
+  (2, 'Open a Pull Request today', 'Submit a new pull request to any repository in the organization.', 1, 100, 'pr_opened'),
+  (3, 'Submit a PR review today', 'Review and leave substantive feedback on an open pull request.', 1, 75, 'review_submitted')
+ON CONFLICT (id) DO NOTHING;
+
+SELECT setval('daily_challenges_id_seq', (SELECT max(id) FROM daily_challenges));
+
 -- 9. Fix key sequence values for auto-incrementing serial columns
 SELECT setval('issues_id_seq', (SELECT max(id) FROM issues));
+
 

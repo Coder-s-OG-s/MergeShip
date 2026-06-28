@@ -5,7 +5,9 @@ const mocks = vi.hoisted(() => ({
   mockExecute: vi.fn(),
   mockCacheGet: vi.fn(),
   mockCacheSet: vi.fn(),
+  mockCacheRateLimitHit: vi.fn(),
   mockPaginate: vi.fn(),
+  mockRequest: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -25,17 +27,20 @@ vi.mock('@/lib/db/client', () => ({
 vi.mock('@/lib/cache', () => ({
   cacheGet: mocks.mockCacheGet,
   cacheSet: mocks.mockCacheSet,
+  cacheRateLimitHit: mocks.mockCacheRateLimitHit,
 }));
 
 vi.mock('@/lib/github/app', () => ({
   getAppOctokit: vi.fn(() => ({
     paginate: mocks.mockPaginate,
+    request: mocks.mockRequest,
     users: {
       listFollowingForUser: 'listFollowingForUser',
     },
   })),
   getInstallOctokit: vi.fn(() => ({
     paginate: mocks.mockPaginate,
+    request: mocks.mockRequest,
     users: {
       listFollowingForUser: 'listFollowingForUser',
     },
@@ -57,6 +62,7 @@ describe('getLeaderboard', () => {
       },
     });
     mocks.mockCacheGet.mockResolvedValue(null);
+    mocks.mockCacheRateLimitHit.mockResolvedValue({ count: 1, resetAt: null });
   });
 
   it('successfully fetches global leaderboard', async () => {
@@ -136,9 +142,13 @@ describe('getLeaderboard', () => {
         rank: 2,
       },
     ];
-    mocks.mockPaginate.mockResolvedValue([{ login: 'bob' }]);
-    mocks.mockExecute.mockResolvedValueOnce([]); // no installations lookup
-    mocks.mockExecute.mockResolvedValueOnce(mockRows); // rows query
+    mocks.mockRequest.mockResolvedValueOnce({ data: [{ login: 'bob' }, { login: 'carol' }] });
+    mocks.mockCacheGet
+      .mockResolvedValueOnce(null) // leaderboard cache
+      .mockResolvedValueOnce(null) // following cache miss, fetch from GitHub
+      .mockResolvedValueOnce(['bob', 'carol', 'alice']); // following cache hit on currentUserRank re-fetch
+    mocks.mockExecute.mockResolvedValueOnce([]); // installations lookup
+    mocks.mockExecute.mockResolvedValueOnce(mockRows); // friends leaderboard rows
 
     const result = await getLeaderboard('friends', null, 50);
 
@@ -147,5 +157,38 @@ describe('getLeaderboard', () => {
       expect(result.data.entries).toHaveLength(2);
       expect(result.data.entries[1]?.githubHandle).toBe('bob');
     }
+  });
+
+  describe('friends leaderboard', () => {
+    it('stops paginating when a page returns fewer than 100 results', async () => {
+      const page1 = Array.from({ length: 100 }, (_, i) => ({ login: `user${i}` }));
+      const page2 = [{ login: 'bob' }, { login: 'carol' }];
+      mocks.mockRequest
+        .mockResolvedValueOnce({ data: page1 })
+        .mockResolvedValueOnce({ data: page2 });
+      mocks.mockCacheGet.mockResolvedValueOnce(null).mockResolvedValueOnce(['bob', 'carol']);
+      mocks.mockExecute.mockResolvedValueOnce([]); // installations
+      mocks.mockExecute.mockResolvedValueOnce([]); // friends leaderboard rows
+      mocks.mockExecute.mockResolvedValueOnce([]); // currentUserRank query
+      mocks.mockExecute.mockResolvedValueOnce([]); // user profile query
+      const result = await getLeaderboard('friends', null, 50);
+      expect(isOk(result)).toBe(true);
+      expect(mocks.mockRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops at 5 pages even when every page returns 100 results', async () => {
+      const fullPage = Array.from({ length: 100 }, (_, i) => ({ login: `user${i}` }));
+      mocks.mockRequest.mockResolvedValue({ data: fullPage });
+      mocks.mockCacheGet
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(Array.from({ length: 500 }, (_, i) => `user${i}`));
+      mocks.mockExecute.mockResolvedValueOnce([]); // installations
+      mocks.mockExecute.mockResolvedValueOnce([]); // friends leaderboard rows
+      mocks.mockExecute.mockResolvedValueOnce([]); // currentUserRank query
+      mocks.mockExecute.mockResolvedValueOnce([]); // user profile query
+      const result = await getLeaderboard('friends', null, 50);
+      expect(isOk(result)).toBe(true);
+      expect(mocks.mockRequest).toHaveBeenCalledTimes(5);
+    });
   });
 });
