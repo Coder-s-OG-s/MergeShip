@@ -179,7 +179,7 @@ export async function getMaintainerAnalyticsTrends(args: {
 
   const repos = await listMaintainerRepos(user.id, args.installationId);
   if (repos.length === 0) {
-    return ok({ weekly: [], levelDistribution: [] });
+    return ok({ weekly: [], levelDistribution: [], avgReviewTimeHours: null });
   }
 
   const cacheKey = `maint:analytics-trends:${user.id}:${args.installationId}`;
@@ -192,20 +192,44 @@ export async function getMaintainerAnalyticsTrends(args: {
 
   if (error) return err('query_failed', error.message);
 
-  const trends = normaliseAnalyticsTrends(data);
+  // Fetch average review time from pull_requests
+  const { data: prs } = await service
+    .from('pull_requests')
+    .select('github_created_at, mentor_review_at')
+    .in('repo_full_name', repos)
+    .eq('mentor_verified', true)
+    .not('mentor_review_at', 'is', null);
+
+  let avgReviewTimeHours = null;
+  if (prs && prs.length > 0) {
+    const totalSeconds = (
+      prs as { github_created_at: string; mentor_review_at: string | null }[]
+    ).reduce((sum: number, pr) => {
+      const created = new Date(pr.github_created_at).getTime();
+      const reviewed = new Date(pr.mentor_review_at!).getTime();
+      return sum + (reviewed - created) / 1000;
+    }, 0);
+    avgReviewTimeHours = totalSeconds / prs.length / 3600;
+  }
+
+  const trends = normaliseAnalyticsTrends(data, avgReviewTimeHours);
   await cacheSet(cacheKey, trends, 30 * 60);
   return ok(trends);
 }
 
-function normaliseAnalyticsTrends(value: unknown): MaintainerAnalyticsTrends {
+function normaliseAnalyticsTrends(
+  value: unknown,
+  avgReviewTimeHours: number | null,
+): MaintainerAnalyticsTrends {
   if (!value || typeof value !== 'object') {
-    return { weekly: [], levelDistribution: [] };
+    return { weekly: [], levelDistribution: [], avgReviewTimeHours: null };
   }
 
   const data = value as Partial<MaintainerAnalyticsTrends>;
   return {
     weekly: Array.isArray(data.weekly) ? data.weekly : [],
     levelDistribution: Array.isArray(data.levelDistribution) ? data.levelDistribution : [],
+    avgReviewTimeHours,
   };
 }
 

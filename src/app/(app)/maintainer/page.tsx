@@ -92,7 +92,7 @@ export default async function MaintainerPage({
   const trendsRes = await getMaintainerAnalyticsTrends({ installationId: activeInstallId });
   const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
     ? trendsRes.data
-    : { weekly: [], levelDistribution: [] };
+    : { weekly: [], levelDistribution: [], avgReviewTimeHours: null };
   const repoHealthRes = await getRepoHealthOverview({ installationId: activeInstallId });
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
@@ -227,6 +227,26 @@ export default async function MaintainerPage({
           </section>
         )}
         <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <section className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+            <div>
+              <h2 className="mb-4 text-sm font-semibold text-white">Average Review Time</h2>
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-bold text-white">
+                  {analyticsTrends.avgReviewTimeHours !== null
+                    ? `${analyticsTrends.avgReviewTimeHours.toFixed(1)}h`
+                    : '—'}
+                </span>
+                {analyticsTrends.avgReviewTimeHours !== null && (
+                  <span className="text-xs text-zinc-500">elapsed hours</span>
+                )}
+              </div>
+            </div>
+            <div className="mt-4 border-t border-zinc-800/60 pt-3">
+              <p className="text-[11px] text-zinc-500">
+                Average duration from PR open to mentor verification for this installation.
+              </p>
+            </div>
+          </section>
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>
 
