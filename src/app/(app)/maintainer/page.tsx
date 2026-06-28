@@ -24,6 +24,7 @@ import type { MaintainerPrRow } from '@/lib/maintainer/queue';
 import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
+import InviteContributorButton from './invite-contributor-button';
 import CiStatusBadge from './ci-status-badge';
 import AnalyticsTrends from './analytics-trends';
 import { VerifyButton } from '../issues/verify-button';
@@ -124,7 +125,19 @@ export default async function MaintainerPage({
       <div className="mx-auto max-w-5xl">
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <h1 className="font-display text-3xl font-bold">Maintainer</h1>
-          <RefreshButton installationId={activeInstallId} />
+          <div className="flex items-center gap-2">
+            <InviteContributorButton
+              installationId={activeInstallId}
+              accountLogin={activeInstall.accountLogin}
+            />
+            <Link
+              href={`/maintainer?install=${activeInstallId}&state=open`}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-600"
+            >
+              View PR Queue →
+            </Link>
+            <RefreshButton installationId={activeInstallId} />
+          </div>
         </header>
 
         {installs.length > 1 && (
