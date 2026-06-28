@@ -36,18 +36,20 @@ export async function POST(req: NextRequest) {
   const payload = JSON.parse(raw);
 
   const installationId = payload.installation?.id;
+  // If there is no installation ID (e.g. meta, security_advisory events),
+  // we fall back to a global bucket per event type. This prevents DDoS
+  // via IP spoofing (e.g. forging x-forwarded-for) with leaked secrets.
+  const rateLimitKey = installationId ? String(installationId) : `global:${eventType}`;
 
-  if (installationId) {
-    const limited = await rateLimit({
-      namespace: 'webhook',
-      key: String(installationId),
-      limit: 100,
-      windowSec: 60,
-    });
+  const limited = await rateLimit({
+    namespace: 'webhook',
+    key: rateLimitKey,
+    limit: 100,
+    windowSec: 60,
+  });
 
-    if (!limited.ok) {
-      return NextResponse.json({ error: 'too many requests' }, { status: 429 });
-    }
+  if (!limited.ok) {
+    return NextResponse.json({ error: 'too many requests' }, { status: 429 });
   }
 
   const payloadHash = crypto.createHash('sha256').update(raw).digest('hex');
@@ -69,16 +71,16 @@ export async function POST(req: NextRequest) {
     if (insertErr.code === '23505') {
       duplicate = true;
     } else {
-      return NextResponse.json(
-        {
-          error: 'persist failed',
-          code: insertErr.code,
-          message: insertErr.message,
-          details: insertErr.details,
-          hint: insertErr.hint,
-        },
-        { status: 500 },
-      );
+      // Log the full Supabase error server-side for ops visibility.
+      // The client receives only a generic message so internal database
+      // schema details (error code, details, hint) are never exposed.
+      console.error('[webhook] failed to persist delivery', {
+        code: insertErr.code,
+        message: insertErr.message,
+        details: insertErr.details,
+        hint: insertErr.hint,
+      });
+      return NextResponse.json({ error: 'internal server error' }, { status: 500 });
     }
   }
 

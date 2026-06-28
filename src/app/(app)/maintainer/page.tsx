@@ -10,10 +10,14 @@ import {
   getStaleIssues,
   getFlaggedAccounts,
   getTopContributors,
+  getInstallationSettings,
+  getReviewerLoad,
   type FlaggedAccountRow,
+  type InstallationSettingsData,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
+  type ReviewerLoadRow,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import type { MaintainerPrRow } from '@/lib/maintainer/queue';
@@ -24,6 +28,8 @@ import CiStatusBadge from './ci-status-badge';
 import AnalyticsTrends from './analytics-trends';
 import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
+import QueueSettings from './queue-settings';
+import { ResolveFlagButton } from './resolve-flag-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,8 +42,9 @@ const TIER_LABEL: Record<'open' | 'closed' | 'merged', string> = {
 export default async function MaintainerPage({
   searchParams,
 }: {
-  searchParams: { install?: string; state?: string; verified?: string };
+  searchParams: Promise<{ install?: string; state?: string; verified?: string }>;
 }) {
+  const resolvedSearchParams = await searchParams;
   const sb = await getServerSupabase();
   if (!sb) {
     return <NotConfigured />;
@@ -58,21 +65,22 @@ export default async function MaintainerPage({
   }
 
   const activeInstallId =
-    searchParams.install && installs.find((i) => i.installationId === Number(searchParams.install))
-      ? Number(searchParams.install)
+    resolvedSearchParams.install &&
+    installs.find((i) => i.installationId === Number(resolvedSearchParams.install))
+      ? Number(resolvedSearchParams.install)
       : installs[0]!.installationId;
 
   const activeInstall = installs.find((i) => i.installationId === activeInstallId)!;
 
   const filters: { state?: ('open' | 'closed' | 'merged')[]; mentorVerified?: 'yes' | 'no' } = {};
-  if (searchParams.state) {
-    const parts = searchParams.state
+  if (resolvedSearchParams.state) {
+    const parts = resolvedSearchParams.state
       .split(',')
       .filter((s) => ['open', 'closed', 'merged'].includes(s)) as ('open' | 'closed' | 'merged')[];
     if (parts.length > 0) filters.state = parts;
   }
-  if (searchParams.verified === 'yes' || searchParams.verified === 'no') {
-    filters.mentorVerified = searchParams.verified;
+  if (resolvedSearchParams.verified === 'yes' || resolvedSearchParams.verified === 'no') {
+    filters.mentorVerified = resolvedSearchParams.verified;
   }
   if (!filters.state) filters.state = ['open']; // default
 
@@ -85,18 +93,31 @@ export default async function MaintainerPage({
   const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
     ? trendsRes.data
     : { weekly: [], levelDistribution: [] };
-  const repoHealthRes = await getRepoHealthOverview();
+  const repoHealthRes = await getRepoHealthOverview({ installationId: activeInstallId });
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
-  const staleIssuesRes = await getStaleIssues();
+  const staleIssuesRes = await getStaleIssues({ installationId: activeInstallId });
   const staleIssues: StaleIssueRow[] = isOk(staleIssuesRes) ? staleIssuesRes.data : [];
 
-  const contributorsRes = await getTopContributors();
+  const contributorsRes = await getTopContributors({ installationId: activeInstallId });
   const topContributors: ContributorRow[] = isOk(contributorsRes) ? contributorsRes.data : [];
-  const flaggedAccountsRes = await getFlaggedAccounts();
+  const flaggedAccountsRes = await getFlaggedAccounts({ installationId: activeInstallId });
   const flaggedAccounts: FlaggedAccountRow[] = isOk(flaggedAccountsRes)
     ? flaggedAccountsRes.data
     : [];
+  const settingsRes = await getInstallationSettings(activeInstallId);
+  const settings: InstallationSettingsData = isOk(settingsRes)
+    ? settingsRes.data
+    : {
+        installationId: activeInstallId,
+        minContributorLevel: 0,
+        autoAssignMentorChain: false,
+        aiPrDetection: false,
+      };
+
+  const reviewerLoadsRes = await getReviewerLoad({ installationId: activeInstallId });
+  const reviewerLoads: ReviewerLoadRow[] = isOk(reviewerLoadsRes) ? reviewerLoadsRes.data : [];
+  const maxLoad = reviewerLoads.length > 0 ? Math.max(...reviewerLoads.map((r) => r.prCount)) : 0;
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -128,34 +149,34 @@ export default async function MaintainerPage({
         <div className="mb-4 flex flex-wrap gap-2 text-xs">
           <FilterPill
             label="Open"
-            href={withParam('state', 'open', searchParams)}
+            href={withParam('state', 'open', resolvedSearchParams)}
             active={filters.state?.includes('open') ?? false}
           />
           <FilterPill
             label="Merged"
-            href={withParam('state', 'merged', searchParams)}
+            href={withParam('state', 'merged', resolvedSearchParams)}
             active={filters.state?.includes('merged') ?? false}
           />
           <FilterPill
             label="Closed"
-            href={withParam('state', 'closed', searchParams)}
+            href={withParam('state', 'closed', resolvedSearchParams)}
             active={filters.state?.includes('closed') ?? false}
           />
           <span className="mx-2 text-zinc-700">|</span>
           <FilterPill
             label="Verified ✓"
-            href={withParam('verified', 'yes', searchParams)}
-            active={searchParams.verified === 'yes'}
+            href={withParam('verified', 'yes', resolvedSearchParams)}
+            active={resolvedSearchParams.verified === 'yes'}
           />
           <FilterPill
             label="Unverified"
-            href={withParam('verified', 'no', searchParams)}
-            active={searchParams.verified === 'no'}
+            href={withParam('verified', 'no', resolvedSearchParams)}
+            active={resolvedSearchParams.verified === 'no'}
           />
           <FilterPill
             label="All"
-            href={withParam('verified', '', searchParams)}
-            active={!searchParams.verified}
+            href={withParam('verified', '', resolvedSearchParams)}
+            active={!resolvedSearchParams.verified}
           />
           <div className="ml-auto flex items-center gap-2">
             <ExportCsvButton installationId={activeInstallId} filters={filters} />
@@ -177,6 +198,7 @@ export default async function MaintainerPage({
         <p className="mb-4 text-xs text-zinc-500">
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
+        <QueueSettings settings={settings} />
         <AnalyticsTrends data={analyticsTrends} />
         {flaggedAccounts.length > 0 && (
           <section className="mb-8 rounded-2xl border border-amber-900/60 bg-amber-950/20 p-5">
@@ -211,6 +233,7 @@ export default async function MaintainerPage({
                     >
                       {flag.severity}
                     </span>
+                    <ResolveFlagButton flagId={flag.id} installationId={activeInstallId} />
                   </div>
                   <p className="mt-3 text-sm text-amber-100">{formatFlagReason(flag.reason)}</p>
                   <p className="mt-1 text-xs text-amber-200/70">{flag.summary}</p>
@@ -222,7 +245,7 @@ export default async function MaintainerPage({
             </div>
           </section>
         )}
-        <div className="mb-8 grid gap-6 lg:grid-cols-3">
+        <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>
 
@@ -289,6 +312,34 @@ export default async function MaintainerPage({
                   <span className="text-sm text-emerald-400">{contributor.xp} XP</span>
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+            <h2 className="mb-4 text-sm font-semibold text-white">Reviewer Load</h2>
+
+            <div className="space-y-3">
+              {reviewerLoads.length === 0 ? (
+                <p className="text-xs text-zinc-500">No active reviewer load.</p>
+              ) : (
+                reviewerLoads.map((rev) => {
+                  const percentage = maxLoad > 0 ? (rev.prCount / maxLoad) * 100 : 0;
+                  return (
+                    <div key={rev.reviewerId} className="rounded-lg border border-zinc-800 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-zinc-200">@{rev.githubHandle}</span>
+                        <span className="text-xs text-zinc-400">{rev.prCount} PRs</span>
+                      </div>
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-300"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </section>
         </div>

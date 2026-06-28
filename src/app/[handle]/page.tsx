@@ -4,6 +4,9 @@ import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
 import { ExternalLink, ArrowLeft } from 'lucide-react';
 import { CopyButton } from '@/components/copy-button';
+import { ActivityHeatmap } from '@/components/activity-heatmap';
+import { totalContributions } from '@/lib/contributions/activity-history';
+import { loadActivityHistory } from '@/lib/contributions/load-activity-history';
 
 export const revalidate = 300;
 
@@ -85,6 +88,11 @@ type ActiveTask = {
   difficulty: string | null;
 };
 
+type ActivityDay = {
+  date: string;
+  count: number;
+};
+
 type ProfileData = {
   profileId: string;
   githubHandle: string;
@@ -101,10 +109,12 @@ type ProfileData = {
   timeline: TimelineEvent[];
   orgs: OrgEntry[];
   activeTasks: ActiveTask[];
+  activityHistory: ActivityDay[];
+  allTimeContributions: number;
 };
 
 async function loadProfileData(handle: string): Promise<ProfileData | null> {
-  const cacheKey = `profile:v2:${handle}`;
+  const cacheKey = `profile:v3:${handle}`;
   const cached = await cacheGet<ProfileData>(cacheKey);
   if (cached) {
     const { getPublicStreak } = await import('@/app/actions/streak');
@@ -130,6 +140,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     claimedRecsResult,
     recentPRsResult,
     recentRecsResult,
+    activityHistory,
   ] = await Promise.all([
     // Merged PRs count
     service
@@ -175,6 +186,8 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
       .in('status', ['claimed', 'completed'])
       .order('claimed_at', { ascending: false })
       .limit(5),
+
+    loadActivityHistory(profile.id),
   ]);
 
   const prsMerged = prsResult.count ?? 0;
@@ -276,6 +289,8 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
   const { getPublicStreak } = await import('@/app/actions/streak');
   const { days: streakDays } = await getPublicStreak(profile.id);
 
+  const allTimeContributions = totalContributions(activityHistory);
+
   const data: ProfileData = {
     profileId: profile.id,
     githubHandle: profile.github_handle,
@@ -292,6 +307,8 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     timeline,
     orgs,
     activeTasks,
+    activityHistory,
+    allTimeContributions,
   };
 
   await cacheSet(cacheKey, data, 300);
@@ -316,8 +333,9 @@ const EVENT_DOT: Record<string, string> = {
 
 const DIFFICULTY_LABEL: Record<string, string> = { E: 'L1', M: 'L2', H: 'L3' };
 
-export async function generateMetadata({ params }: { params: { handle: string } }) {
-  const handle = decodeURIComponent(params.handle).replace(/^@/, '');
+export async function generateMetadata({ params }: { params: Promise<{ handle: string }> }) {
+  const resolvedParams = await params;
+  const handle = decodeURIComponent(resolvedParams.handle).replace(/^@/, '');
 
   const profile = await loadProfileData(handle);
 
@@ -339,8 +357,9 @@ export async function generateMetadata({ params }: { params: { handle: string } 
   };
 }
 
-export default async function PublicProfile({ params }: { params: { handle: string } }) {
-  const handle = decodeURIComponent(params.handle).replace(/^@/, '');
+export default async function PublicProfile({ params }: { params: Promise<{ handle: string }> }) {
+  const resolvedParams = await params;
+  const handle = decodeURIComponent(resolvedParams.handle).replace(/^@/, '');
   const profile = await loadProfileData(handle);
   if (!profile) notFound();
 
@@ -540,6 +559,14 @@ export default async function PublicProfile({ params }: { params: { handle: stri
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Activity Heatmap */}
+            <div className="border-t border-[#21262d] pt-8">
+              <ActivityHeatmap
+                activityHistory={profile.activityHistory}
+                allTimeContributions={profile.allTimeContributions}
+              />
             </div>
           </div>
 

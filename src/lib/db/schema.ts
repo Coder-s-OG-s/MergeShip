@@ -54,12 +54,22 @@ export const profiles = pgTable(
     skills: text('skills').array(),
     websiteUrl: text('website_url'),
     twitterHandle: text('twitter_handle'),
+    weeklyDigest: boolean('weekly_digest').notNull().default(true),
   },
   (t) => ({
     xpDescIdx: index('profiles_xp_desc_idx').on(t.xp),
     primaryLangXpIdx: index('profiles_primary_lang_xp_idx').on(t.primaryLanguage, t.xp),
   }),
 );
+
+export const profileEmails = pgTable('profile_emails', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ---------- GitHub App installations (the gate) ----------
 
@@ -89,6 +99,10 @@ export const installationRepositories = pgTable(
       .references(() => githubInstallations.id, { onDelete: 'cascade' }),
     repoFullName: text('repo_full_name').notNull(),
     addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+    // Whether MergeShip actively manages this repo (maintainer's choice in the
+    // onboarding repo picker). Distinct from "installed" — GitHub tells us what's
+    // installed; this is the opt-in. Defaults true so existing installs are unaffected.
+    managed: boolean('managed').notNull().default(true),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.installationId, t.repoFullName] }),
@@ -496,6 +510,18 @@ export const orgCommunities = pgTable(
     installIdx: index('org_communities_install_idx').on(t.installationId),
   }),
 );
+
+// ---------- per-installation maintainer settings ----------
+
+export const installationSettings = pgTable('installation_settings', {
+  installationId: bigint('installation_id', { mode: 'number' })
+    .primaryKey()
+    .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+  minContributorLevel: integer('min_contributor_level').notNull().default(0),
+  autoAssignMentorChain: boolean('auto_assign_mentor_chain').notNull().default(false),
+  aiPrDetection: boolean('ai_pr_detection').notNull().default(false),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ---------- failed webhook events (dead letter queue) ----------
 

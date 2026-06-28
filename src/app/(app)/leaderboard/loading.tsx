@@ -1,35 +1,65 @@
 export default function LeaderboardPageLoading() {
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
-      <div className="mx-auto max-w-3xl animate-pulse">
-        <div className="h-9 w-44 rounded bg-zinc-800" />
-
-        <nav className="mt-5 flex flex-wrap gap-2">
-          <div className="h-7 w-16 rounded-lg bg-zinc-800" />
-          <div className="h-7 w-20 rounded-lg bg-zinc-800/40" />
-          <div className="h-7 w-24 rounded-lg bg-zinc-800/40" />
-          <div className="h-7 w-16 rounded-lg bg-zinc-800/40" />
-        </nav>
-
-        <ul className="mt-6 divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <li key={i} className="flex items-center gap-4 p-4">
-              <div className="h-4 w-8 shrink-0 rounded bg-zinc-800/40" />
-
-              <div className="h-8 w-8 shrink-0 rounded-full bg-zinc-800/60" />
-
-              <div className="flex flex-1 items-baseline gap-2">
-                <div className="h-4 w-32 rounded bg-zinc-800/70" />
-                <div className="h-3.5 w-24 rounded bg-zinc-800/30" />
-              </div>
-
-              <div className="h-4 w-10 rounded bg-zinc-800/40" />
-
-              <div className="h-4 w-20 shrink-0 rounded bg-zinc-800/50" />
-            </li>
+    <div className="flex min-h-screen bg-[#0D0E12]">
+      {/* Left sidebar skeleton */}
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-zinc-800 p-6 lg:flex">
+        <div className="flex flex-col items-center gap-3 py-8">
+          <div className="h-16 w-16 animate-pulse rounded-full bg-zinc-800" />
+          <div className="h-4 w-24 animate-pulse rounded bg-zinc-800" />
+          <div className="h-3 w-20 animate-pulse rounded bg-zinc-800/60" />
+        </div>
+        <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex items-center justify-between">
+              <div className="h-3 w-16 animate-pulse rounded bg-zinc-800/60" />
+              <div className="h-3 w-12 animate-pulse rounded bg-zinc-800/80" />
+            </div>
           ))}
-        </ul>
+        </div>
+      </aside>
+
+      {/* Main skeleton */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-4xl px-6 py-10">
+          <div className="mb-4 h-4 w-24 animate-pulse rounded bg-zinc-800/60" />
+          <div className="mb-2 h-8 w-48 animate-pulse rounded bg-zinc-800" />
+          <div className="mb-8 h-4 w-36 animate-pulse rounded bg-zinc-800/60" />
+
+          <div className="mb-8 h-10 animate-pulse rounded-xl bg-zinc-900/50" />
+
+          <div className="mb-10 flex items-end justify-center gap-4">
+            <div className="h-36 w-36 animate-pulse rounded-t-2xl bg-zinc-900/80" />
+            <div className="h-44 w-36 animate-pulse rounded-t-2xl bg-zinc-900/80" />
+            <div className="h-28 w-36 animate-pulse rounded-t-2xl bg-zinc-900/80" />
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-zinc-800 p-4">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex items-center gap-4">
+                <div className="h-4 w-8 animate-pulse rounded bg-zinc-800/60" />
+                <div className="h-7 w-7 animate-pulse rounded-full bg-zinc-800/80" />
+                <div className="h-4 flex-1 animate-pulse rounded bg-zinc-800/70" />
+                <div className="h-4 w-16 animate-pulse rounded bg-zinc-800/50" />
+                <div className="h-4 w-10 animate-pulse rounded bg-zinc-800/50" />
+                <div className="h-4 w-10 animate-pulse rounded bg-zinc-800/50" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
+
+      {/* Right sidebar skeleton */}
+      <aside className="hidden w-72 shrink-0 flex-col gap-6 border-l border-zinc-800 p-6 xl:flex">
+        {[1, 2, 3].map((i) => (
+          <div key={i}>
+            <div className="mb-3 h-3 w-20 animate-pulse rounded bg-zinc-800/60" />
+            <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+              <div className="h-4 w-full animate-pulse rounded bg-zinc-800/70" />
+              <div className="h-4 w-3/4 animate-pulse rounded bg-zinc-800/50" />
+            </div>
+          </div>
+        ))}
+      </aside>
     </div>
   );
 }

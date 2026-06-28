@@ -105,15 +105,16 @@ describe('filterAndRank', () => {
     expect(result).toEqual([]);
   });
 
-  it('falls back to easier tier when target tier is empty', () => {
+  it('does not fallback to higher difficulty tiers', () => {
     const issues = [issue({ id: 1, difficulty: 'M' }), issue({ id: 2, difficulty: 'M' })];
-    // L0 wants 3 E but pool has none. Soft fallback: take M's so user has something.
+
     const result = filterAndRank(issues, {
       level: 0,
       excludeIssueIds: new Set(),
       allowFallback: true,
     });
-    expect(result).toHaveLength(2);
+
+    expect(result).toEqual([]);
   });
 
   it('without fallback returns empty when tier is missing', () => {

@@ -4,7 +4,7 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { inngest } from '@/inngest/client';
 import { ok, err, type Result } from '@/lib/result';
-import { rateLimit } from '@/lib/rate-limit';
+import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 
 const PR_URL_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
 
@@ -34,10 +34,10 @@ export async function sendHelpRequest(input: HelpInput): Promise<Result<HelpOutp
   const limited = await rateLimit({
     namespace: 'help:send',
     key: user.id,
-    limit: 5,
-    windowSec: 60 * 60,
+    ...RATE_LIMIT_TIERS.HOURLY,
   });
-  if (!limited.ok) return err('rate_limited', 'too many help requests this hour', true);
+  if (!limited.ok)
+    return err('rate_limited', 'too many help requests this hour', true, limited.resetAt);
 
   const trimmed = input.prUrl.trim();
   const isGitHubUrl = PR_URL_RE.test(trimmed);

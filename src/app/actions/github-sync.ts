@@ -3,9 +3,13 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallationToken } from '@/lib/github/app';
-import { cacheDel } from '@/lib/cache';
+import { cacheDel, cacheSet } from '@/lib/cache';
 import { ok, err, type Result } from '@/lib/result';
-import { fetchMergedCount, fetchContributionStreak } from './github-sync-helpers';
+import {
+  fetchMergedCount,
+  fetchContributionStreak,
+  fetchContributionCalendar,
+} from './github-sync-helpers';
 
 export type GitHubPR = {
   id: number;
@@ -152,11 +156,14 @@ export async function syncGitHubStats(): Promise<Result<SyncOutput>> {
   try {
     const token = await getInstallationToken(installId);
 
-    const [merges, streak] = await Promise.all([
+    const [merges, streak, calendar] = await Promise.all([
       fetchMergedCount(token, profile.github_handle),
       fetchContributionStreak(token, profile.github_handle),
+      fetchContributionCalendar(token, profile.github_handle),
       fetchAndBackfillPRs(service, user.id, profile.github_handle, installId),
     ]);
+
+    await cacheSet(`gh:contrib:${user.id}`, { days: calendar }, 86_400);
 
     await service
       .from('profiles')

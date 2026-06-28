@@ -1,113 +1,112 @@
-import Link from 'next/link';
+import { getServerSupabase } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/service';
 import { getLeaderboard } from '@/app/actions/leaderboard';
 import { isOk } from '@/lib/result';
+import { LeaderboardContent } from './leaderboard-content';
+import { tryGetDb } from '@/lib/db/client';
+import { sql } from 'drizzle-orm';
+import type { User } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
 export default async function LeaderboardPage({
   searchParams,
 }: {
-  searchParams: { scope?: string; id?: string };
+  searchParams: Promise<{ scope?: string; id?: string }>;
 }) {
-  const scope = (searchParams.scope as 'global' | 'cohort' | 'language' | 'tag') ?? 'global';
-  const scopeId = searchParams.id ?? null;
-  const result = await getLeaderboard(scope, scopeId, 50);
+  const resolvedSearchParams = await searchParams;
+  let scope = resolvedSearchParams.scope ?? 'global';
+  let scopeId = resolvedSearchParams.id ?? null;
+
+  const sb = await getServerSupabase();
+
+  let user: User | null = null;
+  let userHandle: string | null = null;
+  let userXp = 0;
+  let userLevel = 0;
+  let userMerges = 0;
+  let userStreak = 0;
+  let avatarUrl: string | null = null;
+
+  if (sb) {
+    const { data } = await sb.auth.getUser();
+    user = data.user;
+    if (user) {
+      const identity = user.identities?.find((i) => i.provider === 'github');
+      avatarUrl = (identity?.identity_data?.['avatar_url'] as string) ?? null;
+
+      const service = getServiceSupabase();
+      if (service) {
+        const { data: profile } = await service
+          .from('profiles')
+          .select('github_handle, xp, level, github_total_merges, github_streak')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (profile) {
+          userHandle = profile.github_handle;
+          userXp = profile.xp ?? 0;
+          userLevel = profile.level ?? 0;
+          userMerges = profile.github_total_merges ?? 0;
+          userStreak = profile.github_streak ?? 0;
+        }
+      }
+    }
+  }
+
+  // Map organization requested scope to cohort scope
+  if (scope === 'organization') {
+    scope = 'cohort';
+    if (!scopeId && user) {
+      const db = tryGetDb();
+      if (db) {
+        const cohortRows = await db.execute<{ slug: string }>(sql`
+          select c.slug
+          from cohort_members cm
+          join cohorts c on c.id = cm.cohort_id
+          where cm.user_id = ${user.id}
+          order by cm.joined_at desc
+          limit 1
+        `);
+        const firstRow = Array.isArray(cohortRows)
+          ? cohortRows[0]
+          : (cohortRows as unknown as { rows: { slug: string }[] }).rows?.[0];
+        if (firstRow?.slug) {
+          scopeId = firstRow.slug;
+        }
+      }
+    }
+  }
+
+  const finalScope = (
+    ['global', 'cohort', 'language', 'tag', 'monthly', 'friends'].includes(scope) ? scope : 'global'
+  ) as 'global' | 'cohort' | 'language' | 'tag' | 'monthly' | 'friends';
+
+  // Supported Tab type for LeaderboardContent is: 'global' | 'monthly' | 'organization' | 'friends'
+  let activeTab: 'global' | 'monthly' | 'organization' | 'friends' = 'global';
+  const requestedScope = resolvedSearchParams.scope ?? 'global';
+  if (
+    requestedScope === 'monthly' ||
+    requestedScope === 'organization' ||
+    requestedScope === 'friends'
+  ) {
+    activeTab = requestedScope;
+  } else if (requestedScope === 'cohort') {
+    activeTab = 'organization';
+  }
+
+  const result = await getLeaderboard(finalScope, scopeId, 100);
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
-      <div className="mx-auto max-w-3xl">
-        <h1 className="font-display text-3xl font-bold">Leaderboard</h1>
-        <nav className="mt-4 flex flex-wrap gap-2 text-sm">
-          <Link
-            href="/leaderboard?scope=global"
-            className={`rounded-lg px-3 py-1 ${scope === 'global' ? 'bg-zinc-800' : 'text-zinc-400 hover:text-white'}`}
-          >
-            Global
-          </Link>
-        </nav>
-
-        <ul className="mt-6 divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900">
-          {isOk(result) && result.data.entries.length === 0 ? (
-            <li className="p-6 text-zinc-400">No entries yet.</li>
-          ) : isOk(result) ? (
-            <>
-              {(() => {
-                // Current logged-in user handle from visible list
-                const currentGithubHandle = result.data.entries.find(
-                  (e: any) => e.rank,
-                )?.githubHandle;
-
-                const isUserVisible = result.data.entries.some(
-                  (entry: any) => entry.githubHandle === currentGithubHandle,
-                );
-
-                return (
-                  <>
-                    {result.data.entries.map((entry: any) => {
-                      const isMe = entry.githubHandle === currentGithubHandle;
-
-                      return (
-                        <li
-                          key={entry.userId}
-                          className={`flex items-center gap-4 p-4 ${
-                            isMe ? 'bg-purple-950/30 text-purple-300' : ''
-                          }`}
-                        >
-                          <span className="w-8 text-zinc-500">#{entry.rank}</span>
-
-                          {entry.avatarUrl && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={entry.avatarUrl}
-                              alt=""
-                              className="h-8 w-8 rounded-full"
-                              referrerPolicy="no-referrer"
-                            />
-                          )}
-
-                          <Link href={`/@${entry.githubHandle}`} className="flex-1 hover:underline">
-                            <span className="font-medium">@{entry.githubHandle}</span>
-
-                            {entry.displayName && (
-                              <span className="ml-2 text-sm text-zinc-500">
-                                {entry.displayName}
-                              </span>
-                            )}
-
-                            {isMe && <span className="ml-2 text-xs text-purple-400">(YOU)</span>}
-                          </Link>
-
-                          <span className="text-sm tabular-nums">L{entry.level}</span>
-
-                          <span className="w-20 text-right tabular-nums">
-                            {entry.xp.toLocaleString()} XP
-                          </span>
-                        </li>
-                      );
-                    })}
-
-                    {!isUserVisible && (
-                      <>
-                        <li className="border-t border-zinc-700 px-4 pb-2 pt-4">
-                          <span className="text-xs font-semibold tracking-wide text-zinc-500">
-                            YOUR RANK
-                          </span>
-                        </li>
-
-                        <li className="flex items-center gap-4 bg-purple-950/20 p-4 text-purple-300">
-                          <span className="text-sm">Your rank is outside visible leaderboard.</span>
-                        </li>
-                      </>
-                    )}
-                  </>
-                );
-              })()}
-            </>
-          ) : (
-            <li className="p-6 text-rose-400">Couldn&apos;t load: {result.error.message}</li>
-          )}
-        </ul>
-      </div>
-    </div>
+    <LeaderboardContent
+      activeTab={activeTab}
+      entries={isOk(result) ? result.data.entries : []}
+      currentUserRank={isOk(result) ? result.data.currentUserRank : null}
+      userHandle={userHandle}
+      userXp={userXp}
+      userLevel={userLevel}
+      userMerges={userMerges}
+      userStreak={userStreak}
+      avatarUrl={avatarUrl}
+    />
   );
 }

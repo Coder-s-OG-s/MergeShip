@@ -1,8 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
-import { XP_REWARDS, XP_SOURCE, refIds } from '@/lib/xp/sources';
-import { applyCap } from '@/lib/xp/caps';
+import { XP_REWARDS, DAILY_CAPS, XP_SOURCE, refIds } from '@/lib/xp/sources';
 
 /**
  * Webhook handler for GitHub `pull_request_review` events.
@@ -95,23 +94,6 @@ export const processReviewEvent = inngest.createFunction(
 
       if (!helpReq) return { skipped: true, reason: 'no_open_help_request' };
 
-      // Daily review cap. Counts xp_events with source=help_review for this
-      // reviewer today; blocks the next event if already at cap.
-      const dayStartIso = new Date(
-        new Date().toISOString().slice(0, 10) + 'T00:00:00Z',
-      ).toISOString();
-      const { count: todaysReviewCount } = await sb
-        .from('xp_events')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', reviewer.id)
-        .eq('source', XP_SOURCE.HELP_REVIEW)
-        .gte('created_at', dayStartIso);
-
-      const cap = applyCap('review', todaysReviewCount ?? 0, 1);
-      if (!cap.allowed) {
-        return { skipped: true, reason: 'daily_review_cap_reached' };
-      }
-
       const { data: mentee } = await sb
         .from('profiles')
         .select('level')
@@ -128,15 +110,27 @@ export const processReviewEvent = inngest.createFunction(
       const isFast = responseMs <= SPEED_BONUS_HOURS * 3600 * 1000;
       if (isFast) xp += XP_REWARDS.HELP_REVIEW_SPEED_BONUS;
 
-      const inserted = await insertXpEvent({
-        userId: reviewer.id,
-        source: XP_SOURCE.HELP_REVIEW,
-        refType: 'review',
-        refId: refIds.helpReview(helpReq.id, payload.review.user.login),
-        repo: payload.pull_request.base.repo.full_name,
-        xpDelta: xp,
-        metadata: { isMentor, isFast, menteeLevel },
-      });
+      let inserted = false;
+      try {
+        inserted = await insertXpEvent({
+          userId: reviewer.id,
+          source: XP_SOURCE.HELP_REVIEW,
+          refType: 'review',
+          refId: refIds.helpReview(helpReq.id, payload.review.user.login),
+          repo: payload.pull_request.base.repo.full_name,
+          xpDelta: xp,
+          metadata: { isMentor, isFast, menteeLevel },
+          dailyCapLimit: {
+            action: 'review',
+            limit: DAILY_CAPS.REVIEWS,
+          },
+        });
+      } catch (err: any) {
+        if (err.message === 'daily_review_cap_reached') {
+          return { skipped: true, reason: 'daily_review_cap_reached' };
+        }
+        throw err;
+      }
 
       if (inserted) {
         await sb
@@ -227,7 +221,11 @@ async function upsertReviewRow(payload: ReviewPayload): Promise<void> {
     // here can't roll back the verified flag we just set.
     await inngest.send({
       name: 'mentor/post-comment',
-      data: { prId: prRow.id, reviewerId: reviewer.id },
+      data: {
+        prId: prRow.id,
+        reviewerId: reviewer.id,
+        previousReviewerId: prRow.mentor_reviewer_id,
+      },
     });
   }
 }

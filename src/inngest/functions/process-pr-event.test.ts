@@ -361,3 +361,81 @@ describe('processPrEvent - linkPrToClaim issues relation array', () => {
     );
   });
 });
+describe('processPrEvent - auto-assign mentor chain', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const openedEvent = () => ({
+    data: {
+      payload: {
+        action: 'opened',
+        pull_request: {
+          id: 1234,
+          number: 7,
+          html_url: 'https://github.com/owner/repo/pull/7',
+          title: 'Fix issue',
+          body: 'No issue ref',
+          state: 'open',
+          draft: false,
+          merged: false,
+          merged_at: null,
+          closed_at: null,
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+          user: { login: 'junior' },
+          base: { repo: { full_name: 'owner/repo' } },
+        },
+      },
+    },
+  });
+
+  it('assigns an org admin when the author is below the configured queue gate', async () => {
+    const installationRepositoriesMock = sb({
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { repo_full_name: 'owner/repo' } })
+        .mockResolvedValueOnce({ data: { installation_id: 1 } }),
+    });
+    const profilesMock = sb({
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { id: 'author-id' } })
+        .mockResolvedValueOnce({ data: { level: 1 } })
+        .mockResolvedValueOnce({ data: null }),
+    });
+    const pullRequestsMock = sb({
+      upsert: vi.fn().mockResolvedValue({ error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: 10,
+          author_user_id: 'author-id',
+          mentor_reviewer_id: null,
+        },
+      }),
+    });
+    const installationSettingsMock = sb({
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { min_contributor_level: 2, auto_assign_mentor_chain: true },
+      }),
+    });
+    const seniorRowsMock = sb();
+    seniorRowsMock.eq = vi.fn().mockReturnValue(seniorRowsMock);
+    seniorRowsMock.gte = vi.fn().mockResolvedValue({
+      data: [{ user_id: 'senior-id', profiles: { github_handle: 'senior', level: 3 } }],
+    });
+
+    wire({
+      installation_repositories: installationRepositoriesMock,
+      installation_settings: installationSettingsMock,
+      profiles: profilesMock,
+      pull_requests: pullRequestsMock,
+      github_installation_users: seniorRowsMock,
+      recommendations: sb({ is: vi.fn().mockResolvedValue({ data: [] }) }),
+    });
+
+    await prRun({ event: openedEvent(), step });
+
+    expect(pullRequestsMock.update).toHaveBeenCalledWith({ mentor_reviewer_id: 'senior-id' });
+  });
+});

@@ -1,30 +1,52 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { TransactionRollbackError } from 'drizzle-orm';
 
 const mockReturning = vi.fn();
 const mockOnConflictDoNothing = vi.fn(() => ({ returning: mockReturning }));
 const mockValues = vi.fn(() => ({ onConflictDoNothing: mockOnConflictDoNothing }));
 const mockInsert = vi.fn(() => ({ values: mockValues }));
 const mockExecute = vi.fn();
+const mockTransaction = vi.fn();
 
 vi.mock('../db/client', () => ({
-  getDb: () => ({ insert: mockInsert, execute: mockExecute }),
+  getDb: () => ({ insert: mockInsert, execute: mockExecute, transaction: mockTransaction }),
   schema: { xpEvents: { userId: 'u', source: 's', refId: 'r' } },
 }));
 
 /* Mock drizzle-orm's sql tag so vitest doesn't load the full package
    (which takes 4+ seconds on some machines and causes timeouts). */
-vi.mock('drizzle-orm', () => ({
-  sql: Object.assign((strings: TemplateStringsArray, ..._values: unknown[]) => ({ strings }), {
-    raw: (s: string) => s,
-  }),
-}));
+vi.mock('drizzle-orm', () => {
+  class TransactionRollbackError extends Error {
+    constructor() {
+      super('Rollback');
+      this.name = 'TransactionRollbackError';
+    }
+  }
+  return {
+    sql: Object.assign((strings: TemplateStringsArray, ..._values: unknown[]) => ({ strings }), {
+      raw: (s: string) => s,
+    }),
+    TransactionRollbackError,
+  };
+});
 
 beforeEach(() => {
   mockReturning.mockReset();
   mockExecute.mockReset();
+  mockTransaction.mockReset();
   mockInsert.mockClear();
   mockValues.mockClear();
   mockOnConflictDoNothing.mockClear();
+
+  mockTransaction.mockImplementation((callback) =>
+    callback({
+      insert: mockInsert,
+      execute: mockExecute,
+      rollback: () => {
+        throw new TransactionRollbackError();
+      },
+    }),
+  );
 });
 
 describe('insertXpEvent', () => {
@@ -153,5 +175,86 @@ describe('sumXp', () => {
     mockExecute.mockResolvedValueOnce([]);
     const { sumXp } = await import('./events');
     expect(await sumXp('u1')).toBe(0);
+  });
+});
+
+describe('insertXpEvent dailyCapLimit', () => {
+  it('inserts successfully if count is within limit', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
+    mockExecute.mockResolvedValueOnce([{ count: 2 }]); // daily count increment
+    mockReturning.mockResolvedValueOnce([{ id: 1 }]); // insert returns row ID
+
+    const { insertXpEvent } = await import('./events');
+    const inserted = await insertXpEvent({
+      userId: 'u1',
+      source: 'help_review',
+      refId: 'help-review:1:alice',
+      xpDelta: 30,
+      dailyCapLimit: {
+        action: 'review',
+        limit: 5,
+      },
+    });
+
+    expect(inserted).toBe(true);
+    expect(mockTransaction).toHaveBeenCalled();
+  });
+
+  it('rolls back and throws daily_review_cap_reached if count exceeds limit', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
+    mockExecute.mockResolvedValueOnce([{ count: 6 }]); // daily count increment (exceeds cap)
+
+    const { insertXpEvent } = await import('./events');
+    await expect(
+      insertXpEvent({
+        userId: 'u1',
+        source: 'help_review',
+        refId: 'help-review:1:alice',
+        xpDelta: 30,
+        dailyCapLimit: {
+          action: 'review',
+          limit: 5,
+        },
+      }),
+    ).rejects.toThrow('daily_review_cap_reached');
+  });
+
+  it('rolls back and returns false if event insert is a duplicate', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
+    mockExecute.mockResolvedValueOnce([{ count: 2 }]); // daily count increment
+    mockReturning.mockResolvedValueOnce([]); // duplicate insert (no rows returned)
+
+    const { insertXpEvent } = await import('./events');
+    const inserted = await insertXpEvent({
+      userId: 'u1',
+      source: 'help_review',
+      refId: 'help-review:1:alice',
+      xpDelta: 30,
+      dailyCapLimit: {
+        action: 'review',
+        limit: 5,
+      },
+    });
+
+    expect(inserted).toBe(false);
+  });
+
+  it('rethrows generic database transaction errors', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
+    mockExecute.mockRejectedValueOnce(new Error('Connection timeout')); // generic db failure
+
+    const { insertXpEvent } = await import('./events');
+    await expect(
+      insertXpEvent({
+        userId: 'u1',
+        source: 'help_review',
+        refId: 'help-review:1:alice',
+        xpDelta: 30,
+        dailyCapLimit: {
+          action: 'review',
+          limit: 5,
+        },
+      }),
+    ).rejects.toThrow('Connection timeout');
   });
 });
