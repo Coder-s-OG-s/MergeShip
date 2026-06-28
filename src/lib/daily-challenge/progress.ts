@@ -32,6 +32,8 @@ export async function incrementChallengeProgress(args: {
 
   const todayDateStr = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
 
+  let shouldAwardXp = false;
+
   // Atomically increment the progress count in user_challenge_progress table
   await db.transaction(async (tx) => {
     // Upsert the progress
@@ -70,19 +72,22 @@ export async function incrementChallengeProgress(args: {
             eq(schema.userChallengeProgress.date, todayDateStr),
           ),
         );
-
-      // Award XP!
-      // Idempotency: refId is 'daily_challenge:{challengeId}:{date}'
-      await insertXpEvent({
-        userId: args.userId,
-        source: 'daily_challenge',
-        refType: 'daily_challenge',
-        refId: `daily_challenge:${challenge.id}:${todayDateStr}`,
-        xpDelta: challenge.xpReward,
-        metadata: { challengeId: challenge.id, date: todayDateStr },
-      });
+      shouldAwardXp = true;
     }
   });
+
+  if (shouldAwardXp) {
+    // Award XP!
+    // Idempotency: refId is 'daily_challenge:{challengeId}:{date}'
+    await insertXpEvent({
+      userId: args.userId,
+      source: 'daily_challenge',
+      refType: 'daily_challenge',
+      refId: `daily_challenge:${challenge.id}:${todayDateStr}`,
+      xpDelta: challenge.xpReward,
+      metadata: { challengeId: challenge.id, date: todayDateStr },
+    });
+  }
 
   return { ok: true };
 }
