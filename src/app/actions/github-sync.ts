@@ -176,6 +176,7 @@ export async function syncGitHubStats(): Promise<Result<SyncOutput>> {
 
     await cacheDel(`gh:dashboard:${user.id}`);
     await cacheDel(`myprs:${user.id}`);
+    await cacheDel(`myprs:sync:${user.id}`);
 
     return ok({ merges, streak });
   } catch (e) {

@@ -62,6 +62,7 @@ export default async function MyPRsPage() {
 
   // PRs from cache or DB
   const cacheKey = `myprs:${user.id}`;
+  const syncCacheKey = `myprs:sync:${user.id}`;
   let prsCache = await cacheGet<PRsCache>(cacheKey);
 
   let rawPRs: GitHubPR[] = [];
@@ -79,8 +80,10 @@ export default async function MyPRsPage() {
 
     rawPRs = (prsData ?? []) as GitHubPR[];
 
-    // If no PRs in DB yet, fetch from GitHub API and backfill
-    if (rawPRs.length === 0 && profile?.github_handle) {
+    const recentlySynced = await cacheGet<boolean>(syncCacheKey);
+
+    // Fetch from GitHub API if no PRs in DB yet OR we haven't synced recently
+    if ((rawPRs.length === 0 || !recentlySynced) && profile?.github_handle) {
       const { data: installRow } = await service
         .from('github_installations')
         .select('id')
@@ -97,8 +100,8 @@ export default async function MyPRsPage() {
         installRow?.id ?? null,
       );
 
-      // Invalidate cache after backfill so next load hits fresh DB data
-      await cacheDel(cacheKey);
+      // Prevent refetching from GitHub API on every cache miss (15 minute cooldown)
+      await cacheSet(syncCacheKey, true, 900);
     }
 
     prsCache = { prs: rawPRs.map((pr) => ({ ...pr })) };
@@ -228,7 +231,7 @@ export default async function MyPRsPage() {
             My Pull Requests
           </h1>
           <div className="flex items-center gap-4">
-            <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} userId={user.id} />
+            <SyncButton lastSyncedAt={profile?.github_stats_synced_at ?? null} />
           </div>
         </header>
         <PRList prs={enrichedPRs} />
