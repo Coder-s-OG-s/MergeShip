@@ -122,6 +122,15 @@ ON CONFLICT (github_pr_id) DO NOTHING;
 
 -- Note: pull_request_reviews and help_requests have been omitted for brevity.
 
--- 9. Fix key sequence values for auto-incrementing serial columns
-SELECT setval('issues_id_seq', (SELECT max(id) FROM issues));
+-- 9. Seed announcements
+INSERT INTO announcements (title, body, published_at) VALUES
+  ('GSSoC ''26 has started!', 'Welcome to the program. Check your assigned issues and start contributing.', now() - interval '2 days'),
+  ('New repos added to MergeShip', 'Three new repositories are now available for contributions.', now() - interval '1 day');
 
+-- 10. Seed mentor_sessions
+INSERT INTO mentor_sessions (user_id, mentor_login, scheduled_at, note) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'priya.codes', now() + interval '2 days', 'Code review on your recent PR'),
+  ('00000000-0000-0000-0000-000000000002', 'priya.codes', null, 'No session scheduled yet.');
+
+-- 11. Fix key sequence values for auto-incrementing serial columns
+SELECT setval('issues_id_seq', (SELECT max(id) FROM issues));
