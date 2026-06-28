@@ -546,6 +546,25 @@ export const failedWebhookEvents = pgTable(
   },
   (t) => ({
     deliveryIdx: index('failed_webhook_delivery_idx').on(t.deliveryId),
-    eventTypeIdx: index('failed_webhook_event_type_idx').on(t.eventType),
   }),
 );
+
+// ---------- mentor sessions and announcements ----------
+
+export const mentorSessions = pgTable('mentor_sessions', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  mentorLogin: text('mentor_login').notNull(),
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+  note: text('note'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const announcements = pgTable('announcements', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+});
