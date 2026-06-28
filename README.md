@@ -157,11 +157,11 @@ We maintain a high engineering bar: strict TypeScript, zero lint warnings, and 8
 
 ## Contributors
 
-Thanks to all the amazing people who contribute to **MergeShip** 🚀
+Thanks to all the amazing people who contribute to **MergeShip**
 
 <p align="center">
   <a href="https://github.com/Coder-s-OG-s/MergeShip/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=Coder-s-OG-s/MergeShip" alt="Contributors"/>
+    <img src="https://contrib.rocks/image?repo=Coder-s-OG-s/MergeShip" alt="Contributor Graph"/>
   </a>
 </p>
 
