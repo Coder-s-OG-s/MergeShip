@@ -1,8 +1,6 @@
 'use client';
 
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -91,6 +89,7 @@ function LevelDistributionBar({
 }) {
   const total = current.l0 + current.l1 + current.l2 + current.l3Plus;
   const segments = [
+    { key: 'l0', label: 'L0', value: current.l0, color: '#4ade80' },
     { key: 'l1', label: 'L1', value: current.l1, color: '#fbbf24' },
     { key: 'l2', label: 'L2', value: current.l2, color: '#38bdf8' },
     { key: 'l3Plus', label: 'L3+', value: current.l3Plus, color: '#a78bfa' },
