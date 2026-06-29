@@ -163,7 +163,13 @@ export default async function DashboardPage() {
           {/* Row 3 */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div className="h-[400px]">
-              <CourseProgress />
+              <Suspense
+                fallback={
+                  <div className="h-64 animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/50" />
+                }
+              >
+                <CourseProgress userId={user.id} />
+              </Suspense>
             </div>
             <div className="h-[400px]">
               <Suspense fallback={<MentorSkeleton />}>
@@ -238,13 +244,13 @@ export default async function DashboardPage() {
         <footer className="mt-8 flex justify-between border-t border-[#2d333b] pt-6 text-[10px] uppercase tracking-widest text-zinc-600">
           <span>©{new Date().getFullYear()} ARCH_06 / SYSTEM_v1.0</span>
           <div className="flex gap-6">
-            <Link href="#" className="transition-colors hover:text-zinc-400">
+            <Link href="/terms" className="transition-colors hover:text-zinc-400">
               TERMS
             </Link>
-            <Link href="#" className="transition-colors hover:text-zinc-400">
+            <Link href="/privacy" className="transition-colors hover:text-zinc-400">
               PRIVACY
             </Link>
-            <Link href="#" className="transition-colors hover:text-zinc-400">
+            <Link href="/security" className="transition-colors hover:text-zinc-400">
               SECURITY
             </Link>
           </div>
