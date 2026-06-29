@@ -9,11 +9,11 @@ on:
   workflow_dispatch: # Allows manual triggering via the Actions tab button
 
 permissions:
-  contents: write   # Gives the runner permission to write changes to the repo
+  contents: write   # Gives runner permission to write changes to the repo
 
 jobs:
   update-contributors:
-    runs-on: ubuntu-latest # Runs natively on GitHub's cloud infrastructure
+    runs-on: ubuntu-latest # GitHub's native cloud infra
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
