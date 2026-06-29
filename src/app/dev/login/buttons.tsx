@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBrowserSupabase } from '@/lib/supabase/browser';
+import { clearDevSkipInstall } from '@/app/actions/dev-skip-install';
 
 type Persona = {
   email: string;
@@ -25,6 +26,7 @@ export default function DevLoginButtons({
   const [error, setError] = useState<string | null>(null);
 
   async function signInAs(persona: Persona) {
+    await clearDevSkipInstall();
     setPending(persona.email);
     setError(null);
     const sb = getBrowserSupabase();

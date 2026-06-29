@@ -20,7 +20,7 @@ type ResolvedTarget = { target: string; via: string; isFork: boolean };
 
 export const issuesSweep = inngest.createFunction(
   { id: 'issues-sweep' },
-  { cron: '*/30 * * * *' },
+  { cron: '0 */12 * * *' },
   async ({ step }) => {
     const installs = await step.run('list-installs', async () => {
       const sb = getServiceSupabase();

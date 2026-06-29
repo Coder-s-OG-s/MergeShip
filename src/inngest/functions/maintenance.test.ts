@@ -239,34 +239,33 @@ describe('streakDetect', () => {
             }),
           };
         }
-        if (selectString === 'created_at') {
-          return {
-            eq: vi.fn().mockImplementation((_col, val) => {
-              const userId = val;
-              let events: any[] = [];
-              if (userId === 'user-under-cap') {
-                events = Array.from({ length: 5 }, (_, i) => {
-                  const d = new Date();
-                  d.setUTCDate(d.getUTCDate() - 1 - i);
-                  return { created_at: d.toISOString() };
-                });
-              } else if (userId === 'user-over-cap') {
-                events = Array.from({ length: 11 }, (_, i) => {
-                  const d = new Date();
-                  d.setUTCDate(d.getUTCDate() - 1 - i);
-                  return { created_at: d.toISOString() };
-                });
-              }
-              const gteObj = {
-                lt: vi.fn().mockResolvedValue({
-                  data: events,
-                  error: null,
-                }),
-              };
-              return {
-                gte: vi.fn().mockReturnValue(gteObj),
-              };
+        if (selectString === 'user_id, created_at') {
+          const eventsUnder = Array.from({ length: 5 }, (_, i) => {
+            const d = new Date();
+            d.setUTCDate(d.getUTCDate() - 1 - i);
+            return { user_id: 'user-under-cap', created_at: d.toISOString() };
+          });
+          const eventsOver = Array.from({ length: 11 }, (_, i) => {
+            const d = new Date();
+            d.setUTCDate(d.getUTCDate() - 1 - i);
+            return { user_id: 'user-over-cap', created_at: d.toISOString() };
+          });
+          const allEvents = [...eventsUnder, ...eventsOver];
+
+          const ltObj = {
+            range: vi.fn().mockResolvedValue({
+              data: allEvents,
+              error: null,
             }),
+          };
+          const gteObj = {
+            lt: vi.fn().mockReturnValue(ltObj),
+          };
+          const inObj = {
+            gte: vi.fn().mockReturnValue(gteObj),
+          };
+          return {
+            in: vi.fn().mockReturnValue(inObj),
           };
         }
       }),

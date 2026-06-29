@@ -6,12 +6,14 @@ import { Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { RepoPicker } from '@/app/onboarding/repos/repo-picker';
 import type { RepoPickerRow } from '@/app/actions/maintainer';
+import { devSkipInstall } from '@/app/actions/dev-skip-install';
 
 type InstallWizardProps = {
   initialStep: number;
   installUrl: string;
   installationId?: number;
   initialRepos?: RepoPickerRow[];
+  isDevUser?: boolean;
 };
 
 function clampStep(value: number): 1 | 2 | 3 {
@@ -24,6 +26,7 @@ export function InstallWizard({
   installUrl,
   installationId,
   initialRepos,
+  isDevUser,
 }: InstallWizardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -81,7 +84,7 @@ export function InstallWizard({
           STEP {step} OF 3
         </div>
 
-        {step === 1 && <Step1 installUrl={installUrl} />}
+        {step === 1 && <Step1 installUrl={installUrl} isDevUser={isDevUser} />}
         {step === 2 && (
           <Step2
             onNext={() => goToStep(3)}
@@ -96,7 +99,7 @@ export function InstallWizard({
   );
 }
 
-function Step1({ installUrl }: { installUrl: string }) {
+function Step1({ installUrl, isDevUser }: { installUrl: string; isDevUser?: boolean }) {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
       <h1 className="mb-4 font-display text-4xl font-bold">One more step</h1>
@@ -105,12 +108,25 @@ function Step1({ installUrl }: { installUrl: string }) {
         and award XP in real time. Two clicks, no permissions you don&apos;t already have on GitHub.
       </p>
 
-      <Link
-        href={installUrl}
-        className="btn-primary inline-flex items-center gap-2 rounded-xl px-6 py-3 font-semibold"
-      >
-        Install MergeShip on GitHub
-      </Link>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <Link
+          href={installUrl}
+          className="btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-semibold"
+        >
+          Install MergeShip on GitHub
+        </Link>
+
+        {isDevUser && (
+          <form action={devSkipInstall}>
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center rounded-xl border border-dashed border-gray-600 px-6 py-3 font-semibold text-gray-400 hover:border-gray-400 hover:text-white"
+            >
+              Skip Installation (Development Only)
+            </button>
+          </form>
+        )}
+      </div>
 
       <p className="mt-8 text-sm text-gray-500">
         We only ask for read access to your repos and write access on issues you&apos;re working on.

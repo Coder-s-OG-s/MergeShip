@@ -163,13 +163,13 @@ export default async function DashboardPage() {
         <footer className="mt-24 flex justify-between border-t border-[#2d333b] pt-8 text-[10px] uppercase tracking-widest text-zinc-600">
           <span>©{new Date().getFullYear()} ARCH_06 / SYSTEM_v1.0</span>
           <div className="flex gap-6">
-            <Link href="#" className="transition-colors hover:text-zinc-400">
+            <Link href="/terms" className="transition-colors hover:text-zinc-400">
               TERMS
             </Link>
-            <Link href="#" className="transition-colors hover:text-zinc-400">
+            <Link href="/privacy" className="transition-colors hover:text-zinc-400">
               PRIVACY
             </Link>
-            <Link href="#" className="transition-colors hover:text-zinc-400">
+            <Link href="/security" className="transition-colors hover:text-zinc-400">
               SECURITY
             </Link>
           </div>

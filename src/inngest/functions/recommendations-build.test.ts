@@ -61,7 +61,7 @@ function runHandler(): Promise<unknown> {
 const mockIssuesLimit = vi.fn();
 const mockUsersNot = vi.fn();
 const mockSkipHistoryGte = vi.fn(); // from('recommendations').eq('status','reassigned').gte()
-const mockSeenEq = vi.fn(); // from('recommendations').eq('user_id', ...)  (per-user)
+const mockSeenIn = vi.fn(); // from('recommendations').select().in().range()
 const mockUpsert = vi.fn();
 
 /**
@@ -72,7 +72,7 @@ const mockUpsert = vi.fn();
  *   0 → issues pool   (.select.eq.order.limit)
  *   1 → users         (.select.is.not)
  *   2 → skip history  (.select.eq.gte)
- *   3 → seen ids      (.select.eq)        ← per-user, may repeat
+ *   3 → seen ids      (.select.in.range)
  *   4+ → upsert       (.upsert)           ← per-user, may repeat
  */
 let fromCallCount = 0;
@@ -117,13 +117,23 @@ vi.mock('@/lib/supabase/service', () => ({
         };
       }
 
-      // callIndex >= 3 alternates between seen-ids selects and upserts
-      // per-user seen ids: .select('issue_id').eq('user_id', ...)
-      // upsert:            .upsert(rows, opts)
+      if (callIndex === 3) {
+        // seen ids bulk fetch: .select().in().order().order().range()
+        return {
+          select: () => ({
+            in: () => ({
+              order: () => ({
+                order: () => ({
+                  range: mockSeenIn,
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+
+      // callIndex >= 4: .upsert(rows, opts)
       return {
-        select: () => ({
-          eq: mockSeenEq,
-        }),
         upsert: mockUpsert,
       };
     },
@@ -147,7 +157,7 @@ describe('recommendations-build', () => {
     mockIssuesLimit.mockResolvedValue({ data: [] });
     mockUsersNot.mockResolvedValue({ data: [] });
     mockSkipHistoryGte.mockResolvedValue({ data: [] });
-    mockSeenEq.mockResolvedValue({ data: [] });
+    mockSeenIn.mockResolvedValue({ data: [] });
     mockUpsert.mockResolvedValue({ error: null });
   });
 
@@ -209,7 +219,7 @@ describe('recommendations-build', () => {
     // skip history returns empty — no penalty applied
     mockSkipHistoryGte.mockResolvedValue({ data: [] });
     // user has no previously seen issues
-    mockSeenEq.mockResolvedValue({ data: [] });
+    mockSeenIn.mockResolvedValue({ data: [] });
     mockUpsert.mockResolvedValue({ error: null });
 
     const result = (await runHandler()) as { users: number; inserted: number };
@@ -262,7 +272,7 @@ describe('recommendations-build', () => {
         },
       ],
     });
-    mockSeenEq.mockResolvedValue({ data: [] });
+    mockSeenIn.mockResolvedValue({ data: [] });
     mockUpsert.mockResolvedValue({ error: null });
 
     // Should not throw — penalty logic runs without error
@@ -290,7 +300,7 @@ describe('recommendations-build', () => {
       data: [{ user_id: 'user-1', profiles: { level: 0, primary_language: null } }],
     });
     mockSkipHistoryGte.mockResolvedValue({ data: [] });
-    mockSeenEq.mockResolvedValue({ data: [] });
+    mockSeenIn.mockResolvedValue({ data: [] });
     mockUpsert.mockResolvedValue({ error: new Error('db error') });
 
     const result = (await runHandler()) as { users: number; inserted: number };

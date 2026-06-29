@@ -36,6 +36,8 @@ export default async function InstallPage(props: {
 
   if (!user) redirect('/');
 
+  const isDevUser = process.env.NODE_ENV !== 'production' && !!user.email?.endsWith('@test.local');
+
   // Idempotent — makes sure a profile row exists so the install webhook can
   // resolve account_login → user_id. Quietly no-ops if already bootstrapped.
   const bootstrap = await bootstrapProfile().catch(() => null);
@@ -130,6 +132,7 @@ export default async function InstallPage(props: {
             installUrl={installUrl}
             installationId={installationId}
             initialRepos={initialRepos}
+            isDevUser={isDevUser}
           />
         );
       }
@@ -139,7 +142,7 @@ export default async function InstallPage(props: {
   const slug = process.env.GITHUB_APP_SLUG ?? 'mergeship';
   const installUrl = `https://github.com/apps/${slug}/installations/new`;
 
-  return <InstallWizard initialStep={initialStep} installUrl={installUrl} />;
+  return <InstallWizard initialStep={initialStep} installUrl={installUrl} isDevUser={isDevUser} />;
 }
 
 function NotConfiguredNotice() {
