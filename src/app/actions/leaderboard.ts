@@ -6,6 +6,7 @@ import { cacheGet, cacheSet } from '@/lib/cache';
 import { ok, err, type Result } from '@/lib/result';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getAppOctokit, getInstallOctokit } from '@/lib/github/app';
+import { requireUser } from '@/lib/action-auth';
 
 export type LeaderboardScope = 'global' | 'cohort' | 'language' | 'tag' | 'monthly' | 'friends';
 
@@ -61,11 +62,20 @@ async function getFollowedHandles(
       } else {
         octokit = getAppOctokit();
       }
-      const following = await octokit.paginate(octokit.users.listFollowingForUser, {
-        username: activeHandle,
-        per_page: 100,
-      });
-      followedHandles = following.map((f: any) => f.login);
+      const MAX_PAGES = 5;
+      let page = 1;
+      let collected: string[] = [];
+      while (page <= MAX_PAGES) {
+        const { data } = await octokit.request('GET /users/{username}/following', {
+          username: activeHandle,
+          per_page: 100,
+          page,
+        });
+        collected = collected.concat(data.map((f: any) => f.login));
+        if (data.length < 100) break;
+        page++;
+      }
+      followedHandles = collected;
     } catch (err) {
       console.error('Failed to fetch github following list:', err);
     }
@@ -178,6 +188,12 @@ export async function getLeaderboard(
         limit ${limit}
       `)) as unknown as typeof rows;
       } else if (scope === 'friends') {
+        const rlRes = await requireUser({
+          rateLimit: { namespace: 'leaderboard:friends', limit: 10, windowSec: 60 },
+          rateLimitMessage: 'too many friends leaderboard requests, slow down',
+        });
+        if (!rlRes.ok) return rlRes;
+
         let followedHandles: string[] = [];
         if (userId) {
           followedHandles = await getFollowedHandles(userId, userHandle, db);

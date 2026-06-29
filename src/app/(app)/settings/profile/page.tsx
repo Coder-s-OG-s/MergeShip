@@ -22,7 +22,7 @@ export default async function ProfileSettingsPage() {
   // Fetch user profile data
   const { data: profile } = await sb
     .from('profiles')
-    .select('bio, skills, website_url, twitter_handle')
+    .select('bio, skills, website_url, twitter_handle, weekly_digest')
     .eq('id', user.id)
     .single();
 
@@ -48,6 +48,7 @@ export default async function ProfileSettingsPage() {
               skills: profile?.skills || null,
               website_url: profile?.website_url || null,
               twitter_handle: profile?.twitter_handle || null,
+              weekly_digest: profile?.weekly_digest ?? true,
             }}
           />
         </div>

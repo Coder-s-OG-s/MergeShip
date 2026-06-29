@@ -17,6 +17,7 @@ import {
   setRepoManaged,
   resolveFlaggedAccount,
   getPrCiStatus,
+  getReviewerLoad,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -34,7 +35,10 @@ vi.mock('@/lib/supabase/service', () => ({
 }));
 
 const mockDbLimit = vi.fn();
-const mockDbOrderBy = vi.fn(() => ({ limit: mockDbLimit }));
+const mockDbOrderBy = vi.fn(() => ({
+  limit: mockDbLimit,
+  then: (resolve: any) => resolve([]),
+}));
 const mockDbGroupBy = vi.fn(() => ({ orderBy: mockDbOrderBy }));
 const mockDbWhere = vi.fn(() => ({ groupBy: mockDbGroupBy }));
 const mockDbInnerJoin = vi.fn(() => ({ where: mockDbWhere }));
@@ -52,6 +56,8 @@ vi.mock('drizzle-orm', () => ({
   inArray: vi.fn(),
   sum: vi.fn(),
   desc: vi.fn(),
+  and: vi.fn(),
+  count: vi.fn(),
 }));
 
 vi.mock('@/lib/maintainer/detect', () => ({
@@ -305,6 +311,44 @@ describe('maintainer actions', () => {
         expect(res.data.rows).toHaveLength(1);
         expect(res.data.rows[0]?.title).toBe('senior trust');
       }
+    });
+
+    it('paginates using non-overlapping 100-row blocks', async () => {
+      const mockBlock = Array.from({ length: 100 }).map((_, i) => ({
+        ...rawPr,
+        id: i + 1,
+        number: i + 1,
+        title: `PR ${i + 1}`,
+      }));
+
+      const c = chain(mockBlock);
+      mockFrom.mockReturnValue(c);
+
+      const allFetchedIds = new Set<number>();
+      let totalRows = 0;
+
+      for (let page = 0; page < 4; page++) {
+        const res = await getMaintainerPrQueue({ installationId: 1, page });
+        expect(res.ok).toBe(true);
+        if (!res.ok) continue;
+
+        expect(c.range).toHaveBeenCalledWith(0, 99);
+        expect(res.data.rows).toHaveLength(25);
+
+        for (const row of res.data.rows) {
+          expect(allFetchedIds.has(row.id)).toBe(false);
+          allFetchedIds.add(row.id);
+        }
+        totalRows += res.data.rows.length;
+      }
+
+      expect(totalRows).toBe(100);
+      expect(allFetchedIds.size).toBe(100);
+
+      const cNext = chain([]);
+      mockFrom.mockReturnValue(cNext);
+      await getMaintainerPrQueue({ installationId: 1, page: 4 });
+      expect(cNext.range).toHaveBeenCalledWith(100, 199);
     });
   });
 
@@ -787,6 +831,61 @@ describe('maintainer actions', () => {
       const res = await getPrCiStatus(1, 'demo/repo', 1);
 
       expect(res.ok).toBe(true);
+    });
+  });
+
+  // getReviewerLoad
+
+  describe('getReviewerLoad', () => {
+    it('returns rate_limited when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+      const res = await getReviewerLoad({ installationId: 1 });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns empty array if maintainer has no repos in install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+      const res = await getReviewerLoad({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('returns empty array if no reviewer loads found', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+      mockDbOrderBy.mockReturnValueOnce({
+        limit: mockDbLimit,
+        then: (resolve: any) => resolve([]),
+      });
+      const res = await getReviewerLoad({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('returns reviewer load data', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+
+      const mockRows = [
+        { reviewerId: 'user-1', githubHandle: 'alice', avatarUrl: 'url1', prCount: 3 },
+        { reviewerId: 'user-2', githubHandle: 'bob', avatarUrl: 'url2', prCount: 1 },
+      ];
+
+      mockDbOrderBy.mockReturnValueOnce({
+        limit: mockDbLimit,
+        then: (resolve: any) => resolve(mockRows),
+      });
+
+      const res = await getReviewerLoad({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(2);
+        expect(res.data[0]?.githubHandle).toBe('alice');
+        expect(res.data[0]?.prCount).toBe(3);
+        expect(res.data[1]?.githubHandle).toBe('bob');
+        expect(res.data[1]?.prCount).toBe(1);
+      }
     });
   });
 });

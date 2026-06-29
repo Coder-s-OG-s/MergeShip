@@ -85,25 +85,6 @@ export default async function MaintainerIssuesPage({
           </Link>
         </header>
 
-        {installs.length > 1 && (
-          <nav className="mb-6 flex flex-wrap gap-2 text-sm">
-            {installs.map((i) => (
-              <Link
-                key={i.installationId}
-                href={`/maintainer/issues?install=${i.installationId}`}
-                className={`rounded-lg px-3 py-1 ${
-                  i.installationId === activeInstallId
-                    ? 'bg-zinc-800 text-white'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                {i.accountLogin}
-                <span className="ml-1.5 text-xs text-zinc-500">{i.accountType[0]}</span>
-              </Link>
-            ))}
-          </nav>
-        )}
-
         <div className="mb-4 flex flex-wrap gap-2 text-xs">
           {ALL_BUCKETS.map((b) => (
             <BucketPill

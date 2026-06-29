@@ -3,6 +3,7 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { redirect } from 'next/navigation';
 import { bootstrapProfile } from '@/app/actions/profile';
+import { getRepoPicker } from '@/app/actions/maintainer';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +36,8 @@ export default async function InstallPage(props: {
 
   if (!user) redirect('/');
 
+  const isDevUser = process.env.NODE_ENV !== 'production' && !!user.email?.endsWith('@test.local');
+
   // Idempotent — makes sure a profile row exists so the install webhook can
   // resolve account_login → user_id. Quietly no-ops if already bootstrapped.
   const bootstrap = await bootstrapProfile().catch(() => null);
@@ -51,7 +54,9 @@ export default async function InstallPage(props: {
     // the previous one (reinstalls after the old row was force-reactivated).
     // maybeSingle() would error and fall through, leaving the user stuck.
 
-    // 1. Already linked to this user → straight to dashboard.
+    let installationId: number | undefined;
+
+    // 1. Already linked to this user → determine next step
     const { data: linkedRows } = await service
       .from('github_installations')
       .select('id')
@@ -59,7 +64,9 @@ export default async function InstallPage(props: {
       .is('uninstalled_at', null)
       .order('installed_at', { ascending: false })
       .limit(1);
-    if (linkedRows && linkedRows.length > 0) redirect('/onboarding/analyze');
+    if (linkedRows && linkedRows[0]) {
+      installationId = linkedRows[0].id;
+    }
 
     // 2. Row exists by account_login but user_id is null or stale → link it
     //    to the current user. Covers orphans from pre-bootstrap webhooks and
@@ -72,7 +79,7 @@ export default async function InstallPage(props: {
       .order('installed_at', { ascending: false })
       .limit(1);
     const byHandle = byHandleRows?.[0];
-    if (byHandle) {
+    if (byHandle && !installationId) {
       if (byHandle.user_id !== user.id) {
         await service
           .from('github_installations')
@@ -104,14 +111,38 @@ export default async function InstallPage(props: {
           },
         });
       }
-      redirect('/onboarding/analyze');
+      installationId = byHandle.id;
+    }
+
+    if (installationId) {
+      const res = await getRepoPicker(installationId);
+      if (res.ok) {
+        const initialRepos = res.data;
+        if (initialRepos.some((r) => r.managed)) {
+          redirect('/onboarding/analyze');
+        }
+        if (initialStep === 1) initialStep = 2;
+
+        const slug = process.env.GITHUB_APP_SLUG ?? 'mergeship';
+        const installUrl = `https://github.com/apps/${slug}/installations/new`;
+
+        return (
+          <InstallWizard
+            initialStep={initialStep}
+            installUrl={installUrl}
+            installationId={installationId}
+            initialRepos={initialRepos}
+            isDevUser={isDevUser}
+          />
+        );
+      }
     }
   }
 
   const slug = process.env.GITHUB_APP_SLUG ?? 'mergeship';
   const installUrl = `https://github.com/apps/${slug}/installations/new`;
 
-  return <InstallWizard initialStep={initialStep} installUrl={installUrl} />;
+  return <InstallWizard initialStep={initialStep} installUrl={installUrl} isDevUser={isDevUser} />;
 }
 
 function NotConfiguredNotice() {

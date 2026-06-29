@@ -1,4 +1,4 @@
-import type { Difficulty } from './score';
+import { getAllowedDifficulties, type Difficulty } from './difficulty';
 import { RECOMMENDATION_PENALTIES } from './constants';
 
 /**
@@ -109,6 +109,7 @@ export function filterAndRank(pool: readonly ScoredIssue[], opts: RecommendOptio
       .filter((i) => !seen.has(i.id) && allowed.has(i.difficulty))
     const allowedDifficulties: Difficulty[] =
       opts.level <= 0 ? ['E'] : opts.level === 1 ? ['E', 'M'] : ['E', 'M', 'H'];
+    const allowedDifficulties = getAllowedDifficulties(opts.level);
 
     const extras = eligible
       .filter((i) => !seen.has(i.id) && allowedDifficulties.includes(i.difficulty))

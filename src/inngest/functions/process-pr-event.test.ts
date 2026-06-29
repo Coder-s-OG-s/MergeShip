@@ -7,6 +7,9 @@ import { sb, wire, step } from './__tests__/test-helpers';
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/xp/events', () => ({ insertXpEvent: vi.fn() }));
 vi.mock('@/lib/cache', () => ({ cacheDelByPrefix: vi.fn() }));
+vi.mock('@/lib/daily-challenge/progress', () => ({
+  incrementChallengeProgress: vi.fn().mockResolvedValue({ ok: true }),
+}));
 const mockSend = vi.fn().mockResolvedValue(undefined);
 vi.mock('../client', () => ({
   inngest: {
@@ -361,7 +364,6 @@ describe('processPrEvent - linkPrToClaim issues relation array', () => {
     );
   });
 });
-
 describe('processPrEvent - auto-assign mentor chain', () => {
   beforeEach(() => {
     vi.clearAllMocks();
