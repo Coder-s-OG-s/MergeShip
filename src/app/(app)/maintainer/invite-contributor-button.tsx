@@ -13,9 +13,7 @@ export default function InviteContributorButton({
   const [copied, setCopied] = useState(false);
 
   const inviteLink =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/join?install=${installationId}&ref=${accountLogin}`
-      : '';
+    typeof window !== 'undefined' ? `${window.location.origin}/?ref=${accountLogin}` : '';
 
   function handleCopy() {
     navigator.clipboard.writeText(inviteLink);
