@@ -13,13 +13,13 @@ permissions:
 
 jobs:
   update-contributors:
-    runs-on: ubuntu-latest # Runs natively on GitHub's cloud infra
+    runs-on: ubuntu-latest # Runs natively on GitHub's cloud infrastructure
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetches all git history to scan for every contributor
-          token: ${{ secrets.GITHUB_TOKEN }} # Uses GitHub's built-in auth token
+          fetch-depth: 0 
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -30,14 +30,26 @@ jobs:
         run: |
           # 1. Create the config file if it doesn't exist yet
           if [ ! -f .all-contributorsrc ]; then
-            echo '{"files":["README.md"],"imageSize":60,"commit":false,"contributors":[],"contributorsPerLine":10}' > .all-contributorsrc
+            echo '{"files":["README.md"],"imageSize":60,"commit":false,"contributors":[],"contributorsPerLine":10,"projectOwner":"Coder-s-OG-s","projectName":"MergeShip"}' > .all-contributorsrc
           fi
           
-          # 2. Install the missing git scanning utility globally/on the fly
-          npm install -g all-contributors-git-contributors
+          # 2. Fetch all real contributor usernames via GitHub's API and add them
+          USERS=$(curl -s "https://api.github.com/repos/Coder-s-OG-s/MergeShip/contributors" | jq -r '.[].login')
           
-          # 3. Dynamically scan git history for contributors using the tool
-          all-contributors-git-contributors
+          for user in $USERS; do
+            # Skip automated github bots
+            if [[ "$user" == *"bot"* ]]; then continue; fi
+            
+            # Silently add the user if they aren't already tracked
+            npx all-contributors-cli add "$user" code || true
+          done
           
-          # 4. Compile the markdown/HTML grid with hovers into the README
+          # 3. Compile the markdown/HTML grid with hovers into the README
           npx all-contributors-cli generate
+          
+      - name: Commit and Push Changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: dynamically update contributors grid [skip ci]"
+          file_pattern: "README.md .all-contributorsrc"
+          branch: main
