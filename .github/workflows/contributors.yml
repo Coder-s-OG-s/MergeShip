@@ -1,0 +1,49 @@
+# Dynamically fetch contributors
+
+name: Dynamic Contributors Update
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Updates automatically every day at midnight
+  push:
+    branches:
+      - main       # Updates automatically whenever a PR merges into main
+  workflow_dispatch: # Allows manual triggering via the Actions tab button
+
+permissions:
+  contents: write   # Gives the runner permission to write changes to the repo
+
+jobs:
+  update-contributors:
+    runs-on: ubuntu-latest # Runs natively on GitHub's cloud infra
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches all git history to scan for every contributor
+          token: ${{ secrets.GITHUB_TOKEN }} # Uses GitHub's built-in auth token
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generate Contributors Table
+        run: |
+          # 1. Create the config file if it doesn't exist yet
+          if [ ! -f .all-contributorsrc ]; then
+            echo '{"files":["README.md"],"imageSize":60,"commit":false,"contributors":[],"contributorsPerLine":10}' > .all-contributorsrc
+          fi
+          
+          # 2. Dynamically scan git history for contributors
+          npx all-contributors-cli generate-from-git --default-contribution-type code
+          
+          # 3. Compile the markdown/HTML grid with hovers into the README
+          npx all-contributors-cli generate
+
+      - name: Commit and Push Changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: dynamically update contributors grid [skip ci]"
+          file_pattern: "README.md .all-contributorsrc"
+          branch: main
