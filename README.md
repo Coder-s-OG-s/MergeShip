@@ -161,8 +161,14 @@ Thanks to all the amazing people who contribute to **MergeShip**:
 
 <!-- Below 2 lines inject dynamic contributor grid with profile popups on hover -->
 
-<!-- all-contributors-start -->
-<!-- all-contributors-end -->
+<p align="center">
+  <a href="https://github.com/username1" title="username1">
+    <img src="https://github.com/username1.png" width="60px;" style="border-radius: 50%;" alt="username1"/>
+  </a>
+  <a href="https://github.com/username2" title="username2">
+    <img src="https://github.com/username2.png" width="60px;" style="border-radius: 50%;" alt="username2"/>
+  </a>
+</p>
 
 <br>
 
