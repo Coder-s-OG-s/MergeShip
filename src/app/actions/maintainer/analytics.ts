@@ -20,6 +20,7 @@ import {
   type StaleIssueRow,
   type ContributorRow,
   type ReviewerLoadRow,
+  type NoiseBreakdown,
 } from './types';
 
 export async function getRepoHealthOverview(args: {
@@ -416,6 +417,60 @@ export async function getReviewerLoad(args: {
         prCount: row.prCount,
       })),
     );
+  } catch (error: any) {
+    return err('query_failed', error.message || 'Drizzle query failed');
+  }
+}
+
+export async function getNoiseBreakdown(args: {
+  installationId: number;
+}): Promise<Result<NoiseBreakdown>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) {
+    return ok({ valid: 0, spamAi: 0, other: 0, total: 0 });
+  }
+
+  const db = tryGetDb();
+  if (!db) {
+    return err('not_configured', 'database not configured');
+  }
+
+  try {
+    const rows = await db
+      .select({
+        aiFlagged: pullRequests.aiFlagged,
+        state: pullRequests.state,
+        cnt: count(pullRequests.id),
+      })
+      .from(pullRequests)
+      .where(inArray(pullRequests.repoFullName, repos))
+      .groupBy(pullRequests.aiFlagged, pullRequests.state);
+
+    let spamAi = 0;
+    let other = 0;
+    let valid = 0;
+
+    for (const row of rows) {
+      const n = row.cnt;
+      if (row.aiFlagged) {
+        spamAi += n;
+      } else if (row.state === 'closed') {
+        // closed-without-merge and not flagged → noise/other
+        other += n;
+      } else {
+        valid += n;
+      }
+    }
+
+    const total = spamAi + other + valid;
+    return ok({ valid, spamAi, other, total });
   } catch (error: any) {
     return err('query_failed', error.message || 'Drizzle query failed');
   }

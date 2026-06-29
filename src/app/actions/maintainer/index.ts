@@ -26,6 +26,7 @@ export {
   getMaintainerAnalyticsTrends,
   exportPrQueueCsv,
   getReviewerLoad,
+  getNoiseBreakdown,
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';

@@ -83,3 +83,10 @@ export type ReviewerLoadRow = {
   avatarUrl: string | null;
   prCount: number;
 };
+
+export type NoiseBreakdown = {
+  valid: number;
+  spamAi: number;
+  other: number;
+  total: number;
+};
