@@ -159,14 +159,9 @@ We maintain a high engineering bar: strict TypeScript, zero lint warnings, and 8
 
 Thanks to all the amazing people who contribute to **MergeShip**:
 
-<!-- Below 2 lines inject dynamic contributor grid with profile popups on hover -->
-
 <p align="center">
-  <a href="https://github.com/username1" title="username1">
-    <img src="https://github.com/username1.png" width="60px;" style="border-radius: 50%;" alt="username1"/>
-  </a>
-  <a href="https://github.com/username2" title="username2">
-    <img src="https://github.com/username2.png" width="60px;" style="border-radius: 50%;" alt="username2"/>
+  <a href="https://github.com/Coder-s-OG-s/MergeShip/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=Coder-s-OG-s/MergeShip" alt="Contributor Graph"/>
   </a>
 </p>
 
