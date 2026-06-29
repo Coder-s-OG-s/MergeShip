@@ -105,13 +105,18 @@ describe('processPrEvent - awardRecommendedMerge XP capping', () => {
       insert: vi.fn().mockResolvedValue({ error: null }),
     });
     const installationRepositoriesMock = sb({
-      maybeSingle: vi.fn().mockResolvedValue({ data: { repo_full_name: 'owner/repo' } }),
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValue({ data: { repo_full_name: 'owner/repo', installation_id: 1 } }),
     });
     const profilesMock = sb({
       maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'contributor-id' } }),
     });
     const pullRequestsMock = sb({
       upsert: vi.fn().mockResolvedValue({ error: null }),
+    });
+    const installationSettingsMock = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { ai_pr_detection: false } }),
     });
 
     wire({
@@ -121,6 +126,7 @@ describe('processPrEvent - awardRecommendedMerge XP capping', () => {
       installation_repositories: installationRepositoriesMock,
       profiles: profilesMock,
       pull_requests: pullRequestsMock,
+      installation_settings: installationSettingsMock,
     });
 
     vi.mocked(insertXpEvent).mockResolvedValue(true as never);
@@ -302,7 +308,12 @@ describe('processPrEvent - linkPrToClaim issues relation array', () => {
     });
 
     const installationRepositoriesMock = sb({
-      maybeSingle: vi.fn().mockResolvedValue({ data: { repo_full_name: 'owner/repo' } }),
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValue({ data: { repo_full_name: 'owner/repo', installation_id: 1 } }),
+    });
+    const installationSettingsMock = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { ai_pr_detection: false } }),
     });
 
     wire({
@@ -310,6 +321,7 @@ describe('processPrEvent - linkPrToClaim issues relation array', () => {
       profiles: profilesMock,
       pull_requests: pullRequestsMock,
       installation_repositories: installationRepositoriesMock,
+      installation_settings: installationSettingsMock,
     });
 
     return { recommendationsMock };
@@ -398,7 +410,7 @@ describe('processPrEvent - auto-assign mentor chain', () => {
     const installationRepositoriesMock = sb({
       maybeSingle: vi
         .fn()
-        .mockResolvedValueOnce({ data: { repo_full_name: 'owner/repo' } })
+        .mockResolvedValueOnce({ data: { repo_full_name: 'owner/repo', installation_id: 1 } })
         .mockResolvedValueOnce({ data: { installation_id: 1 } }),
     });
     const profilesMock = sb({
@@ -419,9 +431,12 @@ describe('processPrEvent - auto-assign mentor chain', () => {
       }),
     });
     const installationSettingsMock = sb({
-      maybeSingle: vi.fn().mockResolvedValue({
-        data: { min_contributor_level: 2, auto_assign_mentor_chain: true },
-      }),
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { ai_pr_detection: false } }) // upsertPrRow check
+        .mockResolvedValueOnce({
+          data: { min_contributor_level: 2, auto_assign_mentor_chain: true },
+        }), // mentor assign check
     });
     const seniorRowsMock = sb();
     seniorRowsMock.eq = vi.fn().mockReturnValue(seniorRowsMock);
@@ -441,5 +456,107 @@ describe('processPrEvent - auto-assign mentor chain', () => {
     await prRun({ event: openedEvent(), step });
 
     expect(pullRequestsMock.update).toHaveBeenCalledWith({ mentor_reviewer_id: 'senior-id' });
+  });
+});
+
+describe('processPrEvent - ai_flagged classification', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const makeOpenedEvent = (title: string, body: string) => ({
+    data: {
+      payload: {
+        action: 'opened',
+        pull_request: {
+          id: 5000,
+          number: 50,
+          html_url: 'https://github.com/owner/repo/pull/50',
+          title,
+          body,
+          state: 'open',
+          draft: false,
+          merged: false,
+          merged_at: null,
+          closed_at: null,
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:00:00Z',
+          user: { login: 'contributor' },
+          base: { repo: { full_name: 'owner/repo' } },
+        },
+      },
+    },
+  });
+
+  const setupClassifyMock = (aiPrDetection: boolean) => {
+    const pullRequestsMock = sb({
+      upsert: vi.fn().mockResolvedValue({ error: null }),
+    });
+    const installationRepositoriesMock = sb({
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { repo_full_name: 'owner/repo', installation_id: 1 },
+      }),
+    });
+    const installationSettingsMock = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { ai_pr_detection: aiPrDetection } }),
+    });
+    const profilesMock = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'contrib-id' } }),
+    });
+
+    wire({
+      installation_repositories: installationRepositoriesMock,
+      installation_settings: installationSettingsMock,
+      profiles: profilesMock,
+      pull_requests: pullRequestsMock,
+      recommendations: sb({ is: vi.fn().mockResolvedValue({ data: [] }) }),
+    });
+
+    return { pullRequestsMock };
+  };
+
+  it('sets ai_flagged=true when detection is on and PR looks like AI spam', async () => {
+    const { pullRequestsMock } = setupClassifyMock(true);
+
+    await prRun({
+      event: makeOpenedEvent('fix', 'generated by chatgpt'),
+      step,
+    });
+
+    expect(pullRequestsMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ ai_flagged: true }),
+      expect.anything(),
+    );
+  });
+
+  it('sets ai_flagged=false when detection is on but PR looks normal', async () => {
+    const { pullRequestsMock } = setupClassifyMock(true);
+
+    await prRun({
+      event: makeOpenedEvent(
+        'Refactor payment gateway to use retry logic',
+        'This PR adds exponential backoff to all payment API calls. Closes #100.',
+      ),
+      step,
+    });
+
+    expect(pullRequestsMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ ai_flagged: false }),
+      expect.anything(),
+    );
+  });
+
+  it('sets ai_flagged=false when aiPrDetection is disabled even for suspicious PR', async () => {
+    const { pullRequestsMock } = setupClassifyMock(false);
+
+    await prRun({
+      event: makeOpenedEvent('fix', 'generated by chatgpt'),
+      step,
+    });
+
+    expect(pullRequestsMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ ai_flagged: false }),
+      expect.anything(),
+    );
   });
 });
