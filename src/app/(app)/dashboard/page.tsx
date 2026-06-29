@@ -125,7 +125,13 @@ export default async function DashboardPage() {
             <DailyChallenge />
 
             {/* Course progression */}
-            <CourseProgress />
+            <Suspense
+              fallback={
+                <div className="h-64 animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/50" />
+              }
+            >
+              <CourseProgress userId={user.id} />
+            </Suspense>
 
             {/* Mentees */}
             <Suspense fallback={<MenteesSkeleton />}>
