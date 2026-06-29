@@ -12,8 +12,7 @@ import { SyncButton } from './sync-button';
 import { MentorCard, MentorSkeleton } from './mentor-card';
 
 // Existing dashboard components
-import StatsRow, {
-  StatsSkeleton,
+import {
   TotalMergesCard,
   TotalMergesSkeleton,
   MentorPointsCard,
@@ -30,8 +29,6 @@ import RepositoryMatches, { RepositoryMatchesSkeleton } from './repository-match
 
 // contributor-dashboard components
 import {
-  ProfileSidebar, // Keep if still used
-  ProfileSidebarSkeleton,
   ProfileIdentityCard,
   ProfileIdentitySkeleton,
   ProfileXpCard,
