@@ -51,6 +51,15 @@
       ]
     },
     {
+      "login": "rhalbhavi",
+      "name": "rhalbhavi",
+      "avatar_url": "https://avatars.githubusercontent.com/u/192779415?v=4",
+      "profile": "https://github.com/rhalbhavi",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
       "login": "jakharmonika364",
       "name": "monika jakhar",
       "avatar_url": "https://avatars.githubusercontent.com/u/235066719?v=4",
@@ -256,19 +265,10 @@
       "contributions": [
         "code"
       ]
-    },
-    {
-      "login": "PranavAgarkar07",
-      "name": "Pranav Agarkar",
-      "avatar_url": "https://avatars.githubusercontent.com/u/90404176?v=4",
-      "profile": "https://pranavagarkar07.github.io/portfolio-svelte/",
-      "contributions": [
-        "code"
-      ]
     }
   ],
   "contributorsPerLine": 10,
-  "projectOwner": "Coder-s-OG-s",
+  "projectOwner": "rhalbhavi",
   "projectName": "MergeShip",
   "repoType": "github",
   "commitConvention": "angular"
