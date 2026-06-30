@@ -19,6 +19,7 @@ import {
   getPrCiStatus,
   getReviewerLoad,
   closePullRequest,
+  getPrActivityTimeline,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -80,10 +81,21 @@ vi.mock('@/inngest/client', () => ({
 }));
 
 const mockPullsUpdate = vi.fn();
+const mockPullsGet = vi.fn();
+const mockIssuesListComments = vi.fn();
+const mockPullsListReviews = vi.fn();
+const mockPullsListCommits = vi.fn();
+
 vi.mock('@/lib/github/app', () => ({
   getInstallOctokit: vi.fn(() => ({
     pulls: {
       update: mockPullsUpdate,
+      get: mockPullsGet,
+      listReviews: mockPullsListReviews,
+      listCommits: mockPullsListCommits,
+    },
+    issues: {
+      listComments: mockIssuesListComments,
     },
   })),
 }));
@@ -984,6 +996,118 @@ describe('maintainer actions', () => {
         state: 'closed',
       });
       expect(updateChain.update).toHaveBeenCalledWith({ state: 'closed' });
+    });
+  });
+
+  // getPrActivityTimeline
+
+  describe('getPrActivityTimeline', () => {
+    beforeEach(() => {
+      mockPullsGet.mockClear();
+      mockIssuesListComments.mockClear();
+      mockPullsListReviews.mockClear();
+      mockPullsListCommits.mockClear();
+    });
+
+    it('returns not_found when PR is not in DB', async () => {
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await getPrActivityTimeline(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('PR not found');
+      }
+    });
+
+    it('returns fallback mock data for demo repos', async () => {
+      const mockPr = { repo_full_name: 'demo/repo', number: 42, author_login: 'contributor' };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['demo/repo']);
+
+      const res = await getPrActivityTimeline(123);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(4);
+        expect(res.data[0]?.type).toBe('opened');
+        expect(res.data[1]?.type).toBe('commit');
+        expect(res.data[2]?.type).toBe('comment');
+        expect(res.data[3]?.type).toBe('review');
+      }
+    });
+
+    it('returns sorted live data on success', async () => {
+      const originalAppId = process.env.GITHUB_APP_ID;
+      process.env.GITHUB_APP_ID = '123456';
+      try {
+        const mockPr = { repo_full_name: 'org/repo', number: 42, author_login: 'alice' };
+        const mockRepo = { installation_id: 1 };
+        mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+
+        vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+        // Setup Octokit mock responses
+        mockPullsGet.mockResolvedValueOnce({
+          data: {
+            created_at: '2026-06-30T10:00:00Z',
+            user: { login: 'alice', avatar_url: 'url-alice' },
+          },
+        });
+
+        mockIssuesListComments.mockResolvedValueOnce({
+          data: [
+            {
+              id: 101,
+              created_at: '2026-06-30T10:15:00Z',
+              user: { login: 'bob', avatar_url: 'url-bob' },
+              body: 'My comment',
+            },
+          ],
+        });
+
+        mockPullsListReviews.mockResolvedValueOnce({
+          data: [
+            {
+              id: 201,
+              submitted_at: '2026-06-30T10:30:00Z',
+              state: 'APPROVED',
+              user: { login: 'charlie', avatar_url: 'url-charlie' },
+              body: 'Approved!',
+            },
+          ],
+        });
+
+        mockPullsListCommits.mockResolvedValueOnce({
+          data: [
+            {
+              sha: 'commit-sha-123',
+              commit: {
+                committer: { date: '2026-06-30T10:10:00Z' },
+                message: 'My commit message',
+              },
+              author: { login: 'alice', avatar_url: 'url-alice' },
+            },
+          ],
+        });
+
+        const res = await getPrActivityTimeline(123);
+        expect(res.ok).toBe(true);
+        if (res.ok) {
+          expect(res.data).toHaveLength(4);
+          // Order should be chronological: opened (10:00) -> commit (10:10) -> comment (10:15) -> review (10:30)
+          expect(res.data[0]?.type).toBe('opened');
+          expect(res.data[1]?.type).toBe('commit');
+          expect(res.data[1]?.details.message).toBe('My commit message');
+          expect(res.data[2]?.type).toBe('comment');
+          expect(res.data[2]?.details.body).toBe('My comment');
+          expect(res.data[3]?.type).toBe('review');
+          expect(res.data[3]?.details.state).toBe('approved');
+        }
+      } finally {
+        process.env.GITHUB_APP_ID = originalAppId;
+      }
     });
   });
 });

@@ -15,7 +15,7 @@ import { classifyTriage, type IssueTriageBucket } from '@/lib/maintainer/issue-t
 import { inngest } from '@/inngest/client';
 import { getInstallOctokit } from '@/lib/github/app';
 import { cacheGet, cacheSet } from '@/lib/cache';
-import { type MaintainerIssueRow } from './types';
+import { type MaintainerIssueRow, type TimelineEvent } from './types';
 import { MIN_CONTRIBUTOR_LEVELS } from './constants';
 
 const PAGE_SIZE = 25;
@@ -467,4 +467,221 @@ export async function closePullRequest(prId: number): Promise<Result<{ ok: true 
   }
 
   return ok({ ok: true });
+}
+
+export async function getPrActivityTimeline(prId: number): Promise<Result<TimelineEvent[]>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:timeline', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  // Retrieve the PR from the DB using prId
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select('repo_full_name, number, author_login')
+    .eq('id', prId)
+    .maybeSingle();
+
+  if (!pr) {
+    return err('not_found', 'PR not found');
+  }
+
+  // Find the installation ID for the repo
+  const { data: repoRow } = await service
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', pr.repo_full_name)
+    .maybeSingle();
+
+  if (!repoRow?.installation_id) {
+    return err('not_found', 'Installation not found for this repository');
+  }
+  const installationId = repoRow.installation_id;
+
+  // Verify the maintainer has access to this repo under the installation
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(pr.repo_full_name)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  const [owner, repo] = pr.repo_full_name.split('/');
+  if (!owner || !repo) {
+    return err('invalid_input', 'Invalid repository format');
+  }
+
+  // Fallback for local development using mock/demo repositories or if GITHUB_APP_ID is missing
+  if (pr.repo_full_name.startsWith('demo/') || !process.env.GITHUB_APP_ID) {
+    const mockEvents: TimelineEvent[] = [
+      {
+        id: 'mock-opened',
+        type: 'opened',
+        timestamp: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+        actor: {
+          login: pr.author_login || 'contributor',
+          avatarUrl: 'https://avatars.githubusercontent.com/u/9919?v=4',
+        },
+        details: {},
+      },
+      {
+        id: 'mock-commit-1',
+        type: 'commit',
+        timestamp: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+        actor: {
+          login: pr.author_login || 'contributor',
+          avatarUrl: 'https://avatars.githubusercontent.com/u/9919?v=4',
+        },
+        details: {
+          message: 'feat: initial commit for requested feature',
+          sha: 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0',
+        },
+      },
+      {
+        id: 'mock-comment-1',
+        type: 'comment',
+        timestamp: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
+        actor: {
+          login: 'mentor-guy',
+          avatarUrl: 'https://avatars.githubusercontent.com/u/9920?v=4',
+        },
+        details: {
+          body: 'Thanks for the contribution! Could you clean up the code formatting and check the failing test cases?',
+        },
+      },
+      {
+        id: 'mock-review-1',
+        type: 'review',
+        timestamp: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
+        actor: {
+          login: 'mentor-guy',
+          avatarUrl: 'https://avatars.githubusercontent.com/u/9920?v=4',
+        },
+        details: {
+          state: 'changes_requested',
+          body: 'Please make the requested modifications to proceed.',
+        },
+      },
+    ];
+    return ok(mockEvents);
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+
+    // Fetch PR detail (live)
+    const prRes = await octokit.pulls.get({
+      owner,
+      repo,
+      pull_number: pr.number,
+    });
+    const prData = prRes.data;
+
+    // Fetch issue comments (live)
+    const commentsRes = await octokit.issues.listComments({
+      owner,
+      repo,
+      issue_number: pr.number,
+    });
+    const commentsData = commentsRes.data || [];
+
+    // Fetch reviews (live)
+    const reviewsRes = await octokit.pulls.listReviews({
+      owner,
+      repo,
+      pull_number: pr.number,
+    });
+    const reviewsData = reviewsRes.data || [];
+
+    // Fetch commits (live)
+    const commitsRes = await octokit.pulls.listCommits({
+      owner,
+      repo,
+      pull_number: pr.number,
+    });
+    const commitsData = commitsRes.data || [];
+
+    // 1. Process PR Opened Event
+    const events: TimelineEvent[] = [
+      {
+        id: 'opened',
+        type: 'opened',
+        timestamp: prData.created_at,
+        actor: {
+          login: prData.user?.login ?? 'unknown',
+          avatarUrl: prData.user?.avatar_url ?? null,
+        },
+        details: {},
+      },
+    ];
+
+    // 2. Process Comments
+    for (const c of commentsData) {
+      events.push({
+        id: c.id.toString(),
+        type: 'comment',
+        timestamp: c.created_at,
+        actor: {
+          login: c.user?.login ?? 'unknown',
+          avatarUrl: c.user?.avatar_url ?? null,
+        },
+        details: {
+          body: c.body ?? '',
+        },
+      });
+    }
+
+    // 3. Process Reviews
+    for (const r of reviewsData) {
+      let state: TimelineEvent['details']['state'] = 'commented';
+      if (r.state === 'APPROVED') {
+        state = 'approved';
+      } else if (r.state === 'CHANGES_REQUESTED') {
+        state = 'changes_requested';
+      } else if (r.state === 'DISMISSED') {
+        state = 'dismissed';
+      }
+
+      if (r.submitted_at) {
+        events.push({
+          id: r.id.toString(),
+          type: 'review',
+          timestamp: r.submitted_at,
+          actor: {
+            login: r.user?.login ?? 'unknown',
+            avatarUrl: r.user?.avatar_url ?? null,
+          },
+          details: {
+            state,
+            body: r.body ?? '',
+          },
+        });
+      }
+    }
+
+    // 4. Process Commits
+    for (const c of commitsData) {
+      const timestamp = c.commit.committer?.date ?? c.commit.author?.date ?? prData.created_at;
+      events.push({
+        id: c.sha,
+        type: 'commit',
+        timestamp,
+        actor: {
+          login: c.author?.login ?? c.commit.author?.name ?? 'unknown',
+          avatarUrl: c.author?.avatar_url ?? null,
+        },
+        details: {
+          message: c.commit.message,
+          sha: c.sha,
+        },
+      });
+    }
+
+    // Sort chronologically (ascending)
+    events.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+
+    return ok(events);
+  } catch (error: any) {
+    return err('github_error', error.message || 'Failed to fetch timeline data from GitHub API');
+  }
 }
