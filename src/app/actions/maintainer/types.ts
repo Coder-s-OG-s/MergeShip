@@ -83,3 +83,10 @@ export type ReviewerLoadRow = {
   avatarUrl: string | null;
   prCount: number;
 };
+
+export type PromotionEligibleRow = {
+  githubHandle: string;
+  xp: number;
+  level: number;
+  xpNeeded: number;
+};
