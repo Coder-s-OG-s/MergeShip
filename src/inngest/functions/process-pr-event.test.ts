@@ -376,7 +376,6 @@ describe('processPrEvent - linkPrToClaim issues relation array', () => {
     );
   });
 });
-
 describe('processPrEvent - auto-assign mentor chain', () => {
   beforeEach(() => {
     vi.clearAllMocks();

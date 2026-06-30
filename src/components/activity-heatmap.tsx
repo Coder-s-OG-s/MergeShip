@@ -241,7 +241,7 @@ export function ActivityHeatmap({ activityHistory, allTimeContributions }: Activ
           ))}
         </div>
 
-        <div className="overflow-x-auto pb-1">
+        <div className="overflow-x-auto overflow-y-hidden pb-3">
           <div className="inline-block font-mono">
             {/* Month labels row */}
             <div className="relative mb-1 ml-8" style={{ width: `${gridWidth}px`, height: '16px' }}>
