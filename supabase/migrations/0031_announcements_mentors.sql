@@ -21,3 +21,9 @@ CREATE POLICY "Public read-only for announcements" ON "announcements" FOR SELECT
 
 ALTER TABLE "mentor_sessions" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view own mentor sessions" ON "mentor_sessions" FOR SELECT USING (auth.uid() = user_id);
+
+GRANT ALL ON TABLE public.announcements TO postgres, service_role;
+GRANT SELECT ON TABLE public.announcements TO authenticated, anon;
+
+GRANT ALL ON TABLE public.mentor_sessions TO postgres, service_role;
+GRANT SELECT ON TABLE public.mentor_sessions TO authenticated;

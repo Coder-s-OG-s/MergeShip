@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Trophy, Flame, Swords, Users, Globe, Calendar, Building2, UserPlus } from 'lucide-react';
 import type { LeaderboardEntry } from '@/app/actions/leaderboard';
+import { useSeasonCountdown } from '@/hooks/useSeasonCountdown';
 
 type Tab = 'global' | 'monthly' | 'organization' | 'friends';
 
@@ -56,7 +57,6 @@ export function LeaderboardContent({
   const upperPercentile = userRankInfo
     ? ((totalContributors - userRankInfo.rank) / totalContributors) * 100
     : null;
-
   const rivals = useMemo(() => {
     if (!userHandle) return [];
     const userIndex = displayEntries.findIndex((e) => e.githubHandle === userHandle);
@@ -65,7 +65,6 @@ export function LeaderboardContent({
     const after = displayEntries[userIndex + 1] ?? null;
     return [before, after].filter(Boolean) as LeaderboardEntry[];
   }, [displayEntries, userHandle]);
-
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -81,6 +80,8 @@ export function LeaderboardContent({
     if (xp >= 1_000) return `${(xp / 1_000).toFixed(1)}K`;
     return xp.toLocaleString();
   };
+
+  const { countdownText, isLoading, endDate } = useSeasonCountdown();
 
   return (
     <div className="flex min-h-screen bg-[#0D0E12] font-mono text-white">
@@ -429,7 +430,7 @@ export function LeaderboardContent({
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
             <div className="mb-2 flex items-center justify-between text-xs">
               <span className="text-zinc-400">Ends in</span>
-              <span className="font-mono tabular-nums text-zinc-300">12d 14h</span>
+              <span className="font-mono tabular-nums text-zinc-300">{countdownText}</span>
             </div>
             <p className="mb-3 text-xs text-zinc-500">Top 100 get &apos;Founder&apos; badge</p>
             <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">

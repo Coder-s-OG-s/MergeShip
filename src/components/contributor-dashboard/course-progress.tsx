@@ -1,16 +1,39 @@
 import Link from 'next/link';
 import { CheckCircle2, Circle, ArrowRight } from 'lucide-react';
+import { getServiceSupabase } from '@/lib/supabase/service';
 
-// Static curriculum — replace with DB query when a `course_progress` table exists
-const STEPS = [
-  { id: 1, title: 'Fork & clone a repository', done: true },
-  { id: 2, title: 'Make your first commit', done: true },
-  { id: 3, title: 'Open a pull request', done: false },
-  { id: 4, title: 'Respond to review feedback', done: false },
-  { id: 5, title: 'Get your PR merged', done: false },
-];
+export async function CourseProgress({ userId }: { userId: string }) {
+  const service = getServiceSupabase();
+  if (!service) return null;
 
-export function CourseProgress() {
+  const [recsRes, prsRes] = await Promise.all([
+    service
+      .from('recommendations')
+      .select('id')
+      .eq('user_id', userId)
+      .in('status', ['claimed', 'completed'])
+      .limit(1),
+    service
+      .from('pull_requests')
+      .select('id, state, merged_at, mentor_verified')
+      .eq('author_user_id', userId),
+  ]);
+
+  const hasClaimedIssue = (recsRes.data?.length ?? 0) > 0;
+  const prs = prsRes.data ?? [];
+  const hasOpenedPR = prs.length > 0;
+  const hasMentorVerified = prs.some(
+    (pr) => pr.mentor_verified || pr.state === 'merged' || pr.merged_at !== null,
+  );
+  const hasMergedPR = prs.some((pr) => pr.state === 'merged' || pr.merged_at !== null);
+
+  const STEPS = [
+    { id: 1, title: 'Claim an open issue', done: hasClaimedIssue || hasOpenedPR },
+    { id: 2, title: 'Open a pull request', done: hasOpenedPR },
+    { id: 3, title: 'Pass mentor review', done: hasMentorVerified },
+    { id: 4, title: 'Get your PR merged', done: hasMergedPR },
+  ];
+
   const completedCount = STEPS.filter((s) => s.done).length;
   const nextStep = STEPS.find((s) => !s.done);
 

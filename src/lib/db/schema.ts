@@ -405,6 +405,7 @@ export const pullRequests = pgTable(
     mentorReviewAt: timestamp('mentor_review_at', { withTimezone: true }),
     mentorCommentId: bigint('mentor_comment_id', { mode: 'number' }),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+    aiFlagged: boolean('ai_flagged').notNull().default(false),
   },
   (t) => ({
     uniqRepoNumber: uniqueIndex('pull_requests_repo_number_unique').on(t.repoFullName, t.number),

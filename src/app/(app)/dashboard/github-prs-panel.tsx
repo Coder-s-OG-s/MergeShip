@@ -20,8 +20,8 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
   const filtered = prs.filter((pr) => pr.state === filter);
 
   return (
-    <section>
-      <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
+    <section className="flex h-full flex-col">
+      <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">MY PRS</h2>
         <div className="flex items-center gap-4">
           <select
@@ -44,7 +44,7 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
         </div>
       </div>
 
-      <div className="max-h-[520px] overflow-y-auto pr-1 [&::-webkit-scrollbar-thumb:hover]:bg-zinc-500 [&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-1">
+      <div className="custom-scrollbar flex-1 overflow-y-auto pr-2">
         {filtered.length === 0 ? (
           <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
             No {filter} PRs.
@@ -52,7 +52,7 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
         ) : (
           <div className="space-y-6">
             {filtered.map((pr) => (
-              <div key={pr.id} className="border-b border-[#2d333b] pb-6 last:border-0">
+              <div key={pr.id} className="border-b border-zinc-800 pb-6 last:border-0">
                 <Link href={pr.url} target="_blank" rel="noopener noreferrer">
                   <h3 className="mb-1 text-[15px] text-white hover:underline">{pr.title}</h3>
                 </Link>
