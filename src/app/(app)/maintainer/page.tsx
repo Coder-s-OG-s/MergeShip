@@ -12,12 +12,14 @@ import {
   getTopContributors,
   getInstallationSettings,
   getReviewerLoad,
+  getPromotionEligible,
   type FlaggedAccountRow,
   type InstallationSettingsData,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
   type ReviewerLoadRow,
+  type PromotionEligibleRow,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import type { MaintainerPrRow } from '@/lib/maintainer/queue';
@@ -120,6 +122,11 @@ export default async function MaintainerPage({
   const reviewerLoads: ReviewerLoadRow[] = isOk(reviewerLoadsRes) ? reviewerLoadsRes.data : [];
   const maxLoad = reviewerLoads.length > 0 ? Math.max(...reviewerLoads.map((r) => r.prCount)) : 0;
 
+  const promotionEligibleRes = await getPromotionEligible({ installationId: activeInstallId });
+  const promotionEligible: PromotionEligibleRow[] = isOk(promotionEligibleRes)
+    ? promotionEligibleRes.data
+    : [];
+
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-5xl">
@@ -194,6 +201,46 @@ export default async function MaintainerPage({
         </p>
         <QueueSettings settings={settings} />
         <AnalyticsTrends data={analyticsTrends} />
+        {promotionEligible.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-emerald-900/60 bg-emerald-950/20 p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-emerald-100">Promotion Eligible</h2>
+                <p className="mt-1 text-xs text-emerald-200/70">
+                  These contributors are within 10% of their next level.
+                </p>
+              </div>
+              <span className="rounded-full bg-emerald-900/50 px-2 py-1 text-xs text-emerald-100">
+                {promotionEligible.length} contributor{promotionEligible.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {promotionEligible.map((c) => (
+                <div key={c.githubHandle} className="rounded-lg border border-emerald-900/50 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-emerald-50">@{c.githubHandle}</p>
+                      <p className="mt-1 text-xs text-emerald-200/70">
+                        L{c.level} · {c.xp.toLocaleString()} XP
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="text-xs text-emerald-200/50">
+                        {c.xpNeeded} XP to L{c.level + 1}
+                      </span>
+                      <Link
+                        href={`/@${c.githubHandle}`}
+                        className="text-xs text-emerald-400 hover:text-emerald-300"
+                      >
+                        Review profile →
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {flaggedAccounts.length > 0 && (
           <section className="mb-8 rounded-2xl border border-amber-900/60 bg-amber-950/20 p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
