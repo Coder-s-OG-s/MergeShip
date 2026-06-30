@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => {
     mockRateLimit: vi.fn(),
     mockTryGetDb: vi.fn(),
     mockSql: vi.fn((strings: TemplateStringsArray, ...values: any[]) => ({ strings, values })),
+    mockSql: vi.fn((strings, ...values) => ({ strings, values })),
+    mockGetInstallationToken: vi.fn(),
   };
 });
 
@@ -23,11 +25,31 @@ vi.mock('@/lib/supabase/server', () => ({
   })),
 }));
 
-vi.mock('@/lib/supabase/service', () => ({
-  getServiceSupabase: vi.fn(() => ({
-    from: mocks.mockServiceFrom,
-  })),
+vi.mock('@/lib/github/app', () => ({
+  getInstallationToken: mocks.mockGetInstallationToken,
 }));
+
+vi.mock('@/lib/supabase/service', () => {
+  const createLocalChain = (chainResult: unknown) => {
+    const chain: Record<string, unknown> = {
+      select: () => chain,
+      eq: () => chain,
+      limit: () => Promise.resolve(chainResult),
+      then: (resolve: (v: unknown) => void) => Promise.resolve(chainResult).then(resolve),
+    };
+    return chain;
+  };
+  return {
+    getServiceSupabase: vi.fn(() => ({
+      from: (table: string) => {
+        if (table === 'installation_repositories') {
+          return createLocalChain({ data: [] });
+        }
+        return mocks.mockServiceFrom(table);
+      },
+    })),
+  };
+});
 
 vi.mock('@/lib/cache', () => ({
   cacheGet: mocks.mockCacheGet,
@@ -137,6 +159,7 @@ describe('Recommendations Server Actions', () => {
       data: { session: { provider_token: 'gh-token-123' } },
     });
     mocks.mockRateLimit.mockResolvedValue({ ok: true });
+    mocks.mockGetInstallationToken.mockResolvedValue('fake-install-token');
     mocks.mockServiceFrom.mockImplementation(() => createMockChain(null, null));
     vi.stubGlobal(
       'fetch',
@@ -446,6 +469,54 @@ describe('Recommendations Server Actions', () => {
 
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.error.code).toBe('not_linkable');
+    });
+
+    it('uses installation token when repo is installed', async () => {
+      // Set up the getServiceSupabase mock to return an installation_id for installation_repositories
+      vi.mocked(getServiceSupabase).mockReturnValueOnce({
+        from: (table: string) => {
+          if (table === 'installation_repositories') {
+            const chain: Record<string, unknown> = {
+              select: () => chain,
+              eq: () => chain,
+              limit: () => Promise.resolve({ data: [{ installation_id: 42 }] }),
+              then: (resolve: (v: unknown) => void) =>
+                Promise.resolve({ data: [{ installation_id: 42 }] }).then(resolve),
+            };
+            return chain as any;
+          }
+          return mocks.mockServiceFrom(table);
+        },
+      } as any);
+
+      mocks.mockServiceFrom
+        // profiles lookup
+        .mockReturnValueOnce(
+          createMockChain(null, { data: { github_handle: 'testuser' }, error: null }),
+        )
+        // recommendations update
+        .mockReturnValueOnce(createMockChain(null, { data: { id: 1 }, error: null }));
+
+      mocks.mockGetInstallationToken.mockResolvedValueOnce('installed-app-token');
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ user: { login: 'testuser' } }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const result = await linkPrToRec(1, 'https://github.com/owner/repo/pull/123');
+
+      expect(result).toEqual({ ok: true, data: { id: 1 } });
+      expect(mocks.mockGetInstallationToken).toHaveBeenCalledWith(42);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.github.com/repos/owner/repo/pulls/123',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer installed-app-token',
+          }),
+        }),
+      );
     });
   }); // end linkPrToRec
 

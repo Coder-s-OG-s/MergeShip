@@ -7,6 +7,7 @@ import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { cacheDel, cacheGet, cacheSet } from '@/lib/cache';
 import { repoFilterPattern } from './issues-helpers';
 import { getInstallOctokit } from '@/lib/github/app';
+import { getInstallationToken } from '@/lib/github/app';
 
 const PAGE_SIZE = 10;
 
@@ -131,21 +132,36 @@ export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
 
       const { data: repoRows } = await service
         .from('installation_repositories')
-        .select('repo_full_name')
+        .select('repo_full_name, installation_id')
         .in('installation_id', instIds);
 
-      const userRepos = [
-        ...new Set((repoRows ?? []).map((r: { repo_full_name: string }) => r.repo_full_name)),
-      ];
-      if (userRepos.length === 0) return ok([]);
+      if (!repoRows || repoRows.length === 0) return ok([]);
 
-      // Get provider token so we can call GitHub API to detect forks
-      const sessionRes = await sb.auth.getSession();
-      const token = sessionRes.data.session?.provider_token;
+      // Map repo name to its installation ID
+      const repoToInstId = new Map<string, number>();
+      for (const row of repoRows as { repo_full_name: string; installation_id: number }[]) {
+        repoToInstId.set(row.repo_full_name, row.installation_id);
+      }
+
+      const userRepos = [...repoToInstId.keys()];
 
       // Resolve each repo: if it's a fork, use the upstream (parent) as the issues source
       const options = await Promise.all(
         userRepos.map(async (repo): Promise<RepoOption> => {
+          const instId = repoToInstId.get(repo);
+          let token: string | undefined;
+          if (instId) {
+            try {
+              token = await getInstallationToken(instId);
+            } catch {
+              // fall back
+            }
+          }
+          if (!token) {
+            const sessionRes = await sb.auth.getSession();
+            token = sessionRes.data.session?.provider_token ?? undefined;
+          }
+
           if (!token) return { label: repo, value: repo };
           try {
             const res = await fetch(`https://api.github.com/repos/${repo}`, {

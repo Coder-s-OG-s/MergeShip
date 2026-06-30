@@ -18,6 +18,9 @@ import {
   resolveFlaggedAccount,
   getPrCiStatus,
   getReviewerLoad,
+  closePullRequest,
+  getNoiseBreakdown,
+  getPromotionEligible,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -76,6 +79,15 @@ vi.mock('@/lib/rate-limit', async (importOriginal) => {
 
 vi.mock('@/inngest/client', () => ({
   inngest: { send: vi.fn() },
+}));
+
+const mockPullsUpdate = vi.fn();
+vi.mock('@/lib/github/app', () => ({
+  getInstallOctokit: vi.fn(() => ({
+    pulls: {
+      update: mockPullsUpdate,
+    },
+  })),
 }));
 
 // Chainable Supabase query mock — every method returns self, await resolves to { data, error }
@@ -834,6 +846,127 @@ describe('maintainer actions', () => {
     });
   });
 
+  // getPromotionEligible
+
+  describe('getPromotionEligible', () => {
+    beforeEach(() => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+    });
+
+    it('returns rate_limited when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+      const res = await getPromotionEligible({ installationId: 1 });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns empty array if maintainer has no repos in install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+      const res = await getPromotionEligible({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('returns empty array if no XP events found for the repos', async () => {
+      // First query: xp_events → empty
+      mockFrom.mockReturnValueOnce(chain([]));
+      const res = await getPromotionEligible({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('returns contributors within 10% of next level', async () => {
+      // L1→L2: gap=459-100=359, floor(35.9)=35, trigger=459-35=424
+      // alice: level=1, xp=430 >= 424 ✓ (xpNeeded=459-430=29)
+      // bob:   level=1, xp=400 < 424 ✗ (xpNeeded=59 > 35)
+      // L2→L3: gap=1119-459=660, floor(66)=66, trigger=1119-66=1053
+      // carol: level=2, xp=1100 >= 1053 ✓ (xpNeeded=1119-1100=19)
+      mockFrom
+        .mockReturnValueOnce(
+          chain([{ user_id: 'user-alice' }, { user_id: 'user-bob' }, { user_id: 'user-carol' }]),
+        )
+        .mockReturnValueOnce(
+          chain([
+            { github_handle: 'alice', xp: 430, level: 1 },
+            { github_handle: 'bob', xp: 400, level: 1 },
+            { github_handle: 'carol', xp: 1100, level: 2 },
+          ]),
+        );
+
+      const res = await getPromotionEligible({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(2);
+        // Sorted ASC by xpNeeded: carol(19) first, alice(29) second
+        expect(res.data[0]?.githubHandle).toBe('carol');
+        expect(res.data[0]?.xpNeeded).toBe(19);
+        expect(res.data[1]?.githubHandle).toBe('alice');
+        expect(res.data[1]?.xpNeeded).toBe(29);
+        expect(res.data[1]?.level).toBe(1);
+      }
+    });
+
+    it('excludes contributors already at max level', async () => {
+      // MAX_LEVEL = 5; these contributors should be excluded
+      mockFrom
+        .mockReturnValueOnce(chain([{ user_id: 'user-max' }]))
+        .mockReturnValueOnce(chain([{ github_handle: 'maxlevel', xp: 3404, level: 5 }]));
+
+      const res = await getPromotionEligible({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('sorts results by xpNeeded ascending (closest to promotion first)', async () => {
+      // L1→L2: gap=359, floor(35.9)=35, trigger=424
+      // charlie: level=1, xp=450, xpNeeded=9
+      // alice:   level=1, xp=430, xpNeeded=29
+      mockFrom
+        .mockReturnValueOnce(chain([{ user_id: 'user-alice' }, { user_id: 'user-charlie' }]))
+        .mockReturnValueOnce(
+          chain([
+            { github_handle: 'alice', xp: 430, level: 1 },
+            { github_handle: 'charlie', xp: 450, level: 1 },
+          ]),
+        );
+
+      const res = await getPromotionEligible({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data[0]?.githubHandle).toBe('charlie');
+        expect(res.data[1]?.githubHandle).toBe('alice');
+      }
+    });
+
+    it('returns at most 10 results', async () => {
+      // Create 12 eligible users all at level=1 with xp=430 (trigger=424, xpNeeded=29)
+      const eventRows = Array.from({ length: 12 }, (_, i) => ({ user_id: `user-${i}` }));
+      const profileRows = Array.from({ length: 12 }, (_, i) => ({
+        github_handle: `user${i}`,
+        xp: 430,
+        level: 1,
+      }));
+
+      mockFrom.mockReturnValueOnce(chain(eventRows)).mockReturnValueOnce(chain(profileRows));
+
+      const res = await getPromotionEligible({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toHaveLength(10);
+    });
+
+    it('excludes contributors whose stored level is stale (xpNeeded would be negative)', async () => {
+      // L1 contributor with xp=500 already exceeds L2 threshold (459) — stale level
+      mockFrom
+        .mockReturnValueOnce(chain([{ user_id: 'u1' }]))
+        .mockReturnValueOnce(chain([{ github_handle: 'stale', xp: 500, level: 1 }]));
+      const res = await getPromotionEligible({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+  });
+
   // getReviewerLoad
 
   describe('getReviewerLoad', () => {
@@ -885,6 +1018,148 @@ describe('maintainer actions', () => {
         expect(res.data[0]?.prCount).toBe(3);
         expect(res.data[1]?.githubHandle).toBe('bob');
         expect(res.data[1]?.prCount).toBe(1);
+      }
+    });
+  });
+
+  // closePullRequest
+
+  describe('closePullRequest', () => {
+    beforeEach(() => {
+      mockPullsUpdate.mockClear();
+    });
+
+    it('returns not_found when PR does not exist in DB', async () => {
+      // Mock PR query returning null
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await closePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('PR not found');
+      }
+    });
+
+    it('returns not_found when installation is not found for repo', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      mockFrom
+        .mockReturnValueOnce(chain(mockPr)) // for pull_requests query
+        .mockReturnValueOnce(chain(null)); // for installation_repositories query
+
+      const res = await closePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('Installation not found for this repository');
+      }
+    });
+
+    it('returns not_authorised when user does not maintain repo', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom
+        .mockReturnValueOnce(chain(mockPr)) // for pull_requests query
+        .mockReturnValueOnce(chain(mockRepo)); // for installation_repositories query
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/other']);
+
+      const res = await closePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_authorised');
+      }
+    });
+
+    it('returns github_error when pulls.update fails', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockPullsUpdate.mockRejectedValueOnce(new Error('GitHub error'));
+
+      const res = await closePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('github_error');
+      }
+    });
+
+    it('updates state to closed in DB on success', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      const updateChain = chain({ id: 123 });
+      mockFrom
+        .mockReturnValueOnce(chain(mockPr))
+        .mockReturnValueOnce(chain(mockRepo))
+        .mockReturnValueOnce(updateChain);
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockPullsUpdate.mockResolvedValueOnce({});
+
+      const res = await closePullRequest(123);
+      expect(res.ok).toBe(true);
+      expect(mockPullsUpdate).toHaveBeenCalledWith({
+        owner: 'org',
+        repo: 'repo',
+        pull_number: 42,
+        state: 'closed',
+      });
+      expect(updateChain.update).toHaveBeenCalledWith({ state: 'closed' });
+    });
+  });
+
+  // getNoiseBreakdown
+
+  describe('getNoiseBreakdown', () => {
+    it('returns rate_limited when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+      const res = await getNoiseBreakdown({ installationId: 1 });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns all zeros if maintainer has no repos in install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+      const res = await getNoiseBreakdown({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({ valid: 0, spamAi: 0, other: 0, total: 0 });
+      }
+    });
+
+    it('correctly aggregates PRs into valid, spamAi, and other categories', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+
+      const mockRows = [
+        { aiFlagged: true, state: 'open', cnt: 3 }, // spamAi
+        { aiFlagged: true, state: 'closed', cnt: 2 }, // spamAi
+        { aiFlagged: false, state: 'closed', cnt: 5 }, // other
+        { aiFlagged: false, state: 'open', cnt: 10 }, // valid
+        { aiFlagged: false, state: 'merged', cnt: 4 }, // valid
+      ];
+
+      // Custom query builder chain mapping the Drizzle API called in getNoiseBreakdown
+      const query = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        groupBy: vi.fn().mockReturnThis(),
+        then: vi.fn((resolve) => resolve(mockRows)),
+      };
+      mockDbSelect.mockReturnValueOnce(query);
+
+      const res = await getNoiseBreakdown({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({
+          spamAi: 5, // 3 + 2
+          other: 5, // 5
+          valid: 14, // 10 + 4
+          total: 24,
+        });
       }
     });
   });

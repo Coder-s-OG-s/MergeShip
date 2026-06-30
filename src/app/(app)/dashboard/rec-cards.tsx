@@ -105,10 +105,10 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
           </div>
         )
       )}
-      <div className="max-h-[520px] overflow-y-auto pr-1 [&::-webkit-scrollbar-thumb:hover]:bg-zinc-500 [&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-1">
+      <div>
         <ul>
           {recs.map((rec) => (
-            <li key={rec.id} className="border-b border-[#2d333b] py-6 last:border-0">
+            <li key={rec.id} className="border-b border-zinc-800 py-6 last:border-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span
                   className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${TIER_COLOR[rec.difficulty]}`}
