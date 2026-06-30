@@ -427,7 +427,6 @@ export async function getNoiseBreakdown(args: {
 }): Promise<Result<NoiseBreakdown>> {
   const authRes = await requireMaintainer({
     rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
-    requireService: true,
   });
   if (!authRes.ok) return authRes;
   const { user } = authRes.data;

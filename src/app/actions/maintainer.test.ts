@@ -18,6 +18,7 @@ import {
   resolveFlaggedAccount,
   getPrCiStatus,
   getReviewerLoad,
+  getNoiseBreakdown,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -885,6 +886,60 @@ describe('maintainer actions', () => {
         expect(res.data[0]?.prCount).toBe(3);
         expect(res.data[1]?.githubHandle).toBe('bob');
         expect(res.data[1]?.prCount).toBe(1);
+      }
+    });
+  });
+
+  // getNoiseBreakdown
+
+  describe('getNoiseBreakdown', () => {
+    it('returns rate_limited when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+      const res = await getNoiseBreakdown({ installationId: 1 });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns all zeros if maintainer has no repos in install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+      const res = await getNoiseBreakdown({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({ valid: 0, spamAi: 0, other: 0, total: 0 });
+      }
+    });
+
+    it('correctly aggregates PRs into valid, spamAi, and other categories', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+
+      const mockRows = [
+        { aiFlagged: true, state: 'open', cnt: 3 }, // spamAi
+        { aiFlagged: true, state: 'closed', cnt: 2 }, // spamAi
+        { aiFlagged: false, state: 'closed', cnt: 5 }, // other
+        { aiFlagged: false, state: 'open', cnt: 10 }, // valid
+        { aiFlagged: false, state: 'merged', cnt: 4 }, // valid
+      ];
+
+      // Custom query builder chain mapping the Drizzle API called in getNoiseBreakdown
+      const query = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        groupBy: vi.fn().mockReturnThis(),
+        then: vi.fn((resolve) => resolve(mockRows)),
+      };
+      mockDbSelect.mockReturnValueOnce(query);
+
+      const res = await getNoiseBreakdown({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({
+          spamAi: 5, // 3 + 2
+          other: 5, // 5
+          valid: 14, // 10 + 4
+          total: 24,
+        });
       }
     });
   });
