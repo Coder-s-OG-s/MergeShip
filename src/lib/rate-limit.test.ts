@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { __setMemoryCache } from './cache';
-import { rateLimit } from './rate-limit';
+import { rateLimit, RATE_LIMIT_TIERS } from './rate-limit';
 
 beforeEach(() => {
   __setMemoryCache();
@@ -62,5 +62,15 @@ describe('rateLimit', () => {
   it('reset timestamp in the future', async () => {
     const r = await rateLimit({ namespace: 'test', key: 'u', limit: 5, windowSec: 60 });
     expect(r.resetAt).toBeGreaterThan(Date.now());
+  });
+});
+
+describe('RATE_LIMIT_TIERS', () => {
+  it('defines standard, generous, medium, strict, and hourly tiers', () => {
+    expect(RATE_LIMIT_TIERS.STANDARD).toEqual({ limit: 30, windowSec: 60 });
+    expect(RATE_LIMIT_TIERS.GENEROUS).toEqual({ limit: 60, windowSec: 60 });
+    expect(RATE_LIMIT_TIERS.MEDIUM).toEqual({ limit: 20, windowSec: 60 });
+    expect(RATE_LIMIT_TIERS.STRICT).toEqual({ limit: 10, windowSec: 60 });
+    expect(RATE_LIMIT_TIERS.HOURLY).toEqual({ limit: 5, windowSec: 3600 });
   });
 });

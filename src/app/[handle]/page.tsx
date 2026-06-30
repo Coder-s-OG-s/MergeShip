@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { ExternalLink, ArrowLeft } from 'lucide-react';
 import { CopyButton } from '@/components/copy-button';
 import { ActivityHeatmap } from '@/components/activity-heatmap';
+import { totalContributions } from '@/lib/contributions/activity-history';
+import { loadActivityHistory } from '@/lib/contributions/load-activity-history';
 
 export const revalidate = 300;
 
@@ -138,7 +140,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     claimedRecsResult,
     recentPRsResult,
     recentRecsResult,
-    activityResult,
+    activityHistory,
   ] = await Promise.all([
     // Merged PRs count
     service
@@ -185,12 +187,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
       .order('claimed_at', { ascending: false })
       .limit(5),
 
-    // All-time public activity from xp_events (no date filter) for all-time contribution count
-    service
-      .from('xp_events')
-      .select('created_at')
-      .eq('user_id', profile.id)
-      .in('source', ['recommended_merge', 'unrecommended_merge', 'help_review']),
+    loadActivityHistory(profile.id),
   ]);
 
   const prsMerged = prsResult.count ?? 0;
@@ -292,18 +289,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
   const { getPublicStreak } = await import('@/app/actions/streak');
   const { days: streakDays } = await getPublicStreak(profile.id);
 
-  // Group all events by day in UTC (all-time)
-  const activityMap: Record<string, number> = {};
-  let allTimeContributions = 0;
-  for (const event of activityResult.data ?? []) {
-    const dateStr = new Date(event.created_at).toISOString().slice(0, 10);
-    activityMap[dateStr] = (activityMap[dateStr] || 0) + 1;
-    allTimeContributions++;
-  }
-  const activityHistory = Object.entries(activityMap).map(([date, count]) => ({
-    date,
-    count,
-  }));
+  const allTimeContributions = totalContributions(activityHistory);
 
   const data: ProfileData = {
     profileId: profile.id,
@@ -670,10 +656,10 @@ export default async function PublicProfile({ params }: { params: Promise<{ hand
         <div className="mx-auto flex max-w-6xl justify-between">
           <span>© 2024 MERGESHIP — ALL SYSTEMS NOMINAL</span>
           <div className="flex gap-6">
-            <Link href="#" className="hover:text-zinc-500">
+            <Link href="/privacy" className="hover:text-zinc-500">
               PRIVACY
             </Link>
-            <Link href="#" className="hover:text-zinc-500">
+            <Link href="/terms" className="hover:text-zinc-500">
               TERMS
             </Link>
           </div>

@@ -132,9 +132,9 @@ export default function DocsPage() {
 
         <div className="nav-auth">
           {!configured ? (
-            <span className="btn-signin" style={{ cursor: 'not-allowed' }}>
-              Sign-in coming soon
-            </span>
+            <Link href="/dev/login" className="btn-signin-border">
+              Login
+            </Link>
           ) : user ? (
             <>
               <span className="btn-signin">{user.name || user.email}</span>
@@ -173,9 +173,9 @@ export default function DocsPage() {
             <Link href="/#cta" onClick={() => setMenuOpen(false)}>Pricing</Link>
             <div className="mobile-nav-divider" />
             {!configured ? (
-              <span style={{ padding: '14px 24px', color: 'var(--text-muted)' }}>
-                Sign-in coming soon
-              </span>
+              <Link href="/dev/login" onClick={() => setMenuOpen(false)}>
+                Login
+              </Link>
             ) : user ? (
               <>
                 <Link href="/dashboard" className="btn-neon" onClick={() => setMenuOpen(false)}>
@@ -249,10 +249,10 @@ export default function DocsPage() {
             © 2026 MergeShip. <span>Built for performance.</span>
           </div>
           <div className="footer-links">
-            <a href="#">Security</a>
-            <a href="#">Terms</a>
-            <a href="#">Privacy</a>
-          </div>
+  <Link href="/security">Security</Link>
+  <Link href="/terms">Terms</Link>
+  <Link href="/privacy">Privacy</Link>
+</div>
         </div>
       </footer>
     </div>

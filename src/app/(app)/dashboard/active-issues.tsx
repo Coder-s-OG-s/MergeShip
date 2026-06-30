@@ -12,8 +12,8 @@ export default async function ActiveIssuesSection() {
   }
 
   return (
-    <section>
-      <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
+    <section className="flex h-full flex-col">
+      <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">ACTIVE ISSUES</h2>
         <Link
           href="/issues"
@@ -23,25 +23,29 @@ export default async function ActiveIssuesSection() {
         </Link>
       </div>
 
-      {recs.length > 0 ? (
-        <RecCards recs={recs} />
-      ) : (
-        <div className="py-4 text-sm text-zinc-500">No recommendations yet. Check back soon.</div>
-      )}
+      <div className="custom-scrollbar flex-1 overflow-y-auto pr-2">
+        {recs.length > 0 ? (
+          <RecCards recs={recs} />
+        ) : (
+          <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
+            No recommendations yet. Check back soon.
+          </div>
+        )}
+      </div>
     </section>
   );
 }
 
 export function RecsSkeleton() {
   return (
-    <section>
-      <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
+    <section className="flex h-full flex-col">
+      <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">ACTIVE ISSUES</h2>
         <div className="h-4 w-28 animate-pulse bg-zinc-800" />
       </div>
-      <div className="space-y-6">
+      <div className="custom-scrollbar flex-1 space-y-6 overflow-y-auto pr-2">
         {[1, 2].map((i) => (
-          <div key={i} className="border-b border-[#2d333b] py-6 last:border-0">
+          <div key={i} className="border-b border-zinc-800 py-6 last:border-0">
             <div className="mb-3 flex items-center gap-2">
               <div className="h-5 w-8 animate-pulse bg-zinc-800" />
             </div>

@@ -10,20 +10,31 @@ import {
   getStaleIssues,
   getFlaggedAccounts,
   getTopContributors,
+  getInstallationSettings,
+  getReviewerLoad,
+  getNoiseBreakdown,
+  getPromotionEligible,
   type FlaggedAccountRow,
+  type InstallationSettingsData,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
+  type ReviewerLoadRow,
+  type NoiseBreakdown,
+  type PromotionEligibleRow,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import type { MaintainerPrRow } from '@/lib/maintainer/queue';
 import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
+import InviteContributorButton from './invite-contributor-button';
 import CiStatusBadge from './ci-status-badge';
 import AnalyticsTrends from './analytics-trends';
 import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
+import QueueSettings from './queue-settings';
+import { ResolveFlagButton } from './resolve-flag-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,18 +97,44 @@ export default async function MaintainerPage({
   const trendsRes = await getMaintainerAnalyticsTrends({ installationId: activeInstallId });
   const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
     ? trendsRes.data
-    : { weekly: [], levelDistribution: [] };
-  const repoHealthRes = await getRepoHealthOverview();
+    : { weekly: [], levelDistribution: [], avgReviewTimeHours: null };
+  const repoHealthRes = await getRepoHealthOverview({ installationId: activeInstallId });
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
-  const staleIssuesRes = await getStaleIssues();
+  const staleIssuesRes = await getStaleIssues({ installationId: activeInstallId });
   const staleIssues: StaleIssueRow[] = isOk(staleIssuesRes) ? staleIssuesRes.data : [];
 
-  const contributorsRes = await getTopContributors();
+  const contributorsRes = await getTopContributors({ installationId: activeInstallId });
   const topContributors: ContributorRow[] = isOk(contributorsRes) ? contributorsRes.data : [];
-  const flaggedAccountsRes = await getFlaggedAccounts();
+  const flaggedAccountsRes = await getFlaggedAccounts({ installationId: activeInstallId });
   const flaggedAccounts: FlaggedAccountRow[] = isOk(flaggedAccountsRes)
     ? flaggedAccountsRes.data
+    : [];
+  const settingsRes = await getInstallationSettings(activeInstallId);
+  const settings: InstallationSettingsData = isOk(settingsRes)
+    ? settingsRes.data
+    : {
+        installationId: activeInstallId,
+        minContributorLevel: 0,
+        autoAssignMentorChain: false,
+        aiPrDetection: false,
+      };
+
+  const reviewerLoadsRes = await getReviewerLoad({ installationId: activeInstallId });
+  const reviewerLoads: ReviewerLoadRow[] = isOk(reviewerLoadsRes) ? reviewerLoadsRes.data : [];
+  const maxLoad = reviewerLoads.length > 0 ? Math.max(...reviewerLoads.map((r) => r.prCount)) : 0;
+
+  let noise: NoiseBreakdown = { valid: 0, spamAi: 0, other: 0, total: 0 };
+  if (settings.aiPrDetection) {
+    const noiseRes = await getNoiseBreakdown({ installationId: activeInstallId });
+    if (isOk(noiseRes)) {
+      noise = noiseRes.data;
+    }
+  }
+
+  const promotionEligibleRes = await getPromotionEligible({ installationId: activeInstallId });
+  const promotionEligible: PromotionEligibleRow[] = isOk(promotionEligibleRes)
+    ? promotionEligibleRes.data
     : [];
 
   return (
@@ -105,27 +142,20 @@ export default async function MaintainerPage({
       <div className="mx-auto max-w-5xl">
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <h1 className="font-display text-3xl font-bold">Maintainer</h1>
-          <RefreshButton installationId={activeInstallId} />
+          <div className="flex items-center gap-2">
+            <InviteContributorButton
+              installationId={activeInstallId}
+              accountLogin={activeInstall.accountLogin}
+            />
+            <Link
+              href={`/maintainer?install=${activeInstallId}&state=open`}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-600"
+            >
+              View PR Queue →
+            </Link>
+            <RefreshButton installationId={activeInstallId} />
+          </div>
         </header>
-
-        {installs.length > 1 && (
-          <nav className="mb-6 flex flex-wrap gap-2 text-sm">
-            {installs.map((i) => (
-              <Link
-                key={i.installationId}
-                href={`/maintainer?install=${i.installationId}`}
-                className={`rounded-lg px-3 py-1 ${
-                  i.installationId === activeInstallId
-                    ? 'bg-zinc-800 text-white'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                {i.accountLogin}
-                <span className="ml-1.5 text-xs text-zinc-500">{i.accountType[0]}</span>
-              </Link>
-            ))}
-          </nav>
-        )}
 
         <div className="mb-4 flex flex-wrap gap-2 text-xs">
           <FilterPill
@@ -179,7 +209,48 @@ export default async function MaintainerPage({
         <p className="mb-4 text-xs text-zinc-500">
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
+        <QueueSettings settings={settings} />
         <AnalyticsTrends data={analyticsTrends} />
+        {promotionEligible.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-emerald-900/60 bg-emerald-950/20 p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-emerald-100">Promotion Eligible</h2>
+                <p className="mt-1 text-xs text-emerald-200/70">
+                  These contributors are within 10% of their next level.
+                </p>
+              </div>
+              <span className="rounded-full bg-emerald-900/50 px-2 py-1 text-xs text-emerald-100">
+                {promotionEligible.length} contributor{promotionEligible.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {promotionEligible.map((c) => (
+                <div key={c.githubHandle} className="rounded-lg border border-emerald-900/50 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-emerald-50">@{c.githubHandle}</p>
+                      <p className="mt-1 text-xs text-emerald-200/70">
+                        L{c.level} · {c.xp.toLocaleString()} XP
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="text-xs text-emerald-200/50">
+                        {c.xpNeeded} XP to L{c.level + 1}
+                      </span>
+                      <Link
+                        href={`/@${c.githubHandle}`}
+                        className="text-xs text-emerald-400 hover:text-emerald-300"
+                      >
+                        Review profile →
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {flaggedAccounts.length > 0 && (
           <section className="mb-8 rounded-2xl border border-amber-900/60 bg-amber-950/20 p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -213,6 +284,7 @@ export default async function MaintainerPage({
                     >
                       {flag.severity}
                     </span>
+                    <ResolveFlagButton flagId={flag.id} installationId={activeInstallId} />
                   </div>
                   <p className="mt-3 text-sm text-amber-100">{formatFlagReason(flag.reason)}</p>
                   <p className="mt-1 text-xs text-amber-200/70">{flag.summary}</p>
@@ -224,7 +296,27 @@ export default async function MaintainerPage({
             </div>
           </section>
         )}
-        <div className="mb-8 grid gap-6 lg:grid-cols-3">
+        <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <section className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+            <div>
+              <h2 className="mb-4 text-sm font-semibold text-white">Average Review Time</h2>
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-bold text-white">
+                  {analyticsTrends.avgReviewTimeHours !== null
+                    ? `${analyticsTrends.avgReviewTimeHours.toFixed(1)}h`
+                    : '—'}
+                </span>
+                {analyticsTrends.avgReviewTimeHours !== null && (
+                  <span className="text-xs text-zinc-500">elapsed hours</span>
+                )}
+              </div>
+            </div>
+            <div className="mt-4 border-t border-zinc-800/60 pt-3">
+              <p className="text-[11px] text-zinc-500">
+                Average duration from PR open to mentor verification for this installation.
+              </p>
+            </div>
+          </section>
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>
 
@@ -293,8 +385,42 @@ export default async function MaintainerPage({
               ))}
             </div>
           </section>
+
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+            <h2 className="mb-4 text-sm font-semibold text-white">Reviewer Load</h2>
+
+            <div className="space-y-3">
+              {reviewerLoads.length === 0 ? (
+                <p className="text-xs text-zinc-500">No active reviewer load.</p>
+              ) : (
+                reviewerLoads.map((rev) => {
+                  const percentage = maxLoad > 0 ? (rev.prCount / maxLoad) * 100 : 0;
+                  return (
+                    <div key={rev.reviewerId} className="rounded-lg border border-zinc-800 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-zinc-200">@{rev.githubHandle}</span>
+                        <span className="text-xs text-zinc-400">{rev.prCount} PRs</span>
+                      </div>
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-300"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
         </div>
 
+        {settings.aiPrDetection && (
+          <section className="mb-8 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+            <h2 className="mb-4 text-sm font-semibold text-white">PR Noise Breakdown</h2>
+            <NoiseDonut noise={noise} />
+          </section>
+        )}
         {rows.length === 0 ? (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-zinc-400">
             No PRs match your filters. Try widening state or running a refresh.
@@ -377,6 +503,78 @@ function FilterPill({ label, href, active }: { label: string; href: string; acti
     >
       {label}
     </Link>
+  );
+}
+
+function NoiseDonut({ noise }: { noise: NoiseBreakdown }) {
+  const { valid, spamAi, other, total } = noise;
+  const R = 40;
+  const C = 2 * Math.PI * R; // circumference ≈ 251.3
+
+  // Guard against zero-total to avoid divide-by-zero
+  const safePct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
+
+  // Each segment: offset advances by the previous segment's dash length
+  type Seg = { color: string; pct: number; label: string };
+  const segments: Seg[] = [
+    { color: '#10b981', pct: safePct(valid), label: 'Valid' }, // emerald-500
+    { color: '#f43f5e', pct: safePct(spamAi), label: 'Spam/AI' }, // rose-500
+    { color: '#52525b', pct: safePct(other), label: 'Other' }, // zinc-600
+  ];
+
+  let offsetPct = 0;
+  const arcs = segments.map((seg) => {
+    const dash = (seg.pct / 100) * C;
+    const offset = (offsetPct / 100) * C;
+    offsetPct += seg.pct;
+    return { ...seg, dash, offset };
+  });
+
+  return (
+    <div className="flex flex-wrap items-center gap-8">
+      <svg width="100" height="100" viewBox="0 0 100 100" className="shrink-0">
+        {total === 0 ? (
+          <circle cx="50" cy="50" r={R} fill="none" stroke="#3f3f46" strokeWidth="14" />
+        ) : (
+          arcs.map((arc) => (
+            <circle
+              key={arc.label}
+              cx="50"
+              cy="50"
+              r={R}
+              fill="none"
+              stroke={arc.color}
+              strokeWidth="14"
+              strokeDasharray={`${arc.dash} ${C - arc.dash}`}
+              strokeDashoffset={-arc.offset}
+              style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }}
+            />
+          ))
+        )}
+        <text x="50" y="54" textAnchor="middle" fontSize="13" fontWeight="600" fill="#fff">
+          {total}
+        </text>
+      </svg>
+
+      <div className="space-y-2 text-sm">
+        {total === 0 ? (
+          <p className="text-xs text-zinc-500">
+            No data yet. Classification runs as new PRs arrive.
+          </p>
+        ) : (
+          segments.map((seg) => (
+            <div key={seg.label} className="flex items-center gap-2">
+              <span
+                className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ background: seg.color }}
+              />
+              <span className="text-zinc-300">{seg.label}</span>
+              <span className="ml-auto pl-4 tabular-nums text-zinc-400">{seg.pct.toFixed(0)}%</span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 

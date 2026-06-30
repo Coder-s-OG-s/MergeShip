@@ -8,6 +8,7 @@ import {
   type SuspiciousReview,
   type SuspiciousXpEvent,
 } from '@/lib/xp/suspicious-patterns';
+import { computeCurrentStreak } from '@/lib/xp/streak';
 
 const AUDIT_PAGE_SIZE = 1000;
 const AUDIT_FILTER_CHUNK_SIZE = 500;
@@ -74,8 +75,45 @@ export const streakDetect = inngest.createFunction(
         .neq('source', XP_SOURCE.STREAK);
 
       const uniqueUsers = new Set((actives ?? []).map((r) => r.user_id));
+      const maxDays = XP_REWARDS.STREAK_CAP / XP_REWARDS.STREAK_PER_DAY;
+      const streakCutoffDate = new Date(Date.now() - (maxDays + 1) * 24 * 3600 * 1000)
+        .toISOString()
+        .slice(0, 10);
+
+      // Bulk-fetch XP events for all active users in the streak window
+      // to avoid N+1 per-user queries.
+      const activeUserIds = [...uniqueUsers].filter((id): id is string => !!id);
+      const eventsByUser = new Map<string, Array<{ created_at: string }>>();
+      for (let i = 0; i < activeUserIds.length; i += 100) {
+        const chunk = activeUserIds.slice(i, i + 100);
+        for (let from = 0; ; from += 1000) {
+          const { data: eventsPage } = await sb
+            .from('xp_events')
+            .select('user_id, created_at')
+            .in('user_id', chunk)
+            .gte('created_at', `${streakCutoffDate}T00:00:00Z`)
+            .lt('created_at', `${today}T00:00:00Z`)
+            .range(from, from + 999);
+          for (const row of eventsPage ?? []) {
+            if (!row.user_id) continue;
+            if (!eventsByUser.has(row.user_id)) {
+              eventsByUser.set(row.user_id, []);
+            }
+            eventsByUser.get(row.user_id)!.push({ created_at: row.created_at });
+          }
+          if (!eventsPage || eventsPage.length < 1000) break;
+        }
+      }
+
       let awarded = 0;
-      for (const userId of uniqueUsers) {
+      for (const userId of activeUserIds) {
+        const userEvents = eventsByUser.get(userId) ?? [];
+        const streakDays = computeCurrentStreak(userEvents, yesterday);
+
+        if (streakDays > maxDays) {
+          continue;
+        }
+
         const inserted = await insertXpEvent({
           userId,
           source: XP_SOURCE.STREAK,
@@ -99,7 +137,7 @@ export const streakDetect = inngest.createFunction(
  */
 export const recsExpire = inngest.createFunction(
   { id: 'recs-expire' },
-  { cron: '0 * * * *' }, // hourly
+  { cron: '0 */6 * * *' }, // every 6 hours
   async ({ step }) => {
     return await step.run('expire-stale-recs', async () => {
       const sb = getServiceSupabase();

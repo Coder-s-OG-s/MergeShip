@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 type ActivityDay = {
   date: string;
   count: number;
@@ -10,91 +12,185 @@ interface ActivityHeatmapProps {
   allTimeContributions: number;
 }
 
-export function ActivityHeatmap({ activityHistory, allTimeContributions }: ActivityHeatmapProps) {
-  // Convert history array to a lookup map
-  const activityMap = new Map<string, number>();
-  for (const item of activityHistory) {
-    activityMap.set(item.date, item.count);
-  }
+// GitHub-style green color scale
+function getColor(count: number, isFuture: boolean): string {
+  if (isFuture) return 'bg-transparent cursor-default';
+  if (count === 0)
+    return 'bg-[#161b22] border border-[#21262d] hover:border-zinc-500 cursor-default';
+  if (count === 1) return 'bg-[#0e4429] border border-[#196c2e]/60 hover:border-[#39d353]/60';
+  if (count <= 3) return 'bg-[#006d32] border border-[#26a641]/60 hover:border-[#39d353]/80';
+  if (count <= 6) return 'bg-[#26a641] border border-[#39d353]/60 hover:border-[#39d353]';
+  return 'bg-[#39d353] border border-[#39d353]/80 hover:border-white';
+}
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+// Cell dimensions
+const CELL = 11; // px
+const GAP = 2; // px
+const CELL_FULL = CELL + GAP; // 13px per cell
 
-  // Display exactly 53 columns (weeks), each with 7 rows (Sunday to Saturday).
-  // Find the Sunday of the week containing today.
-  const currentDayOfWeek = today.getDay(); // 0 = Sunday
+/**
+ * Build the day/week grid for the "last 53 weeks" (trailing) view — current year mode.
+ */
+export function buildTrailingGrid(activityMap: Map<string, number>, now = new Date()) {
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
+  const currentDayOfWeek = today.getUTCDay(); // 0 = Sunday
   const startOfCurrentWeek = new Date(today);
-  startOfCurrentWeek.setDate(today.getDate() - currentDayOfWeek);
+  startOfCurrentWeek.setUTCDate(today.getUTCDate() - currentDayOfWeek);
 
   const startDate = new Date(startOfCurrentWeek);
-  startDate.setDate(startOfCurrentWeek.getDate() - 52 * 7); // 52 weeks ago Sunday
+  startDate.setUTCDate(startOfCurrentWeek.getUTCDate() - 52 * 7); // 52 weeks ago Sunday
 
-  // Generate 371 days (53 weeks × 7 days)
   const days: { dateStr: string; count: number; isFuture: boolean; label: string }[] = [];
   const runningDate = new Date(startDate);
 
   for (let i = 0; i < 371; i++) {
     const ymd = runningDate.toISOString().slice(0, 10);
-    const count = activityMap.get(ymd) || 0;
+    const count = activityMap.get(ymd) ?? 0;
     const isFuture = runningDate > today;
     const formattedDate = runningDate.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
+      timeZone: 'UTC',
     });
-
     days.push({
       dateStr: ymd,
       count,
       isFuture,
       label: isFuture ? '' : `${count} contribution${count === 1 ? '' : 's'} on ${formattedDate}`,
     });
-
-    runningDate.setDate(runningDate.getDate() + 1);
+    runningDate.setUTCDate(runningDate.getUTCDate() + 1);
   }
 
-  // Calculate last-year contributions (for the "X Contributions" subtitle)
-  const oneYearAgo = new Date(startDate);
-  const lastYearContributions = activityHistory
-    .filter((d) => d.date >= oneYearAgo.toISOString().slice(0, 10))
-    .reduce((sum, d) => sum + d.count, 0);
-
-  // Build month labels: for each week column (53 total), determine the month of its first day
-  // We want to place a month label at the leftmost column of each new month
+  // Month labels
   const monthLabels: { col: number; label: string }[] = [];
   let lastMonth = -1;
   for (let col = 0; col < 53; col++) {
     const colStart = new Date(startDate);
-    colStart.setDate(startDate.getDate() + col * 7);
-    const month = colStart.getMonth();
+    colStart.setUTCDate(startDate.getUTCDate() + col * 7);
+    const month = colStart.getUTCMonth();
     if (month !== lastMonth) {
       monthLabels.push({
         col,
-        label: colStart.toLocaleDateString('en-US', { month: 'short' }),
+        label: colStart.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
       });
       lastMonth = month;
     }
   }
 
-  // GitHub-style green color scale
-  function getColor(count: number, isFuture: boolean): string {
-    if (isFuture) return 'bg-transparent cursor-default';
-    if (count === 0)
-      return 'bg-[#161b22] border border-[#21262d] hover:border-zinc-500 cursor-default';
-    if (count === 1) return 'bg-[#0e4429] border border-[#196c2e]/60 hover:border-[#39d353]/60';
-    if (count <= 3) return 'bg-[#006d32] border border-[#26a641]/60 hover:border-[#39d353]/80';
-    if (count <= 6) return 'bg-[#26a641] border border-[#39d353]/60 hover:border-[#39d353]';
-    return 'bg-[#39d353] border border-[#39d353]/80 hover:border-white';
+  // Count contributions in this window
+  const windowStart = startDate.toISOString().slice(0, 10);
+  const contributions = days
+    .filter((d) => !d.isFuture && d.dateStr >= windowStart)
+    .reduce((sum, d) => sum + d.count, 0);
+
+  return { days, monthLabels, numCols: 53, contributions };
+}
+
+/**
+ * Build the full Jan 1 – Dec 31 grid for a specific past year, Sunday-aligned.
+ * The grid starts on the Sunday on or before Jan 1 and ends on the Saturday
+ * on or after Dec 31 of the given year — same approach GitHub uses.
+ */
+export function buildYearGrid(year: number, activityMap: Map<string, number>) {
+  const jan1 = new Date(Date.UTC(year, 0, 1));
+  const dec31 = new Date(Date.UTC(year, 11, 31));
+
+  // Align start to the Sunday on or before Jan 1
+  const startDate = new Date(jan1);
+  startDate.setUTCDate(jan1.getUTCDate() - jan1.getUTCDay());
+
+  // Align end to the Saturday on or after Dec 31
+  const endDate = new Date(dec31);
+  const daysUntilSat = (6 - dec31.getUTCDay() + 7) % 7;
+  endDate.setUTCDate(dec31.getUTCDate() + daysUntilSat);
+
+  // Calculate number of weeks
+  const totalMs = endDate.getTime() - startDate.getTime();
+  const numCols = Math.round(totalMs / (7 * 24 * 60 * 60 * 1000)) + 1;
+
+  const days: { dateStr: string; count: number; isFuture: boolean; label: string }[] = [];
+  const runningDate = new Date(startDate);
+  const totalDays = numCols * 7;
+
+  for (let i = 0; i < totalDays; i++) {
+    const ymd = runningDate.toISOString().slice(0, 10);
+    // Days outside Jan 1 – Dec 31 are padding (shown as future/empty)
+    const isOutsideYear = runningDate.getUTCFullYear() !== year;
+    const count = isOutsideYear ? 0 : (activityMap.get(ymd) ?? 0);
+    const formattedDate = runningDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
+    days.push({
+      dateStr: ymd,
+      count,
+      isFuture: isOutsideYear,
+      label: isOutsideYear
+        ? ''
+        : `${count} contribution${count === 1 ? '' : 's'} on ${formattedDate}`,
+    });
+    runningDate.setUTCDate(runningDate.getUTCDate() + 1);
   }
 
-  // Cell size
-  const CELL = 11; // px
-  const GAP = 2; // px
-  const CELL_FULL = CELL + GAP; // 13px per cell
+  // Month labels
+  const monthLabels: { col: number; label: string }[] = [];
+  let lastMonth = -1;
+  for (let col = 0; col < numCols; col++) {
+    const colStart = new Date(startDate);
+    colStart.setUTCDate(startDate.getUTCDate() + col * 7);
+    const month = colStart.getUTCMonth();
+    if (month !== lastMonth && colStart.getUTCFullYear() === year) {
+      monthLabels.push({
+        col,
+        label: colStart.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }),
+      });
+      lastMonth = month;
+    }
+  }
+
+  // Count only days within the year
+  const contributions = days.filter((d) => !d.isFuture).reduce((sum, d) => sum + d.count, 0);
+
+  return { days, monthLabels, numCols, contributions };
+}
+
+export function ActivityHeatmap({ activityHistory, allTimeContributions }: ActivityHeatmapProps) {
+  const currentYear = new Date().getFullYear();
+
+  // Derive sorted list of years that have any contributions
+  const yearsWithData = Array.from(
+    new Set(activityHistory.map((d) => parseInt(d.date.slice(0, 4), 10))),
+  ).sort((a, b) => b - a); // descending: newest first
+
+  // Always include the current year even if no data yet
+  if (!yearsWithData.includes(currentYear)) {
+    yearsWithData.unshift(currentYear);
+  }
+
+  // Default to current year (trailing view)
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+
+  // Build activity lookup map
+  const activityMap = new Map<string, number>();
+  for (const item of activityHistory) {
+    activityMap.set(item.date, item.count);
+  }
+
+  // Build the appropriate grid
+  const { days, monthLabels, numCols, contributions } =
+    selectedYear === currentYear
+      ? buildTrailingGrid(activityMap)
+      : buildYearGrid(selectedYear, activityMap);
+
+  const gridWidth = numCols * CELL_FULL - GAP;
 
   return (
     <div>
-      {/* All-time count above the card — matches design */}
+      {/* All-time count above the card */}
       <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-zinc-500">
         All-Time Contributions:{' '}
         <span className="text-[#39d353]">{allTimeContributions.toLocaleString()}</span>
@@ -106,10 +202,12 @@ export function ActivityHeatmap({ activityHistory, allTimeContributions }: Activ
         <div className="mb-3 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
           <div>
             <h3 className="font-mono text-[11px] uppercase tracking-widest text-zinc-400">
-              Activity Timeline (Last Year)
+              {selectedYear === currentYear
+                ? 'Activity Timeline (Last Year)'
+                : `Activity Timeline (${selectedYear})`}
             </h3>
             <p className="mt-1 font-serif text-lg font-bold text-white">
-              {lastYearContributions.toLocaleString()} Contributions
+              {contributions.toLocaleString()} Contributions
             </p>
           </div>
           {/* Legend */}
@@ -124,13 +222,29 @@ export function ActivityHeatmap({ activityHistory, allTimeContributions }: Activ
           </div>
         </div>
 
-        <div className="overflow-x-auto pb-1">
+        {/* Year selector tabs */}
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {yearsWithData.map((year) => (
+            <button
+              key={year}
+              onClick={() => setSelectedYear(year)}
+              className={`rounded-sm px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest transition-colors duration-150 ${
+                selectedYear === year
+                  ? 'bg-[#39d353] text-black'
+                  : 'border border-[#21262d] bg-[#161b22] text-zinc-400 hover:border-[#39d353]/50 hover:text-zinc-200'
+              }`}
+              role="tab"
+              aria-selected={selectedYear === year}
+            >
+              {year}
+            </button>
+          ))}
+        </div>
+
+        <div className="overflow-x-auto overflow-y-hidden pb-3">
           <div className="inline-block font-mono">
             {/* Month labels row */}
-            <div
-              className="relative mb-1 ml-8"
-              style={{ width: `${53 * CELL_FULL - GAP}px`, height: '16px' }}
-            >
+            <div className="relative mb-1 ml-8" style={{ width: `${gridWidth}px`, height: '16px' }}>
               {monthLabels.map(({ col, label }) => (
                 <span
                   key={`${col}-${label}`}
@@ -164,7 +278,7 @@ export function ActivityHeatmap({ activityHistory, allTimeContributions }: Activ
                 style={{
                   gridTemplateRows: `repeat(7, ${CELL}px)`,
                   gap: `${GAP}px`,
-                  width: `${53 * CELL_FULL - GAP}px`,
+                  width: `${gridWidth}px`,
                   height: `${7 * CELL_FULL - GAP}px`,
                 }}
               >

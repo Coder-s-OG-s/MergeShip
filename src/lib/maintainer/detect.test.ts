@@ -50,6 +50,19 @@ describe('isUserMaintainer', () => {
     expect(cacheSet).toHaveBeenCalledWith('maint:status:user1', true, 3600);
   });
 
+  it('returns true when github_installations is returned as an array (inner join ambiguity)', async () => {
+    vi.mocked(cacheGet).mockResolvedValue(null);
+    vi.mocked(getServiceSupabase).mockReturnValue(
+      mockSupabase({
+        github_installation_users: [{ github_installations: [{ uninstalled_at: null }] }],
+      }) as unknown as ReturnType<typeof getServiceSupabase>,
+    );
+
+    const result = await isUserMaintainer('user1');
+    expect(result).toBe(true);
+    expect(cacheSet).toHaveBeenCalledWith('maint:status:user1', true, 3600);
+  });
+
   it('returns false when all installation rows have uninstalled_at set', async () => {
     vi.mocked(cacheGet).mockResolvedValue(null);
     vi.mocked(getServiceSupabase).mockReturnValue(
@@ -127,6 +140,36 @@ describe('listMaintainerInstalls', () => {
               account_type: 'Organization',
               uninstalled_at: null,
             },
+          },
+        ],
+      }) as unknown as ReturnType<typeof getServiceSupabase>,
+    );
+
+    const result = await listMaintainerInstalls('user1');
+    expect(result).toEqual([
+      {
+        installationId: 1,
+        accountLogin: 'org1',
+        accountType: 'Organization',
+        permissionLevel: 'org_admin',
+      },
+    ]);
+  });
+
+  it('handles github_installations returned as an array (inner join ambiguity)', async () => {
+    vi.mocked(getServiceSupabase).mockReturnValue(
+      mockSupabase({
+        github_installation_users: [
+          {
+            installation_id: 1,
+            permission_level: 'org_admin',
+            github_installations: [
+              {
+                account_login: 'org1',
+                account_type: 'Organization',
+                uninstalled_at: null,
+              },
+            ],
           },
         ],
       }) as unknown as ReturnType<typeof getServiceSupabase>,

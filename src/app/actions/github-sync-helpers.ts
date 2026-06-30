@@ -1,3 +1,5 @@
+import type { ContributionDay } from '@/lib/contributions/activity-history';
+
 export function parsePRState(
   apiState: string,
   mergedAt: string | null,
@@ -7,10 +9,7 @@ export function parsePRState(
   return 'closed';
 }
 
-export function calculateStreak(
-  days: { date: string; contributionCount: number }[],
-  today: string,
-): number {
+export function calculateStreak(days: ContributionDay[], today: string): number {
   const sorted = [...days]
     .filter((d) => d.date <= today)
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -63,7 +62,10 @@ export async function fetchMergedCount(token: string, handle: string): Promise<n
   return data.total_count;
 }
 
-export async function fetchContributionStreak(token: string, login: string): Promise<number> {
+export async function fetchContributionCalendar(
+  token: string,
+  login: string,
+): Promise<ContributionDay[]> {
   const to = new Date();
   const from = new Date(to);
   from.setFullYear(from.getFullYear() - 1);
@@ -103,7 +105,7 @@ export async function fetchContributionStreak(token: string, login: string): Pro
       user?: {
         contributionsCollection?: {
           contributionCalendar?: {
-            weeks: { contributionDays: { date: string; contributionCount: number }[] }[];
+            weeks: { contributionDays: ContributionDay[] }[];
           };
         };
       };
@@ -111,7 +113,11 @@ export async function fetchContributionStreak(token: string, login: string): Pro
   };
 
   const weeks = json.data?.user?.contributionsCollection?.contributionCalendar?.weeks ?? [];
-  const days = weeks.flatMap((w) => w.contributionDays);
+  return weeks.flatMap((w) => w.contributionDays);
+}
+
+export async function fetchContributionStreak(token: string, login: string): Promise<number> {
+  const days = await fetchContributionCalendar(token, login);
   const today = new Date().toISOString().slice(0, 10);
   return calculateStreak(days, today);
 }

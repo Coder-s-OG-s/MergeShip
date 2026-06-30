@@ -54,12 +54,22 @@ export const profiles = pgTable(
     skills: text('skills').array(),
     websiteUrl: text('website_url'),
     twitterHandle: text('twitter_handle'),
+    weeklyDigest: boolean('weekly_digest').notNull().default(true),
   },
   (t) => ({
     xpDescIdx: index('profiles_xp_desc_idx').on(t.xp),
     primaryLangXpIdx: index('profiles_primary_lang_xp_idx').on(t.primaryLanguage, t.xp),
   }),
 );
+
+export const profileEmails = pgTable('profile_emails', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ---------- GitHub App installations (the gate) ----------
 
@@ -89,6 +99,10 @@ export const installationRepositories = pgTable(
       .references(() => githubInstallations.id, { onDelete: 'cascade' }),
     repoFullName: text('repo_full_name').notNull(),
     addedAt: timestamp('added_at', { withTimezone: true }).notNull().defaultNow(),
+    // Whether MergeShip actively manages this repo (maintainer's choice in the
+    // onboarding repo picker). Distinct from "installed" — GitHub tells us what's
+    // installed; this is the opt-in. Defaults true so existing installs are unaffected.
+    managed: boolean('managed').notNull().default(true),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.installationId, t.repoFullName] }),
@@ -391,6 +405,7 @@ export const pullRequests = pgTable(
     mentorReviewAt: timestamp('mentor_review_at', { withTimezone: true }),
     mentorCommentId: bigint('mentor_comment_id', { mode: 'number' }),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+    aiFlagged: boolean('ai_flagged').notNull().default(false),
   },
   (t) => ({
     uniqRepoNumber: uniqueIndex('pull_requests_repo_number_unique').on(t.repoFullName, t.number),
@@ -497,6 +512,18 @@ export const orgCommunities = pgTable(
   }),
 );
 
+// ---------- per-installation maintainer settings ----------
+
+export const installationSettings = pgTable('installation_settings', {
+  installationId: bigint('installation_id', { mode: 'number' })
+    .primaryKey()
+    .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+  minContributorLevel: integer('min_contributor_level').notNull().default(0),
+  autoAssignMentorChain: boolean('auto_assign_mentor_chain').notNull().default(false),
+  aiPrDetection: boolean('ai_pr_detection').notNull().default(false),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- failed webhook events (dead letter queue) ----------
 
 export const failedWebhookEvents = pgTable(
@@ -521,5 +548,57 @@ export const failedWebhookEvents = pgTable(
   (t) => ({
     deliveryIdx: index('failed_webhook_delivery_idx').on(t.deliveryId),
     eventTypeIdx: index('failed_webhook_event_type_idx').on(t.eventType),
+  }),
+);
+
+// ---------- mentor sessions and announcements ----------
+
+export const mentorSessions = pgTable('mentor_sessions', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  mentorLogin: text('mentor_login').notNull(),
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+  note: text('note'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const announcements = pgTable('announcements', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+});
+// ---------- daily challenges ----------
+
+export const dailyChallenges = pgTable('daily_challenges', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  goal: integer('goal').notNull(),
+  xpReward: integer('xp_reward').notNull(),
+  type: text('type', { enum: ['pr_opened', 'issue_comment', 'review_submitted'] }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userChallengeProgress = pgTable(
+  'user_challenge_progress',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    date: date('date').notNull(),
+    challengeId: bigint('challenge_id', { mode: 'number' })
+      .notNull()
+      .references(() => dailyChallenges.id, { onDelete: 'cascade' }),
+    current: integer('current').notNull().default(0),
+    completed: boolean('completed').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.date] }),
   }),
 );

@@ -3,7 +3,7 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { inngest } from '@/inngest/client';
-import { rateLimit } from '@/lib/rate-limit';
+import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { ok, err, type Result } from '@/lib/result';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -66,6 +66,21 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
 
   if (upsertErr || !profile) {
     return err('persist_failed', upsertErr?.message ?? 'profile upsert returned nothing');
+  }
+
+  // Upsert the user's email into the private profile_emails table
+  if (user.email) {
+    const { error: emailErr } = await service.from('profile_emails').upsert(
+      {
+        user_id: user.id,
+        email: user.email,
+      },
+      { onConflict: 'user_id' },
+    );
+
+    if (emailErr) {
+      console.error('Failed to upsert profile email', emailErr);
+    }
   }
 
   let auditQueued = false;
@@ -153,8 +168,7 @@ export async function updateMutePreferences(
   const rateRes = await rateLimit({
     namespace: 'profile:mute',
     key: user.id,
-    limit: 10,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STRICT,
   });
 
   if (!rateRes.ok) {
@@ -200,6 +214,8 @@ const profileUpdateSchema = z.object({
     .optional()
     .nullable()
     .or(z.literal('')),
+
+  weekly_digest: z.boolean().optional(),
 });
 
 export type ProfileUpdateData = z.infer<typeof profileUpdateSchema>;
@@ -227,8 +243,7 @@ export async function updateProfile(data: ProfileUpdateData): Promise<Result<{ m
   const rateLimitResult = await rateLimit({
     namespace: 'profile:update',
     key: user.id,
-    limit: 10,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.STRICT,
   });
 
   if (!rateLimitResult.ok) {
@@ -250,6 +265,7 @@ export async function updateProfile(data: ProfileUpdateData): Promise<Result<{ m
     skills: validatedData.skills || [],
     website_url: validatedData.website_url || null,
     twitter_handle: validatedData.twitter_handle || null,
+    weekly_digest: validatedData.weekly_digest,
     updated_at: new Date().toISOString(),
   };
 

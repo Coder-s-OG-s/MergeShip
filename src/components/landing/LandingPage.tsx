@@ -215,9 +215,9 @@ export default function LandingPage() {
 
         <div className="nav-auth">
           {!configured ? (
-            <span className="btn-signin" style={{ cursor: 'not-allowed' }}>
-              Sign-in coming soon
-            </span>
+            <Link href="/dev/login" className="btn-signin-border">
+              Login
+            </Link>
           ) : user ? (
             <>
               <span className="btn-signin">{user.name || user.email}</span>
@@ -256,9 +256,9 @@ export default function LandingPage() {
             <a href="#cta" onClick={() => setMenuOpen(false)}>Pricing</a>
             <div className="mobile-nav-divider" />
             {!configured ? (
-              <span style={{ padding: '14px 24px', color: 'var(--text-muted)' }}>
-                Sign-in coming soon
-              </span>
+              <Link href="/dev/login" onClick={() => setMenuOpen(false)}>
+                Login
+              </Link>
             ) : user ? (
               <>
                 <Link href="/dashboard" className="btn-neon" onClick={() => setMenuOpen(false)}>
@@ -432,7 +432,7 @@ export default function LandingPage() {
           <p>
             Join hundreds of developers and maintainers building clean, verified, high-velocity open source.
           </p>
-          <PrimaryCTA label="Get Started Free" />
+          <PrimaryCTA label="Get Started for Free" />
         </div>
       </section>
 
@@ -442,11 +442,11 @@ export default function LandingPage() {
           <div className="footer-copy">
             © 2026 MergeShip. <span>Built for performance.</span>
           </div>
-          <div className="footer-links">
-            <a href="#">Security</a>
-            <a href="#">Terms</a>
-            <a href="#">Privacy</a>
-          </div>
+         <div className="footer-links">
+            <Link href="/security">Security</Link>
+           <Link href="/terms">Terms</Link>
+          <Link href="/privacy">Privacy</Link>
+        </div>
         </div>
       </footer>
     </div>

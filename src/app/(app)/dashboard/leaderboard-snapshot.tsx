@@ -12,22 +12,24 @@ export default async function LeaderboardSnapshot({ githubHandle }: { githubHand
     .limit(4);
 
   return (
-    <section>
-      <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
+    <section className="flex h-full flex-col border border-zinc-800 bg-[#161b22] p-5">
+      <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">
           LEADERBOARD SNAPSHOT
         </h2>
-        <span className="text-[11px] uppercase tracking-widest text-zinc-500">GLOBAL</span>
+        <span className="text-[11px] font-bold uppercase tracking-widest text-[#00FF87]">
+          GLOBAL
+        </span>
       </div>
 
-      <div className="text-xs uppercase tracking-widest">
+      <div className="custom-scrollbar flex-1 overflow-y-auto pr-2 text-xs uppercase tracking-widest">
         {leaders && leaders.length > 0 ? (
           leaders.map((leader, index) => {
             const isMe = leader.github_handle === githubHandle;
             return (
               <div
                 key={leader.github_handle}
-                className={`flex justify-between border-b border-[#2d333b] py-3.5 ${isMe ? '-mx-3 bg-[#3b0764]/40 px-3 text-purple-300' : 'text-zinc-400'}`}
+                className={`flex justify-between border-b border-zinc-800 py-3.5 last:border-0 ${isMe ? '-mx-3 bg-[#00FF87]/10 px-3 text-[#00FF87]' : 'text-zinc-300'}`}
               >
                 <div className="flex gap-5">
                   <span className={`w-6 ${isMe ? 'opacity-50' : 'text-zinc-600'}`}>

@@ -27,36 +27,38 @@ export default async function MenteesSection({ userId }: { userId: string }) {
   }
 
   return (
-    <section>
-      <div className="mb-6 border-b border-[#2d333b] pb-4">
+    <section className="flex h-full flex-col">
+      <div className="mb-4 border-b border-zinc-800 pb-3">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">YOUR MENTEES</h2>
       </div>
-      <div className="space-y-4">
+      <div className="custom-scrollbar flex-1 overflow-y-auto pr-2">
         {enrichedMentees && enrichedMentees.length > 0 ? (
-          enrichedMentees.map((mentee: any) => (
-            <div
-              key={mentee.id}
-              className="flex items-center justify-between border-b border-[#2d333b] pb-4"
-            >
-              <div className="flex items-center gap-4">
-                <div className="flex h-10 w-10 items-center justify-center border border-zinc-800 bg-[#1c2128] text-xs uppercase text-zinc-500">
-                  {mentee.github_handle.substring(0, 2)}
-                </div>
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-widest text-zinc-200">
-                    {mentee.github_handle}
-                  </div>
-                  <div className="text-sm text-zinc-400">Help Request: {mentee.status}</div>
-                </div>
-              </div>
-              <Link
-                href={mentee.pr_url || '#'}
-                className="border border-zinc-700 px-4 py-2 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:bg-zinc-800"
+          <div className="space-y-4">
+            {enrichedMentees.map((mentee: any) => (
+              <div
+                key={mentee.id}
+                className="flex items-center justify-between border-b border-zinc-800 pb-4 last:border-0"
               >
-                REVIEW DRAFT
-              </Link>
-            </div>
-          ))
+                <div className="flex items-center gap-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-zinc-800 bg-[#1c2128] text-xs uppercase text-zinc-500">
+                    {mentee.github_handle.substring(0, 2)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-bold uppercase tracking-widest text-zinc-200">
+                      {mentee.github_handle}
+                    </div>
+                    <div className="text-[10px] text-zinc-400">Help Request: {mentee.status}</div>
+                  </div>
+                </div>
+                <Link
+                  href={mentee.pr_url || '#'}
+                  className="shrink-0 border border-zinc-700 px-3 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:bg-zinc-800"
+                >
+                  REVIEW DRAFT
+                </Link>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
             No active mentees assigned to you.
@@ -69,21 +71,24 @@ export default async function MenteesSection({ userId }: { userId: string }) {
 
 export function MenteesSkeleton() {
   return (
-    <section>
-      <div className="mb-6 border-b border-[#2d333b] pb-4">
+    <section className="flex h-full flex-col">
+      <div className="mb-4 border-b border-zinc-800 pb-3">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">YOUR MENTEES</h2>
       </div>
-      <div className="space-y-4">
+      <div className="custom-scrollbar flex-1 space-y-4 overflow-y-auto pr-2">
         {[1, 2].map((i) => (
-          <div key={i} className="flex items-center justify-between border-b border-[#2d333b] pb-4">
+          <div
+            key={i}
+            className="flex items-center justify-between border-b border-zinc-800 pb-4 last:border-0"
+          >
             <div className="flex items-center gap-4">
-              <div className="h-10 w-10 animate-pulse bg-zinc-800" />
+              <div className="h-10 w-10 shrink-0 animate-pulse bg-zinc-800" />
               <div>
                 <div className="mb-1 h-3 w-20 animate-pulse bg-zinc-800" />
                 <div className="h-3 w-32 animate-pulse bg-zinc-800" />
               </div>
             </div>
-            <div className="h-8 w-28 animate-pulse bg-zinc-800" />
+            <div className="h-8 w-24 shrink-0 animate-pulse bg-zinc-800" />
           </div>
         ))}
       </div>

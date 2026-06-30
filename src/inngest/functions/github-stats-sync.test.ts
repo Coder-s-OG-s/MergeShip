@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getInstallationToken } from '@/lib/github/app';
-import { fetchMergedCount, fetchContributionStreak } from '@/app/actions/github-sync-helpers';
-import { cacheDel } from '@/lib/cache';
+import {
+  fetchMergedCount,
+  fetchContributionStreak,
+  fetchContributionCalendar,
+} from '@/app/actions/github-sync-helpers';
+import { cacheDel, cacheSet } from '@/lib/cache';
 import { githubStatsSync } from './github-stats-sync';
 import { sb, wire, step } from './__tests__/test-helpers';
 
@@ -10,8 +14,9 @@ vi.mock('@/lib/github/app', () => ({ getInstallationToken: vi.fn() }));
 vi.mock('@/app/actions/github-sync-helpers', () => ({
   fetchMergedCount: vi.fn(),
   fetchContributionStreak: vi.fn(),
+  fetchContributionCalendar: vi.fn(),
 }));
-vi.mock('@/lib/cache', () => ({ cacheDel: vi.fn() }));
+vi.mock('@/lib/cache', () => ({ cacheDel: vi.fn(), cacheSet: vi.fn() }));
 vi.mock('../client', () => ({
   inngest: { createFunction: (_c: unknown, _t: unknown, h: Function) => h },
 }));
@@ -47,6 +52,9 @@ describe('githubStatsSync', () => {
     vi.mocked(getInstallationToken).mockResolvedValue('fake-token');
     vi.mocked(fetchMergedCount).mockResolvedValue(5);
     vi.mocked(fetchContributionStreak).mockResolvedValue(10);
+    vi.mocked(fetchContributionCalendar).mockResolvedValue([
+      { date: '2026-06-01', contributionCount: 2 },
+    ]);
 
     const result = await run({ event: ev(), step });
 
@@ -55,6 +63,11 @@ describe('githubStatsSync', () => {
         github_total_merges: 5,
         github_streak: 10,
       }),
+    );
+    expect(cacheSet).toHaveBeenCalledWith(
+      'gh:contrib:u1',
+      { days: [{ date: '2026-06-01', contributionCount: 2 }] },
+      86_400,
     );
     expect(cacheDel).toHaveBeenCalledWith('gh:dashboard:u1');
     expect(result).toEqual({ merges: 5, streak: 10 });

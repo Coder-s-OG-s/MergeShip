@@ -36,18 +36,20 @@ export async function POST(req: NextRequest) {
   const payload = JSON.parse(raw);
 
   const installationId = payload.installation?.id;
+  // If there is no installation ID (e.g. meta, security_advisory events),
+  // we fall back to a global bucket per event type. This prevents DDoS
+  // via IP spoofing (e.g. forging x-forwarded-for) with leaked secrets.
+  const rateLimitKey = installationId ? String(installationId) : `global:${eventType}`;
 
-  if (installationId) {
-    const limited = await rateLimit({
-      namespace: 'webhook',
-      key: String(installationId),
-      limit: 100,
-      windowSec: 60,
-    });
+  const limited = await rateLimit({
+    namespace: 'webhook',
+    key: rateLimitKey,
+    limit: 100,
+    windowSec: 60,
+  });
 
-    if (!limited.ok) {
-      return NextResponse.json({ error: 'too many requests' }, { status: 429 });
-    }
+  if (!limited.ok) {
+    return NextResponse.json({ error: 'too many requests' }, { status: 429 });
   }
 
   const payloadHash = crypto.createHash('sha256').update(raw).digest('hex');

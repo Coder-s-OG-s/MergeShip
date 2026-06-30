@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { autoUnclaimStale, flagSuspiciousXpAccounts } from './maintenance';
+import { autoUnclaimStale, flagSuspiciousXpAccounts, streakDetect } from './maintenance';
 import { sb, wire, step } from './__tests__/test-helpers';
 import { detectSuspiciousPatterns } from '@/lib/xp/suspicious-patterns';
+import { insertXpEvent } from '@/lib/xp/events';
 
 // Mock external dependencies.
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
@@ -11,6 +12,9 @@ vi.mock('@/lib/xp/suspicious-patterns', () => ({
 vi.mock('../client', () => ({
   inngest: { createFunction: (_c: unknown, _t: unknown, h: Function) => h },
 }));
+vi.mock('@/lib/xp/events', () => ({
+  insertXpEvent: vi.fn(),
+}));
 
 const run = autoUnclaimStale as unknown as (ctx: {
   step: typeof step;
@@ -18,6 +22,9 @@ const run = autoUnclaimStale as unknown as (ctx: {
 const runFlagSuspiciousXpAccounts = flagSuspiciousXpAccounts as unknown as (ctx: {
   step: typeof step;
 }) => Promise<{ scanned: true; inserted: number; candidates: number }>;
+const runStreakDetect = streakDetect as unknown as (ctx: {
+  step: typeof step;
+}) => Promise<{ awarded: number; scanned: number }>;
 
 describe('autoUnclaimStale', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -210,3 +217,80 @@ function reviewRow(id: number) {
     submitted_at: '2026-05-28T12:00:00.000Z',
   };
 }
+
+describe('streakDetect', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('awards streak XP to users under the cap, but skips users over the cap', async () => {
+    const { getServiceSupabase } = await import('@/lib/supabase/service');
+    vi.mocked(insertXpEvent).mockResolvedValue(true);
+
+    const xpEventsMock = {
+      select: vi.fn().mockImplementation((selectString) => {
+        if (selectString === 'user_id') {
+          return {
+            gte: vi.fn().mockReturnThis(),
+            lt: vi.fn().mockReturnThis(),
+            neq: vi.fn().mockResolvedValue({
+              data: [{ user_id: 'user-under-cap' }, { user_id: 'user-over-cap' }],
+              error: null,
+            }),
+          };
+        }
+        if (selectString === 'user_id, created_at') {
+          const eventsUnder = Array.from({ length: 5 }, (_, i) => {
+            const d = new Date();
+            d.setUTCDate(d.getUTCDate() - 1 - i);
+            return { user_id: 'user-under-cap', created_at: d.toISOString() };
+          });
+          const eventsOver = Array.from({ length: 11 }, (_, i) => {
+            const d = new Date();
+            d.setUTCDate(d.getUTCDate() - 1 - i);
+            return { user_id: 'user-over-cap', created_at: d.toISOString() };
+          });
+          const allEvents = [...eventsUnder, ...eventsOver];
+
+          const ltObj = {
+            range: vi.fn().mockResolvedValue({
+              data: allEvents,
+              error: null,
+            }),
+          };
+          const gteObj = {
+            lt: vi.fn().mockReturnValue(ltObj),
+          };
+          const inObj = {
+            gte: vi.fn().mockReturnValue(gteObj),
+          };
+          return {
+            in: vi.fn().mockReturnValue(inObj),
+          };
+        }
+      }),
+    };
+
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table === 'xp_events') return xpEventsMock;
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    };
+    vi.mocked(getServiceSupabase).mockReturnValue(client as never);
+
+    const result = await runStreakDetect({ step });
+
+    expect(result.scanned).toBe(2);
+    expect(result.awarded).toBe(1);
+
+    // Should only have called insertXpEvent for the user under the cap.
+    expect(insertXpEvent).toHaveBeenCalledTimes(1);
+    expect(insertXpEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-under-cap',
+        source: 'streak',
+      }),
+    );
+  });
+});

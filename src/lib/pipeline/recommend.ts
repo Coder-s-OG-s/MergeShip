@@ -1,4 +1,4 @@
-import type { Difficulty } from './score';
+import { getAllowedDifficulties, type Difficulty } from './difficulty';
 import { RECOMMENDATION_PENALTIES } from './constants';
 
 /**
@@ -100,8 +100,10 @@ export function filterAndRank(pool: readonly ScoredIssue[], opts: RecommendOptio
   // Fallback: if any tier came up empty, optionally borrow from adjacent (only easier).
   if (opts.allowFallback && result.length < totalDesired(mix)) {
     const seen = new Set(result.map((r) => r.id));
+    const allowedDifficulties = getAllowedDifficulties(opts.level);
+
     const extras = eligible
-      .filter((i) => !seen.has(i.id))
+      .filter((i) => !seen.has(i.id) && allowedDifficulties.includes(i.difficulty))
       .sort((a, b) => rankScore(b, opts) - rankScore(a, opts));
     const needed = totalDesired(mix) - result.length;
     result.push(...extras.slice(0, needed));

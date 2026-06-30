@@ -1,10 +1,14 @@
+<div align="center">
+
 # MergeShip
 
-An Open Source Ecosystem and Organisation Management Platform
+### An Open Source Ecosystem and Organisation Management Platform
 
 Helping contributors learn the right way and helping maintainers stay sane.
 
-[About](#about-the-project) • [Features](#core-features) • [Tech Stack](#tech-stack) • [Architecture](#architecture-overview) • [Quick Start](#quick-start-local-setup) • [Community](#community) • [Contributing](#contributing)
+[About](#about-the-project) • [Core Features](#core-features) • [Tech Stack](#tech-stack) • [Architecture](#architecture-overview) • [Quick Start](#quick-start) • [Community](#community) • [Contributing](#contributing) • [Project Support](#project-support) • [License](#license)
+
+</div>
 
 ---
 
@@ -13,6 +17,8 @@ Helping contributors learn the right way and helping maintainers stay sane.
 MergeShip is an open source platform that works for two groups at the same time — contributors who want to get into open source, and maintainers who are managing open source organisations.
 
 Open source today faces two major hurdles: contributors often lack a structured path and basic Git/GitHub knowledge, while maintainers are overwhelmed by low-quality AI-generated PRs and scattered data. MergeShip solves both problems together through gamified learning for contributors and a smart organised dashboard for maintainers.
+
+---
 
 ## Core Features
 
@@ -29,16 +35,39 @@ Open source today faces two major hurdles: contributors often lack a structured 
 - **Pre-Verified PRs:** Pull Requests arrive with verification tags from mentors, allowing maintainers to focus on high-trust contributions.
 - **Direct Communication:** Chat directly with contributors or schedule 1:1 meetings from within the platform.
 
+---
+
 ## Tech Stack
 
 MergeShip is built with a modern and scalable engineering stack:
 
-- **Framework:** Next.js (App Router) & React
-- **Database & Auth:** Supabase (Local Postgres + Auth Studio)
-- **ORM:** Drizzle ORM
-- **Background Jobs:** Inngest (Webhooks, Audits, PR processing)
-- **AI / LLM:** Groq Router
-- **Testing:** Vitest (Integration & Unit Testing)
+**Framework:**
+
+- Next.js
+- React
+
+**Database & Auth:**
+
+- Supabase
+- PostgreSQL (Local + Auth Studio)
+
+**ORM:**
+
+- Drizzle ORM
+
+**Background Jobs:**
+
+- Inngest (Webhooks, Audits, PR processing)
+
+**AI / LLM:**
+
+- Groq (Router)
+
+**Testing:**
+
+- Vitest (Integration & Unit Testing)
+
+---
 
 ## Architecture Overview
 
@@ -55,16 +84,21 @@ The codebase follows a domain-driven design structure:
 - `supabase/` - SQL migrations and Docker configurations.
 - `tests/` & `__fixtures__/` - High-coverage test suites and mock data.
 
+---
+
 ## Quick Start
 
-Works on macOS, Linux, and Windows (WSL2). Full step-by-step in [CONTRIBUTING.md](./CONTRIBUTING.md).
+Works on macOS, Linux, and Windows (WSL2 recommended; native Windows + Docker Desktop also works for the core setup). Full step-by-step in [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 1. **Verify Prerequisites:** Ensure you have Node.js 20+ and Docker installed and running.
+
 2. **Clone the repository:**
+
    ```bash
    git clone https://github.com/Coder-s-OG-s/MergeShip.git
    cd MergeShip
    ```
+
 3. **Install dependencies:**
    ```bash
    npm install
@@ -74,10 +108,13 @@ Works on macOS, Linux, and Windows (WSL2). Full step-by-step in [CONTRIBUTING.md
    cp .env.example .env.local
    ```
 5. **Start Supabase:** (Local Postgres + Auth Studio)
+
    ```bash
    make supabase-start
    ```
-6. **Configure Keys:** Copy the `ANON_KEY` and `SERVICE_ROLE_KEY` from the previous command's output into your `.env.local` file.
+
+6. **Configure Keys:** Run `npx supabase status -o env` and copy the `ANON_KEY` and `SERVICE_ROLE_KEY` values into your `.env.local` file. (The CLI's pretty-printed startup output labels these `Publishable`/`Secret` — use the `-o env` form to get the exact names you need.)
+
 7. **Initialize Database:** Run migrations and auto-seed personas.
    ```bash
    make db-reset
@@ -94,6 +131,8 @@ Works on macOS, Linux, and Windows (WSL2). Full step-by-step in [CONTRIBUTING.md
 
 For prerequisites, troubleshooting, and the full contributor workflow, read [CONTRIBUTING.md](./CONTRIBUTING.md).
 
+---
+
 ## Community
 
 Have a question, idea, or want to introduce yourself? **[GitHub Discussions](https://github.com/Coder-s-OG-s/MergeShip/discussions)** is the place.
@@ -104,6 +143,8 @@ Have a question, idea, or want to introduce yourself? **[GitHub Discussions](htt
 - **Show and tell** - share what you built or contributed
 
 Issues are for confirmed bugs and accepted feature work. Everything else goes in Discussions.
+
+---
 
 ## Contributing
 
@@ -116,15 +157,17 @@ We maintain a high engineering bar: strict TypeScript, zero lint warnings, and 8
 
 ## Contributors
 
-Thanks to all the amazing people who contribute to **MergeShip** 🚀
+Thanks to all the amazing people who contribute to **MergeShip**:
 
 <p align="center">
   <a href="https://github.com/Coder-s-OG-s/MergeShip/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=Coder-s-OG-s/MergeShip" alt="Contributors"/>
+    <img src="https://contrib.rocks/image?repo=Coder-s-OG-s/MergeShip" alt="Contributor Graph"/>
   </a>
 </p>
 
 <br>
+
+---
 
 ## Project Support
 
@@ -137,6 +180,8 @@ Thanks to all the amazing people who contribute to **MergeShip** 🚀
     <img src="https://img.shields.io/github/forks/Coder-s-OG-s/MergeShip?style=social" alt="Forks">
   </a>
 </p>
+
+---
 
 ## License
 
