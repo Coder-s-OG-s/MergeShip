@@ -121,10 +121,13 @@ export default async function MaintainerPage({
   const reviewerLoads: ReviewerLoadRow[] = isOk(reviewerLoadsRes) ? reviewerLoadsRes.data : [];
   const maxLoad = reviewerLoads.length > 0 ? Math.max(...reviewerLoads.map((r) => r.prCount)) : 0;
 
-  const noiseRes = await getNoiseBreakdown({ installationId: activeInstallId });
-  const noise: NoiseBreakdown = isOk(noiseRes)
-    ? noiseRes.data
-    : { valid: 0, spamAi: 0, other: 0, total: 0 };
+  let noise: NoiseBreakdown = { valid: 0, spamAi: 0, other: 0, total: 0 };
+  if (settings.aiPrDetection) {
+    const noiseRes = await getNoiseBreakdown({ installationId: activeInstallId });
+    if (isOk(noiseRes)) {
+      noise = noiseRes.data;
+    }
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
