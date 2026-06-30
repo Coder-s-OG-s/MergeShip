@@ -18,6 +18,7 @@ import {
   resolveFlaggedAccount,
   getPrCiStatus,
   getReviewerLoad,
+  closePullRequest,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -76,6 +77,15 @@ vi.mock('@/lib/rate-limit', async (importOriginal) => {
 
 vi.mock('@/inngest/client', () => ({
   inngest: { send: vi.fn() },
+}));
+
+const mockPullsUpdate = vi.fn();
+vi.mock('@/lib/github/app', () => ({
+  getInstallOctokit: vi.fn(() => ({
+    pulls: {
+      update: mockPullsUpdate,
+    },
+  })),
 }));
 
 // Chainable Supabase query mock — every method returns self, await resolves to { data, error }
@@ -886,6 +896,94 @@ describe('maintainer actions', () => {
         expect(res.data[1]?.githubHandle).toBe('bob');
         expect(res.data[1]?.prCount).toBe(1);
       }
+    });
+  });
+
+  // closePullRequest
+
+  describe('closePullRequest', () => {
+    beforeEach(() => {
+      mockPullsUpdate.mockClear();
+    });
+
+    it('returns not_found when PR does not exist in DB', async () => {
+      // Mock PR query returning null
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await closePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('PR not found');
+      }
+    });
+
+    it('returns not_found when installation is not found for repo', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      mockFrom
+        .mockReturnValueOnce(chain(mockPr)) // for pull_requests query
+        .mockReturnValueOnce(chain(null)); // for installation_repositories query
+
+      const res = await closePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('Installation not found for this repository');
+      }
+    });
+
+    it('returns not_authorised when user does not maintain repo', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom
+        .mockReturnValueOnce(chain(mockPr)) // for pull_requests query
+        .mockReturnValueOnce(chain(mockRepo)); // for installation_repositories query
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/other']);
+
+      const res = await closePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_authorised');
+      }
+    });
+
+    it('returns github_error when pulls.update fails', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockPullsUpdate.mockRejectedValueOnce(new Error('GitHub error'));
+
+      const res = await closePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('github_error');
+      }
+    });
+
+    it('updates state to closed in DB on success', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      const updateChain = chain({ id: 123 });
+      mockFrom
+        .mockReturnValueOnce(chain(mockPr))
+        .mockReturnValueOnce(chain(mockRepo))
+        .mockReturnValueOnce(updateChain);
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockPullsUpdate.mockResolvedValueOnce({});
+
+      const res = await closePullRequest(123);
+      expect(res.ok).toBe(true);
+      expect(mockPullsUpdate).toHaveBeenCalledWith({
+        owner: 'org',
+        repo: 'repo',
+        pull_number: 42,
+        state: 'closed',
+      });
+      expect(updateChain.update).toHaveBeenCalledWith({ state: 'closed' });
     });
   });
 });
