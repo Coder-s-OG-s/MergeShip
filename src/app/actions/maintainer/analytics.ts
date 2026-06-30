@@ -15,12 +15,14 @@ import {
   type MaintainerPrRow,
   type QueueFilters,
 } from '@/lib/maintainer/queue';
+import { xpForLevel, MAX_LEVEL } from '@/lib/xp/curve';
 import {
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
   type ReviewerLoadRow,
   type NoiseBreakdown,
+  type PromotionEligibleRow,
 } from './types';
 
 export async function getRepoHealthOverview(args: {
@@ -180,7 +182,7 @@ export async function getMaintainerAnalyticsTrends(args: {
 
   const repos = await listMaintainerRepos(user.id, args.installationId);
   if (repos.length === 0) {
-    return ok({ weekly: [], levelDistribution: [] });
+    return ok({ weekly: [], levelDistribution: [], avgReviewTimeHours: null });
   }
 
   const cacheKey = `maint:analytics-trends:${user.id}:${args.installationId}`;
@@ -193,20 +195,44 @@ export async function getMaintainerAnalyticsTrends(args: {
 
   if (error) return err('query_failed', error.message);
 
-  const trends = normaliseAnalyticsTrends(data);
+  // Fetch average review time from pull_requests
+  const { data: prs } = await service
+    .from('pull_requests')
+    .select('github_created_at, mentor_review_at')
+    .in('repo_full_name', repos)
+    .eq('mentor_verified', true)
+    .not('mentor_review_at', 'is', null);
+
+  let avgReviewTimeHours = null;
+  if (prs && prs.length > 0) {
+    const totalSeconds = (
+      prs as { github_created_at: string; mentor_review_at: string | null }[]
+    ).reduce((sum: number, pr) => {
+      const created = new Date(pr.github_created_at).getTime();
+      const reviewed = new Date(pr.mentor_review_at!).getTime();
+      return sum + (reviewed - created) / 1000;
+    }, 0);
+    avgReviewTimeHours = totalSeconds / prs.length / 3600;
+  }
+
+  const trends = normaliseAnalyticsTrends(data, avgReviewTimeHours);
   await cacheSet(cacheKey, trends, 30 * 60);
   return ok(trends);
 }
 
-function normaliseAnalyticsTrends(value: unknown): MaintainerAnalyticsTrends {
+function normaliseAnalyticsTrends(
+  value: unknown,
+  avgReviewTimeHours: number | null,
+): MaintainerAnalyticsTrends {
   if (!value || typeof value !== 'object') {
-    return { weekly: [], levelDistribution: [] };
+    return { weekly: [], levelDistribution: [], avgReviewTimeHours: null };
   }
 
   const data = value as Partial<MaintainerAnalyticsTrends>;
   return {
     weekly: Array.isArray(data.weekly) ? data.weekly : [],
     levelDistribution: Array.isArray(data.levelDistribution) ? data.levelDistribution : [],
+    avgReviewTimeHours,
   };
 }
 
@@ -362,6 +388,68 @@ export async function exportPrQueueCsv(
   }
 
   return ok(csvLines.join('\n'));
+}
+
+export async function getPromotionEligible(args: {
+  installationId: number;
+}): Promise<Result<PromotionEligibleRow[]>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) {
+    return ok([]);
+  }
+
+  // Fetch XP events in the installation repos to get the scoped user IDs
+  const { data: eventRows, error: eventError } = await service
+    .from('xp_events')
+    .select('user_id')
+    .in('repo', repos);
+  if (eventError) return err('query_failed', eventError.message);
+  const userIds = Array.from(
+    new Set((eventRows ?? []).map((r) => r.user_id).filter((id): id is string => Boolean(id))),
+  );
+
+  if (userIds.length === 0) return ok([]);
+
+  // Fetch profiles for those users
+  const { data: profileRows, error: profileError } = await service
+    .from('profiles')
+    .select('github_handle, xp, level')
+    .in('id', userIds);
+
+  if (profileError) {
+    return err('query_failed', profileError.message);
+  }
+
+  const eligible: PromotionEligibleRow[] = [];
+  for (const p of profileRows ?? []) {
+    const level: number = p.level ?? 0;
+    const xp: number = p.xp ?? 0;
+
+    // Skip contributors already at max level
+    if (level >= MAX_LEVEL) continue;
+
+    const nextThreshold = xpForLevel(level + 1);
+    const gap = nextThreshold - xpForLevel(level);
+    const triggerXp = nextThreshold - Math.floor(gap * 0.1);
+    const xpNeeded = nextThreshold - xp;
+    if (xp >= triggerXp && xpNeeded > 0) {
+      eligible.push({
+        githubHandle: p.github_handle ?? 'unknown',
+        xp,
+        level,
+        xpNeeded,
+      });
+    }
+  }
+
+  return ok(eligible.sort((a, b) => a.xpNeeded - b.xpNeeded).slice(0, 10));
 }
 
 export async function getReviewerLoad(args: {

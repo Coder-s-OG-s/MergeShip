@@ -90,3 +90,10 @@ export type NoiseBreakdown = {
   other: number;
   total: number;
 };
+
+export type PromotionEligibleRow = {
+  githubHandle: string;
+  xp: number;
+  level: number;
+  xpNeeded: number;
+};

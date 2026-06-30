@@ -87,7 +87,7 @@ export function SyncButton({ lastSyncedAt }: Props) {
       <button
         onClick={handleSync}
         disabled={syncing || cooldown}
-        className="flex items-center gap-2 border border-zinc-700 px-4 py-3 text-[11px] font-bold uppercase tracking-widest text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex items-center gap-2 border border-[#00FF87] bg-[#00FF87]/10 px-4 py-3 text-[11px] font-bold uppercase tracking-widest text-[#00FF87] transition-colors hover:bg-[#00FF87]/20 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <RefreshCw className={`h-3 w-3 ${syncing ? 'animate-spin' : ''}`} />
 
