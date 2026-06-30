@@ -11,13 +11,13 @@ import {
   getFlaggedAccounts,
   getTopContributors,
   getInstallationSettings,
-  getReviewerLoad,
+  getPromotionEligible,
   type FlaggedAccountRow,
   type InstallationSettingsData,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
-  type ReviewerLoadRow,
+  type PromotionEligibleRow,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import type { MaintainerPrRow } from '@/lib/maintainer/queue';
@@ -114,10 +114,10 @@ export default async function MaintainerPage({
         autoAssignMentorChain: false,
         aiPrDetection: false,
       };
-
-  const reviewerLoadsRes = await getReviewerLoad({ installationId: activeInstallId });
-  const reviewerLoads: ReviewerLoadRow[] = isOk(reviewerLoadsRes) ? reviewerLoadsRes.data : [];
-  const maxLoad = reviewerLoads.length > 0 ? Math.max(...reviewerLoads.map((r) => r.prCount)) : 0;
+  const promotionEligibleRes = await getPromotionEligible({ installationId: activeInstallId });
+  const promotionEligible: PromotionEligibleRow[] = isOk(promotionEligibleRes)
+    ? promotionEligibleRes.data
+    : [];
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -126,6 +126,25 @@ export default async function MaintainerPage({
           <h1 className="font-display text-3xl font-bold">Maintainer</h1>
           <RefreshButton installationId={activeInstallId} />
         </header>
+
+        {installs.length > 1 && (
+          <nav className="mb-6 flex flex-wrap gap-2 text-sm">
+            {installs.map((i) => (
+              <Link
+                key={i.installationId}
+                href={`/maintainer?install=${i.installationId}`}
+                className={`rounded-lg px-3 py-1 ${
+                  i.installationId === activeInstallId
+                    ? 'bg-zinc-800 text-white'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                {i.accountLogin}
+                <span className="ml-1.5 text-xs text-zinc-500">{i.accountType[0]}</span>
+              </Link>
+            ))}
+          </nav>
+        )}
 
         <div className="mb-4 flex flex-wrap gap-2 text-xs">
           <FilterPill
@@ -181,6 +200,45 @@ export default async function MaintainerPage({
         </p>
         <QueueSettings settings={settings} />
         <AnalyticsTrends data={analyticsTrends} />
+        {promotionEligible.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-sky-900/60 bg-sky-950/20 p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-sky-100">Promotion Eligible</h2>
+                <p className="mt-1 text-xs text-sky-200/70">
+                  Contributors within 10% of leveling up.
+                </p>
+              </div>
+              <span className="rounded-full bg-sky-900/50 px-2 py-1 text-xs text-sky-100">
+                {promotionEligible.length} contributor{promotionEligible.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {promotionEligible.map((contributor) => (
+                <div
+                  key={contributor.githubHandle}
+                  className="rounded-lg border border-sky-900/50 p-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-sky-50">@{contributor.githubHandle}</p>
+                      <p className="mt-1 text-xs text-sky-200/70">
+                        L{contributor.level} &rarr; L{contributor.nextLevel} &middot;{' '}
+                        {contributor.xpNeeded} XP away
+                      </p>
+                    </div>
+                    <Link
+                      href={`/@${contributor.githubHandle}`}
+                      className="shrink-0 rounded-lg border border-sky-700/50 px-2.5 py-1 text-xs text-sky-300 hover:border-sky-600 hover:text-sky-200"
+                    >
+                      Review profile &rarr;
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {flaggedAccounts.length > 0 && (
           <section className="mb-8 rounded-2xl border border-amber-900/60 bg-amber-950/20 p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -226,7 +284,7 @@ export default async function MaintainerPage({
             </div>
           </section>
         )}
-        <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-8 grid gap-6 lg:grid-cols-3">
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>
 
@@ -293,34 +351,6 @@ export default async function MaintainerPage({
                   <span className="text-sm text-emerald-400">{contributor.xp} XP</span>
                 </div>
               ))}
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-            <h2 className="mb-4 text-sm font-semibold text-white">Reviewer Load</h2>
-
-            <div className="space-y-3">
-              {reviewerLoads.length === 0 ? (
-                <p className="text-xs text-zinc-500">No active reviewer load.</p>
-              ) : (
-                reviewerLoads.map((rev) => {
-                  const percentage = maxLoad > 0 ? (rev.prCount / maxLoad) * 100 : 0;
-                  return (
-                    <div key={rev.reviewerId} className="rounded-lg border border-zinc-800 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-zinc-200">@{rev.githubHandle}</span>
-                        <span className="text-xs text-zinc-400">{rev.prCount} PRs</span>
-                      </div>
-                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-300"
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })
-              )}
             </div>
           </section>
         </div>

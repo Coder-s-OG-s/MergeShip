@@ -77,9 +77,10 @@ export type RepoPickerRow = {
   lastUpdatedAt: string | null;
 };
 
-export type ReviewerLoadRow = {
-  reviewerId: string;
+export type PromotionEligibleRow = {
   githubHandle: string;
-  avatarUrl: string | null;
-  prCount: number;
+  level: number;
+  xp: number;
+  nextLevel: number;
+  xpNeeded: number;
 };

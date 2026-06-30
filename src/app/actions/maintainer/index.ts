@@ -25,7 +25,7 @@ export {
   getTopContributors,
   getMaintainerAnalyticsTrends,
   exportPrQueueCsv,
-  getReviewerLoad,
+  getPromotionEligible,
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';
