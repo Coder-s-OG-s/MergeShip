@@ -15,3 +15,9 @@ CREATE TABLE "mentor_sessions" (
 );
 
 ALTER TABLE "mentor_sessions" ADD CONSTRAINT "mentor_sessions_user_id_profiles_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE cascade ON UPDATE no action;
+
+ALTER TABLE "announcements" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read-only for announcements" ON "announcements" FOR SELECT USING (true);
+
+ALTER TABLE "mentor_sessions" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own mentor sessions" ON "mentor_sessions" FOR SELECT USING (auth.uid() = user_id);

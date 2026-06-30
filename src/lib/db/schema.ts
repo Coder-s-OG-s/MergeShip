@@ -546,6 +546,7 @@ export const failedWebhookEvents = pgTable(
   },
   (t) => ({
     deliveryIdx: index('failed_webhook_delivery_idx').on(t.deliveryId),
+    eventTypeIdx: index('failed_webhook_event_type_idx').on(t.eventType),
   }),
 );
 
