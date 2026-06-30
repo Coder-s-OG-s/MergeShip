@@ -34,66 +34,68 @@ export default async function TrendingRepos() {
   }
 
   return (
-    <section>
-      <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
+    <section className="flex h-full flex-col border border-zinc-800 bg-[#161b22] p-5">
+      <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">TRENDING REPOS</h2>
         <span className="text-[11px] uppercase tracking-widest text-zinc-500">BY HEALTH</span>
       </div>
 
-      {trendingRepos.length === 0 ? (
-        <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
-          No trending data yet.
-        </div>
-      ) : (
-        <div>
-          {trendingRepos.map((repo, index) => (
-            <div
-              key={repo.repoFullName}
-              className="flex items-center justify-between border-b border-[#2d333b] py-3.5 last:border-0"
-            >
-              <div className="flex items-center gap-4 overflow-hidden">
-                <span className="w-6 shrink-0 text-[11px] text-zinc-600">
-                  {(index + 1).toString().padStart(2, '0')}
-                </span>
-                <div className="overflow-hidden">
-                  <a
-                    href={`https://github.com/${repo.repoFullName}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block truncate text-[11px] uppercase tracking-widest text-zinc-200 hover:text-white"
-                  >
-                    {repo.repoFullName}
-                  </a>
-                  {repo.repoLanguage && (
-                    <span className="text-[10px] uppercase tracking-widest text-zinc-600">
-                      {repo.repoLanguage}
-                    </span>
-                  )}
+      <div className="custom-scrollbar flex-1 overflow-y-auto pr-2">
+        {trendingRepos.length === 0 ? (
+          <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
+            No trending data yet.
+          </div>
+        ) : (
+          <div>
+            {trendingRepos.map((repo, index) => (
+              <div
+                key={repo.repoFullName}
+                className="flex items-center justify-between border-b border-zinc-800 py-3.5 last:border-0"
+              >
+                <div className="flex items-center gap-4 overflow-hidden">
+                  <span className="w-6 shrink-0 text-[11px] text-zinc-600">
+                    {(index + 1).toString().padStart(2, '0')}
+                  </span>
+                  <div className="overflow-hidden">
+                    <a
+                      href={`https://github.com/${repo.repoFullName}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block truncate text-[11px] uppercase tracking-widest text-zinc-200 hover:text-white"
+                    >
+                      {repo.repoFullName}
+                    </a>
+                    {repo.repoLanguage && (
+                      <span className="text-[10px] uppercase tracking-widest text-zinc-600">
+                        {repo.repoLanguage}
+                      </span>
+                    )}
+                  </div>
                 </div>
+                <span className="ml-4 shrink-0 text-[11px] tabular-nums text-[#10b981]">
+                  {repo.repoHealthScore}
+                </span>
               </div>
-              <span className="ml-4 shrink-0 text-[11px] tabular-nums text-[#10b981]">
-                {repo.repoHealthScore}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
 
 export function TrendingReposSkeleton() {
   return (
-    <section>
-      <div className="mb-6 flex items-center justify-between border-b border-[#2d333b] pb-4">
+    <section className="flex h-full flex-col border border-zinc-800 bg-[#161b22] p-5">
+      <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
         <div className="h-3 w-28 animate-pulse bg-zinc-800" />
         <div className="h-3 w-16 animate-pulse bg-zinc-800" />
       </div>
-      <div>
+      <div className="custom-scrollbar flex-1 overflow-y-auto pr-2">
         {[1, 2, 3, 4, 5].map((i) => (
           <div
             key={i}
-            className="flex items-center justify-between border-b border-[#2d333b] py-3.5 last:border-0"
+            className="flex items-center justify-between border-b border-zinc-800 py-3.5 last:border-0"
           >
             <div className="flex items-center gap-4">
               <div className="h-3 w-4 animate-pulse bg-zinc-800" />

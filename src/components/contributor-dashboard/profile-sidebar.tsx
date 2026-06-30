@@ -23,54 +23,88 @@ function getLevelTitle(level: number): string {
   return LEVEL_TITLES[level] ?? 'CONTRIBUTOR';
 }
 
-export function ProfileSidebar({ githubHandle, xp, level, trustScore = 0 }: Props) {
+export function ProfileIdentityCard({ githubHandle, level, trustScore = 0 }: Omit<Props, 'xp'>) {
   const initials = githubHandle.slice(0, 2).toUpperCase();
   const title = getLevelTitle(level);
 
   return (
+    <div className="flex h-full flex-col border border-zinc-800 bg-[#000E12] p-5">
+      <div className="mb-4 flex items-center gap-4">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center border border-[#00FF87]/40 bg-[#0d2818] font-serif text-xl text-[#00FF87]">
+          {initials}
+        </div>
+        <div>
+          <div className="font-serif text-lg text-white">{githubHandle}</div>
+          <Link
+            href={`https://github.com/${githubHandle}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-300"
+          >
+            <Github className="h-3 w-3" />
+            GITHUB
+            <ExternalLink className="h-2.5 w-2.5" />
+          </Link>
+        </div>
+      </div>
+
+      <div className="mt-auto flex flex-wrap gap-2">
+        <span className="border border-[#00FF87]/50 bg-[#10b981]/10 px-2 py-0.5 text-[10px] uppercase tracking-widest text-[#00FF87]">
+          L{level} {title}
+        </span>
+        <span className="border border-purple-700/50 bg-purple-900/20 px-2 py-0.5 text-[10px] uppercase tracking-widest text-purple-300">
+          TRUST {trustScore}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function ProfileIdentitySkeleton() {
+  return (
+    <div className="flex h-full flex-col border border-zinc-800 bg-[#000E12] p-5">
+      <div className="mb-4 flex items-center gap-4">
+        <div className="h-14 w-14 shrink-0 animate-pulse bg-zinc-800" />
+        <div className="space-y-2">
+          <div className="h-5 w-28 animate-pulse bg-zinc-800" />
+          <div className="h-3 w-16 animate-pulse bg-zinc-800" />
+        </div>
+      </div>
+      <div className="mt-auto flex gap-2">
+        <div className="h-5 w-24 animate-pulse bg-zinc-800" />
+        <div className="h-5 w-16 animate-pulse bg-zinc-800" />
+      </div>
+    </div>
+  );
+}
+
+export function ProfileXpCard({ xp }: Pick<Props, 'xp'>) {
+  return (
+    <div className="flex h-full flex-col justify-center border border-zinc-800 bg-[#000E12] p-5">
+      <div className="mb-3 text-[10px] uppercase tracking-widest text-zinc-500">
+        TOTAL XP EARNED
+      </div>
+      <div className="font-serif text-3xl text-white">{xp.toLocaleString()}</div>
+      <div className="mt-1 text-[10px] uppercase tracking-widest text-zinc-600">XP POINTS</div>
+    </div>
+  );
+}
+
+export function ProfileXpSkeleton() {
+  return (
+    <div className="flex h-full flex-col justify-center border border-zinc-800 bg-[#000E12] p-5">
+      <div className="mb-3 h-3 w-24 animate-pulse bg-zinc-800" />
+      <div className="h-8 w-20 animate-pulse bg-zinc-800" />
+    </div>
+  );
+}
+
+// Keep ProfileSidebar for compatibility if used elsewhere
+export function ProfileSidebar({ githubHandle, xp, level, trustScore = 0 }: Props) {
+  return (
     <aside className="space-y-6">
-      {/* Avatar + Identity */}
-      <div className="border border-zinc-800 bg-[#000E12] p-5">
-        <div className="mb-4 flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center border border-[#00FF87]/40 bg-[#0d2818] font-serif text-xl text-[#00FF87]">
-            {initials}
-          </div>
-          <div>
-            <div className="font-serif text-lg text-white">{githubHandle}</div>
-            <Link
-              href={`https://github.com/${githubHandle}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-zinc-300"
-            >
-              <Github className="h-3 w-3" />
-              GITHUB
-              <ExternalLink className="h-2.5 w-2.5" />
-            </Link>
-          </div>
-        </div>
-
-        {/* Badges */}
-        <div className="flex flex-wrap gap-2">
-          <span className="border border-[#00FF87]/50 bg-[#10b981]/10 px-2 py-0.5 text-[10px] uppercase tracking-widest text-[#00FF87]">
-            L{level} {title}
-          </span>
-          <span className="border border-purple-700/50 bg-purple-900/20 px-2 py-0.5 text-[10px] uppercase tracking-widest text-purple-300">
-            TRUST {trustScore}
-          </span>
-        </div>
-      </div>
-
-      {/* XP Summary */}
-      <div className="border border-zinc-800 bg-[#000E12] p-5">
-        <div className="mb-3 text-[10px] uppercase tracking-widest text-zinc-500">
-          TOTAL XP EARNED
-        </div>
-        <div className="font-serif text-3xl text-white">{xp.toLocaleString()}</div>
-        <div className="mt-1 text-[10px] uppercase tracking-widest text-zinc-600">XP POINTS</div>
-      </div>
-
-      {/* Quick Links */}
+      <ProfileIdentityCard githubHandle={githubHandle} level={level} trustScore={trustScore} />
+      <ProfileXpCard xp={xp} />
       <div className="border border-zinc-800 bg-[#000E12] p-5">
         <div className="mb-3 text-[10px] uppercase tracking-widest text-zinc-500">QUICK LINKS</div>
         <div className="space-y-2">
@@ -98,23 +132,8 @@ export function ProfileSidebar({ githubHandle, xp, level, trustScore = 0 }: Prop
 export function ProfileSidebarSkeleton() {
   return (
     <aside className="space-y-6">
-      <div className="border border-zinc-800 bg-[#000E12] p-5">
-        <div className="mb-4 flex items-center gap-4">
-          <div className="h-14 w-14 animate-pulse bg-zinc-800" />
-          <div className="space-y-2">
-            <div className="h-5 w-28 animate-pulse bg-zinc-800" />
-            <div className="h-3 w-16 animate-pulse bg-zinc-800" />
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <div className="h-5 w-24 animate-pulse bg-zinc-800" />
-          <div className="h-5 w-16 animate-pulse bg-zinc-800" />
-        </div>
-      </div>
-      <div className="border border-zinc-800 bg-[#000E12] p-5">
-        <div className="mb-3 h-3 w-24 animate-pulse bg-zinc-800" />
-        <div className="h-8 w-20 animate-pulse bg-zinc-800" />
-      </div>
+      <ProfileIdentitySkeleton />
+      <ProfileXpSkeleton />
     </aside>
   );
 }

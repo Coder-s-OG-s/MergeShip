@@ -50,41 +50,43 @@ export default async function RecentActivity({ userId }: { userId: string }) {
   const items = (events ?? []) as XpEvent[];
 
   return (
-    <section>
-      <div className="mb-4 flex items-center justify-between border-b border-[#2d333b] pb-3">
+    <section className="flex h-full flex-col border border-zinc-800 bg-[#161b22] p-5">
+      <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
         <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">RECENT ACTIVITY</h2>
-        <TrendingUp className="h-3.5 w-3.5 text-zinc-600" />
+        <TrendingUp className="h-3.5 w-3.5 text-[#00FF87]" />
       </div>
 
-      {items.length === 0 ? (
-        <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-600">
-          No activity yet — claim an issue to get started.
-        </div>
-      ) : (
-        <div className="space-y-0">
-          {items.map((event) => (
-            <div
-              key={event.id}
-              className="flex items-center justify-between border-b border-[#2d333b] py-3 last:border-0"
-            >
-              <div>
-                <div className="text-[12px] capitalize text-zinc-300">
-                  {sourceLabel(event.source, event.metadata)}
-                </div>
-                <div className="mt-0.5 text-[10px] uppercase tracking-widest text-zinc-600">
-                  {timeAgo(event.created_at)}
-                </div>
-              </div>
-              <span
-                className={`text-[11px] font-bold uppercase tracking-widest ${event.xp_delta >= 0 ? 'text-[#10b981]' : 'text-red-400'}`}
+      <div className="custom-scrollbar flex-1 overflow-y-auto pr-2">
+        {items.length === 0 ? (
+          <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-600">
+            No activity yet — claim an issue to get started.
+          </div>
+        ) : (
+          <div className="space-y-0">
+            {items.map((event) => (
+              <div
+                key={event.id}
+                className="flex items-center justify-between border-b border-zinc-800 py-3 last:border-0"
               >
-                {event.xp_delta >= 0 ? '+' : ''}
-                {event.xp_delta} XP
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+                <div>
+                  <div className="text-[12px] capitalize text-zinc-300">
+                    {sourceLabel(event.source, event.metadata)}
+                  </div>
+                  <div className="mt-0.5 text-[10px] uppercase tracking-widest text-zinc-600">
+                    {timeAgo(event.created_at)}
+                  </div>
+                </div>
+                <span
+                  className={`text-[11px] font-bold uppercase tracking-widest ${event.xp_delta >= 0 ? 'text-[#00FF87]' : 'text-red-400'}`}
+                >
+                  {event.xp_delta >= 0 ? '+' : ''}
+                  {event.xp_delta} XP
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
