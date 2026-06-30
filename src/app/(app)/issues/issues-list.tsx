@@ -326,7 +326,6 @@ function IssueCard({
         </span>
       </div>
 
-      {/* Title now opens the detail drawer instead of navigating to GitHub */}
       <button
         onClick={() => onOpenDetail(issue)}
         className="mb-3 block w-full text-left font-serif text-xl leading-snug text-white hover:text-zinc-300"

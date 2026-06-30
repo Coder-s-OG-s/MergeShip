@@ -8,6 +8,35 @@ import { cacheDel, cacheGet, cacheSet } from '@/lib/cache';
 import { repoFilterPattern } from './issues-helpers';
 import { getInstallationToken } from '@/lib/github/app';
 
+export type IssueComment = {
+  id: number;
+  avatarUrl: string | null;
+  username: string;
+  level: number;
+  body: string;
+  createdAt: string;
+};
+
+export type IssueDetail = {
+  id: number;
+  repoFullName: string;
+  githubIssueNumber: number;
+  title: string;
+  difficulty: 'E' | 'M' | 'H' | null;
+  xpReward: number | null;
+  labels: string[] | null;
+  state: 'open' | 'closed';
+  url: string;
+  body: string | null;
+  fetchedAt: string;
+  authorAvatar: string | null;
+  authorHandle: string;
+  createdAt: string;
+  comments: IssueComment[];
+  userRecId: number | null;
+  userRecStatus: 'open' | 'claimed' | 'completed' | 'expired' | 'reassigned' | null;
+};
+
 const PAGE_SIZE = 10;
 
 export type IssueFilter = {
@@ -377,4 +406,96 @@ export async function unclaimIssue(recId: number): Promise<Result<void>> {
 
   await cacheDel(`recs:${user.id}`);
   return ok(undefined);
+}
+
+export async function getIssueDetail(issueId: number): Promise<Result<IssueDetail>> {
+  const sb = await getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const { data: issue, error: issueErr } = await service
+    .from('issues')
+    .select('*')
+    .eq('id', issueId)
+    .single();
+  if (issueErr || !issue) return err('not_found', 'issue not found');
+
+  const { data: rec } = await service
+    .from('recommendations')
+    .select('id, status')
+    .eq('user_id', user.id)
+    .eq('issue_id', issueId)
+    .maybeSingle();
+
+  let comments: IssueComment[] = [];
+  let body: string | null = issue.body ?? null;
+  let authorAvatar: string | null = null;
+  let authorHandle = 'unknown';
+  let createdAt = issue.fetched_at;
+
+  const ghMatch = issue.url?.match(/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)/);
+  if (ghMatch) {
+    try {
+      const { data: session } = await sb.auth.getSession();
+      const token = session?.session?.provider_token;
+      if (token) {
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github.v3+json',
+          'User-Agent': 'MergeShip',
+        };
+        const [issueRes, commentsRes] = await Promise.all([
+          fetch(`https://api.github.com/repos/${ghMatch[1]}/issues/${ghMatch[2]}`, { headers }),
+          fetch(`https://api.github.com/repos/${ghMatch[1]}/issues/${ghMatch[2]}/comments`, {
+            headers,
+          }),
+        ]);
+        if (issueRes.ok) {
+          const ghIssue = await issueRes.json();
+          body = ghIssue.body ?? body;
+          authorAvatar = ghIssue.user?.avatar_url ?? null;
+          authorHandle = ghIssue.user?.login ?? authorHandle;
+          createdAt = ghIssue.created_at ?? createdAt;
+        }
+        if (commentsRes.ok) {
+          const ghComments = await commentsRes.json();
+          comments = ghComments.map((c: any) => ({
+            id: c.id,
+            avatarUrl: c.user?.avatar_url ?? null,
+            username: c.user?.login ?? 'unknown',
+            level: 1,
+            body: c.body ?? '',
+            createdAt: c.created_at,
+          }));
+        }
+      }
+    } catch {
+      // fall through — comments stay empty, body stays as-is
+    }
+  }
+
+  return ok({
+    id: issue.id,
+    repoFullName: issue.repo_full_name,
+    githubIssueNumber: issue.github_issue_number,
+    title: issue.title,
+    difficulty: issue.difficulty as 'E' | 'M' | 'H' | null,
+    xpReward: issue.xp_reward,
+    labels: issue.labels,
+    state: issue.state as 'open' | 'closed',
+    url: issue.url,
+    body,
+    fetchedAt: issue.fetched_at,
+    authorAvatar,
+    authorHandle,
+    createdAt,
+    comments,
+    userRecId: rec?.id ?? null,
+    userRecStatus: (rec?.status ?? null) as IssueDetail['userRecStatus'],
+  });
 }
