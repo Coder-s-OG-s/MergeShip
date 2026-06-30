@@ -220,7 +220,7 @@ export default async function OnboardingCompletePage() {
             </Link>
 
             <Link
-              href="https://discord.com/channels/1472222146242678797/1517854322287706153"
+              href="https://discord.gg/Wg4xZt3DRx"
               className="text-[0.82rem] text-[#555] no-underline transition-colors duration-200 hover:text-[#f0f0f0]"
             >
               Join our Discord
