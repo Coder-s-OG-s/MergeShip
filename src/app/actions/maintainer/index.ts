@@ -16,6 +16,7 @@ export {
   refreshMaintainerBackfill,
   getPrCiStatus,
   closePullRequest,
+  getMaintainerPrById,
 } from './queue';
 
 export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './community';

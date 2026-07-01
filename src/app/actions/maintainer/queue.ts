@@ -468,3 +468,90 @@ export async function closePullRequest(prId: number): Promise<Result<{ ok: true 
 
   return ok({ ok: true });
 }
+
+// Fetch a single PR by its ID, used by the PR detail page
+export async function getMaintainerPrById(args: {
+  installationId: number;
+  prId: number;
+}): Promise<Result<MaintainerPrRow | null>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:pr:detail', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  // Verify the maintainer has access to the installation
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) return ok(null);
+
+  // Fetch the PR row
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select(
+      'id, repo_full_name, number, title, url, state, draft, author_login, author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at, ai_flagged, body_excerpt, mentor_review_at',
+    )
+    .eq('id', args.prId)
+    .maybeSingle();
+
+  if (!pr) return ok(null);
+
+  // Load profiles for author and mentor if present
+  const ids: string[] = [];
+  if (pr.author_user_id) ids.push(pr.author_user_id);
+  if (pr.mentor_reviewer_id) ids.push(pr.mentor_reviewer_id);
+
+  const profilesById = new Map<
+    string,
+    { handle: string; level: number; xp: number; mergedPrs: number }
+  >();
+  if (ids.length > 0) {
+    const { data: profileRows } = await service
+      .from('profiles')
+      .select('id, github_handle, level, xp')
+      .in('id', ids);
+    const merged = await service
+      .from('xp_events')
+      .select('user_id')
+      .in('user_id', ids)
+      .eq('source', 'recommended_merge');
+    const mergedCount = new Map<string, number>();
+    for (const row of merged.data ?? []) {
+      mergedCount.set(row.user_id, (mergedCount.get(row.user_id) ?? 0) + 1);
+    }
+    for (const p of profileRows ?? []) {
+      profilesById.set(p.id, {
+        handle: p.github_handle,
+        level: p.level ?? 0,
+        xp: p.xp ?? 0,
+        mergedPrs: mergedCount.get(p.id) ?? 0,
+      });
+    }
+  }
+
+  const author = pr.author_user_id ? (profilesById.get(pr.author_user_id) ?? null) : null;
+  const mentor = pr.mentor_reviewer_id ? (profilesById.get(pr.mentor_reviewer_id) ?? null) : null;
+
+  const row: MaintainerPrRow = {
+    id: pr.id,
+    repoFullName: pr.repo_full_name,
+    number: pr.number,
+    title: pr.title,
+    url: pr.url,
+    state: pr.state as 'open' | 'closed' | 'merged',
+    draft: pr.draft,
+    authorLogin: pr.author_login,
+    authorUserId: pr.author_user_id,
+    authorLevel: author?.level ?? null,
+    authorXp: author?.xp ?? null,
+    authorMergedPrs: author?.mergedPrs ?? null,
+    mentorVerified: pr.mentor_verified,
+    mentorReviewerHandle: mentor?.handle ?? null,
+    mentorReviewerLevel: mentor?.level ?? null,
+    githubUpdatedAt: pr.github_updated_at,
+    aiFlagged: pr.ai_flagged,
+    bodyExcerpt: pr.body_excerpt,
+    mentorReviewAt: pr.mentor_review_at,
+  };
+  return ok(row);
+}
