@@ -47,7 +47,12 @@ const TIER_LABEL: Record<'open' | 'closed' | 'merged', string> = {
 export default async function MaintainerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ install?: string; state?: string; verified?: string }>;
+  searchParams: Promise<{
+    install?: string;
+    state?: string;
+    verified?: string;
+    ai_flagged?: string;
+  }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const sb = await getServerSupabase();
@@ -77,7 +82,11 @@ export default async function MaintainerPage({
 
   const activeInstall = installs.find((i) => i.installationId === activeInstallId)!;
 
-  const filters: { state?: ('open' | 'closed' | 'merged')[]; mentorVerified?: 'yes' | 'no' } = {};
+  const filters: {
+    state?: ('open' | 'closed' | 'merged')[];
+    mentorVerified?: 'yes' | 'no';
+    aiFlagged?: 'yes' | 'no';
+  } = {};
   if (resolvedSearchParams.state) {
     const parts = resolvedSearchParams.state
       .split(',')
@@ -86,6 +95,9 @@ export default async function MaintainerPage({
   }
   if (resolvedSearchParams.verified === 'yes' || resolvedSearchParams.verified === 'no') {
     filters.mentorVerified = resolvedSearchParams.verified;
+  }
+  if (resolvedSearchParams.ai_flagged === 'yes' || resolvedSearchParams.ai_flagged === 'no') {
+    filters.aiFlagged = resolvedSearchParams.ai_flagged;
   }
   if (!filters.state) filters.state = ['open']; // default
 
@@ -198,6 +210,20 @@ export default async function MaintainerPage({
               Issue triage →
             </Link>
           </div>
+          {settings.aiPrDetection && (
+            <>
+              <span className="mx-2 text-zinc-700">|</span>
+              <FilterPill
+                label="⚠ AI Flagged"
+                href={withParam(
+                  'ai_flagged',
+                  resolvedSearchParams.ai_flagged === 'yes' ? '' : 'yes',
+                  resolvedSearchParams,
+                )}
+                active={resolvedSearchParams.ai_flagged === 'yes'}
+              />
+            </>
+          )}
           <Link
             href={`/maintainer/community?install=${activeInstallId}`}
             className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
@@ -453,6 +479,11 @@ export default async function MaintainerPage({
                     {r.draft && (
                       <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
                         Draft
+                      </span>
+                    )}
+                    {r.aiFlagged && (
+                      <span className="rounded-full bg-rose-900/40 px-2 py-0.5 text-xs font-medium text-rose-300 ring-1 ring-rose-700/40">
+                        ⚠ AI Flagged
                       </span>
                     )}
                     <span className={`rounded-full px-2 py-0.5 text-xs ${stateColor(r.state)}`}>
