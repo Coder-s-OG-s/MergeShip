@@ -78,4 +78,76 @@ describe('buildMaintainerAnalyticsTrends', () => {
 
     expect(trends.avgReviewTimeHours).toBe(1.8);
   });
+
+  it('builds day-over-day deltas from UTC PR timestamps', () => {
+    const trends = buildMaintainerAnalyticsTrends({
+      now: new Date('2026-05-21T12:00:00.000Z'),
+      mergedPullRequests: [
+        {
+          githubCreatedAt: '2026-05-21T02:00:00.000Z',
+          mergedAt: '2026-05-21T03:00:00.000Z',
+          mentorReviewAt: '2026-05-21T06:00:00.000Z',
+        },
+        {
+          githubCreatedAt: '2026-05-21T08:00:00.000Z',
+          mergedAt: '2026-05-21T09:00:00.000Z',
+          mentorReviewAt: '2026-05-21T10:00:00.000Z',
+        },
+        {
+          githubCreatedAt: '2026-05-20T04:00:00.000Z',
+          mergedAt: '2026-05-20T05:00:00.000Z',
+          mentorReviewAt: '2026-05-20T06:00:00.000Z',
+        },
+      ],
+      completedRecommendations: [],
+      contributorProfiles: [],
+      levelUps: [],
+    });
+
+    expect(trends.dayOverDay.openedPrs).toMatchObject({
+      current: 2,
+      previous: 1,
+      delta: 1,
+      direction: 'up',
+    });
+    expect(trends.dayOverDay.mergedPrs).toMatchObject({
+      current: 2,
+      previous: 1,
+      delta: 1,
+    });
+    expect(trends.dayOverDay.mentorReviews).toMatchObject({
+      current: 2,
+      previous: 1,
+      delta: 1,
+    });
+    expect(trends.dayOverDay.avgReviewTimeHours).toMatchObject({
+      current: 3,
+      previous: 2,
+      delta: 1,
+      direction: 'up',
+    });
+  });
+
+  it('marks average review time delta as flat when either day has no reviews', () => {
+    const trends = buildMaintainerAnalyticsTrends({
+      now: new Date('2026-05-21T12:00:00.000Z'),
+      mergedPullRequests: [
+        {
+          githubCreatedAt: '2026-05-21T02:00:00.000Z',
+          mergedAt: null,
+          mentorReviewAt: '2026-05-21T06:00:00.000Z',
+        },
+      ],
+      completedRecommendations: [],
+      contributorProfiles: [],
+      levelUps: [],
+    });
+
+    expect(trends.dayOverDay.avgReviewTimeHours).toMatchObject({
+      current: 4,
+      previous: null,
+      delta: null,
+      direction: 'flat',
+    });
+  });
 });
