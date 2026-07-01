@@ -12,6 +12,7 @@ import {
   getTopContributors,
   getInstallationSettings,
   getReviewerLoad,
+  getNoiseBreakdown,
   getPromotionEligible,
   type FlaggedAccountRow,
   type InstallationSettingsData,
@@ -19,6 +20,7 @@ import {
   type StaleIssueRow,
   type ContributorRow,
   type ReviewerLoadRow,
+  type NoiseBreakdown,
   type PromotionEligibleRow,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
@@ -121,6 +123,14 @@ export default async function MaintainerPage({
   const reviewerLoadsRes = await getReviewerLoad({ installationId: activeInstallId });
   const reviewerLoads: ReviewerLoadRow[] = isOk(reviewerLoadsRes) ? reviewerLoadsRes.data : [];
   const maxLoad = reviewerLoads.length > 0 ? Math.max(...reviewerLoads.map((r) => r.prCount)) : 0;
+
+  let noise: NoiseBreakdown = { valid: 0, spamAi: 0, other: 0, total: 0 };
+  if (settings.aiPrDetection) {
+    const noiseRes = await getNoiseBreakdown({ installationId: activeInstallId });
+    if (isOk(noiseRes)) {
+      noise = noiseRes.data;
+    }
+  }
 
   const promotionEligibleRes = await getPromotionEligible({ installationId: activeInstallId });
   const promotionEligible: PromotionEligibleRow[] = isOk(promotionEligibleRes)
@@ -405,6 +415,12 @@ export default async function MaintainerPage({
           </section>
         </div>
 
+        {settings.aiPrDetection && (
+          <section className="mb-8 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+            <h2 className="mb-4 text-sm font-semibold text-white">PR Noise Breakdown</h2>
+            <NoiseDonut noise={noise} />
+          </section>
+        )}
         {rows.length === 0 ? (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-zinc-400">
             No PRs match your filters. Try widening state or running a refresh.
@@ -485,6 +501,78 @@ function FilterPill({ label, href, active }: { label: string; href: string; acti
     >
       {label}
     </Link>
+  );
+}
+
+function NoiseDonut({ noise }: { noise: NoiseBreakdown }) {
+  const { valid, spamAi, other, total } = noise;
+  const R = 40;
+  const C = 2 * Math.PI * R; // circumference ≈ 251.3
+
+  // Guard against zero-total to avoid divide-by-zero
+  const safePct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
+
+  // Each segment: offset advances by the previous segment's dash length
+  type Seg = { color: string; pct: number; label: string };
+  const segments: Seg[] = [
+    { color: '#10b981', pct: safePct(valid), label: 'Valid' }, // emerald-500
+    { color: '#f43f5e', pct: safePct(spamAi), label: 'Spam/AI' }, // rose-500
+    { color: '#52525b', pct: safePct(other), label: 'Other' }, // zinc-600
+  ];
+
+  let offsetPct = 0;
+  const arcs = segments.map((seg) => {
+    const dash = (seg.pct / 100) * C;
+    const offset = (offsetPct / 100) * C;
+    offsetPct += seg.pct;
+    return { ...seg, dash, offset };
+  });
+
+  return (
+    <div className="flex flex-wrap items-center gap-8">
+      <svg width="100" height="100" viewBox="0 0 100 100" className="shrink-0">
+        {total === 0 ? (
+          <circle cx="50" cy="50" r={R} fill="none" stroke="#3f3f46" strokeWidth="14" />
+        ) : (
+          arcs.map((arc) => (
+            <circle
+              key={arc.label}
+              cx="50"
+              cy="50"
+              r={R}
+              fill="none"
+              stroke={arc.color}
+              strokeWidth="14"
+              strokeDasharray={`${arc.dash} ${C - arc.dash}`}
+              strokeDashoffset={-arc.offset}
+              style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }}
+            />
+          ))
+        )}
+        <text x="50" y="54" textAnchor="middle" fontSize="13" fontWeight="600" fill="#fff">
+          {total}
+        </text>
+      </svg>
+
+      <div className="space-y-2 text-sm">
+        {total === 0 ? (
+          <p className="text-xs text-zinc-500">
+            No data yet. Classification runs as new PRs arrive.
+          </p>
+        ) : (
+          segments.map((seg) => (
+            <div key={seg.label} className="flex items-center gap-2">
+              <span
+                className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ background: seg.color }}
+              />
+              <span className="text-zinc-300">{seg.label}</span>
+              <span className="ml-auto pl-4 tabular-nums text-zinc-400">{seg.pct.toFixed(0)}%</span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 
