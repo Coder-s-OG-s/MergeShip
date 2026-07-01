@@ -695,26 +695,27 @@ export async function getPrDetails(prId: number): Promise<Result<MaintainerPrRow
   const { user, service } = authRes.data;
 
   // Retrieve the PR from the DB using prId
-  const { data: rawPr } = await service
+  const { data: rawPr, error: rawPrErr } = await service
     .from('pull_requests')
     .select(
-      'id, repo_full_name, number, title, url, state, draft, author_login, ' +
-        'author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at',
+      'id, repo_full_name, number, title, url, state, draft, author_login, author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at',
     )
     .eq('id', prId)
     .maybeSingle();
 
+  if (rawPrErr) return err('db_error', rawPrErr.message);
   if (!rawPr) {
     return err('not_found', 'PR not found');
   }
 
   // Find the installation ID for the repo
-  const { data: repoRow } = await service
+  const { data: repoRow, error: repoErr } = await service
     .from('installation_repositories')
     .select('installation_id')
     .eq('repo_full_name', rawPr.repo_full_name)
     .maybeSingle();
 
+  if (repoErr) return err('db_error', repoErr.message);
   if (!repoRow?.installation_id) {
     return err('not_found', 'Installation not found for this repository');
   }
@@ -732,12 +733,12 @@ export async function getPrDetails(prId: number): Promise<Result<MaintainerPrRow
   let authorMergedPrs: number | null = null;
 
   if (rawPr.author_user_id) {
-    const { data: authorProfile } = await service
+    const { data: authorProfile, error: authorProfileErr } = await service
       .from('profiles')
       .select('level, xp, merged_prs')
       .eq('id', rawPr.author_user_id)
       .maybeSingle();
-    if (authorProfile) {
+    if (authorProfile && !authorProfileErr) {
       authorLevel = authorProfile.level;
       authorXp = authorProfile.xp;
       authorMergedPrs = authorProfile.merged_prs;
@@ -748,12 +749,12 @@ export async function getPrDetails(prId: number): Promise<Result<MaintainerPrRow
   let mentorReviewerLevel: number | null = null;
 
   if (rawPr.mentor_reviewer_id) {
-    const { data: mentorProfile } = await service
+    const { data: mentorProfile, error: mentorProfileErr } = await service
       .from('profiles')
       .select('github_handle, level')
       .eq('id', rawPr.mentor_reviewer_id)
       .maybeSingle();
-    if (mentorProfile) {
+    if (mentorProfile && !mentorProfileErr) {
       mentorReviewerHandle = mentorProfile.github_handle;
       mentorReviewerLevel = mentorProfile.level;
     }
@@ -773,7 +774,6 @@ export async function getPrDetails(prId: number): Promise<Result<MaintainerPrRow
     authorXp,
     authorMergedPrs,
     mentorVerified: rawPr.mentor_verified,
-    mentorReviewerId: rawPr.mentor_reviewer_id,
     mentorReviewerHandle,
     mentorReviewerLevel,
     githubUpdatedAt: rawPr.github_updated_at,
