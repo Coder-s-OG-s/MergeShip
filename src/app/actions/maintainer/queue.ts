@@ -685,3 +685,99 @@ export async function getPrActivityTimeline(prId: number): Promise<Result<Timeli
     return err('github_error', error.message || 'Failed to fetch timeline data from GitHub API');
   }
 }
+
+export async function getPrDetails(prId: number): Promise<Result<MaintainerPrRow>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:pr-details', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  // Retrieve the PR from the DB using prId
+  const { data: rawPr } = await service
+    .from('pull_requests')
+    .select(
+      'id, repo_full_name, number, title, url, state, draft, author_login, ' +
+        'author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at',
+    )
+    .eq('id', prId)
+    .maybeSingle();
+
+  if (!rawPr) {
+    return err('not_found', 'PR not found');
+  }
+
+  // Find the installation ID for the repo
+  const { data: repoRow } = await service
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', rawPr.repo_full_name)
+    .maybeSingle();
+
+  if (!repoRow?.installation_id) {
+    return err('not_found', 'Installation not found for this repository');
+  }
+  const installationId = repoRow.installation_id;
+
+  // Verify the maintainer has access to this repo under the installation
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(rawPr.repo_full_name)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  // Fetch profile lookup for author & mentor
+  let authorLevel: number | null = null;
+  let authorXp: number | null = null;
+  let authorMergedPrs: number | null = null;
+
+  if (rawPr.author_user_id) {
+    const { data: authorProfile } = await service
+      .from('profiles')
+      .select('level, xp, merged_prs')
+      .eq('id', rawPr.author_user_id)
+      .maybeSingle();
+    if (authorProfile) {
+      authorLevel = authorProfile.level;
+      authorXp = authorProfile.xp;
+      authorMergedPrs = authorProfile.merged_prs;
+    }
+  }
+
+  let mentorReviewerHandle: string | null = null;
+  let mentorReviewerLevel: number | null = null;
+
+  if (rawPr.mentor_reviewer_id) {
+    const { data: mentorProfile } = await service
+      .from('profiles')
+      .select('github_handle, level')
+      .eq('id', rawPr.mentor_reviewer_id)
+      .maybeSingle();
+    if (mentorProfile) {
+      mentorReviewerHandle = mentorProfile.github_handle;
+      mentorReviewerLevel = mentorProfile.level;
+    }
+  }
+
+  const row: MaintainerPrRow = {
+    id: rawPr.id,
+    repoFullName: rawPr.repo_full_name,
+    number: rawPr.number,
+    title: rawPr.title,
+    url: rawPr.url,
+    state: rawPr.state as 'open' | 'closed' | 'merged',
+    draft: rawPr.draft,
+    authorLogin: rawPr.author_login,
+    authorUserId: rawPr.author_user_id,
+    authorLevel,
+    authorXp,
+    authorMergedPrs,
+    mentorVerified: rawPr.mentor_verified,
+    mentorReviewerId: rawPr.mentor_reviewer_id,
+    mentorReviewerHandle,
+    mentorReviewerLevel,
+    githubUpdatedAt: rawPr.github_updated_at,
+  };
+
+  return ok(row);
+}

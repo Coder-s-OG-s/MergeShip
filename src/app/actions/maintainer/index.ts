@@ -17,6 +17,7 @@ export {
   getPrCiStatus,
   closePullRequest,
   getPrActivityTimeline,
+  getPrDetails,
 } from './queue';
 
 export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './community';
