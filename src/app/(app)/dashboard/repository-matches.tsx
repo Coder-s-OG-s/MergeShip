@@ -51,8 +51,8 @@ export default async function RepositoryMatches({ userId, primaryLanguage }: Pro
   const matchingRepos = Array.from(repoMap.values()).slice(0, 8);
 
   return (
-    <section>
-      <div className="mb-6 border-b border-[#2d333b] pb-4">
+    <section className="flex h-full flex-col border border-zinc-800 bg-[#161b22] p-5">
+      <div className="mb-4 border-b border-zinc-800 pb-3">
         <div className="flex items-center justify-between">
           <h2 className="text-[11px] uppercase tracking-widest text-zinc-500">REPO MATCHES</h2>
           <span className="text-[10px] uppercase tracking-widest text-zinc-600">
@@ -64,57 +64,59 @@ export default async function RepositoryMatches({ userId, primaryLanguage }: Pro
         </div>
       </div>
 
-      {matchingRepos.length === 0 ? (
-        <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
-          No matches found.{' '}
-          {!primaryLanguage && 'Set a primary language in your profile to filter results.'}
-        </div>
-      ) : (
-        <div>
-          {matchingRepos.map((repo) => (
-            <div key={repo.repoFullName} className="border-b border-[#2d333b] py-4 last:border-0">
-              <a
-                href={`https://github.com/${repo.repoFullName}`}
-                target="_blank"
-                rel="noreferrer"
-                className="mb-1 block truncate text-[11px] uppercase tracking-widest text-zinc-200 hover:text-white"
-              >
-                {repo.repoFullName}
-              </a>
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase tracking-widest text-zinc-600">
-                  {repo.repoLanguage ?? 'Unknown'}
-                </span>
-                <div className="flex items-center gap-3">
+      <div className="custom-scrollbar flex-1 overflow-y-auto pr-2">
+        {matchingRepos.length === 0 ? (
+          <div className="py-4 text-[11px] uppercase tracking-widest text-zinc-500">
+            No matches found.{' '}
+            {!primaryLanguage && 'Set a primary language in your profile to filter results.'}
+          </div>
+        ) : (
+          <div>
+            {matchingRepos.map((repo) => (
+              <div key={repo.repoFullName} className="border-b border-zinc-800 py-4 last:border-0">
+                <a
+                  href={`https://github.com/${repo.repoFullName}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mb-1 block truncate text-[11px] uppercase tracking-widest text-zinc-200 hover:text-white"
+                >
+                  {repo.repoFullName}
+                </a>
+                <div className="flex items-center justify-between">
                   <span className="text-[10px] uppercase tracking-widest text-zinc-600">
-                    {repo.openIssueCount} {repo.openIssueCount === 1 ? 'ISSUE' : 'ISSUES'}
+                    {repo.repoLanguage ?? 'Unknown'}
                   </span>
-                  <span className="text-[10px] tabular-nums text-[#10b981]">
-                    /{repo.repoHealthScore}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] uppercase tracking-widest text-zinc-600">
+                      {repo.openIssueCount} {repo.openIssueCount === 1 ? 'ISSUE' : 'ISSUES'}
+                    </span>
+                    <span className="text-[10px] tabular-nums text-[#10b981]">
+                      /{repo.repoHealthScore}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
 
 export function RepositoryMatchesSkeleton() {
   return (
-    <section>
-      <div className="mb-6 border-b border-[#2d333b] pb-4">
+    <section className="flex h-full flex-col border border-zinc-800 bg-[#161b22] p-5">
+      <div className="mb-4 border-b border-zinc-800 pb-3">
         <div className="flex items-center justify-between">
           <div className="h-3 w-24 animate-pulse bg-zinc-800" />
           <div className="h-3 w-16 animate-pulse bg-zinc-800" />
         </div>
         <div className="mt-1 h-2.5 w-28 animate-pulse bg-zinc-800" />
       </div>
-      <div>
+      <div className="custom-scrollbar flex-1 overflow-y-auto pr-2">
         {[1, 2, 3, 4, 5, 6].map((i) => (
-          <div key={i} className="border-b border-[#2d333b] py-4 last:border-0">
+          <div key={i} className="border-b border-zinc-800 py-4 last:border-0">
             <div className="mb-2 h-3 w-4/5 animate-pulse bg-zinc-800" />
             <div className="flex items-center justify-between">
               <div className="h-2.5 w-16 animate-pulse bg-zinc-800" />

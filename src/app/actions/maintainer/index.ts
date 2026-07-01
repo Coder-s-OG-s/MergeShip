@@ -28,6 +28,8 @@ export {
   getMaintainerAnalyticsTrends,
   exportPrQueueCsv,
   getReviewerLoad,
+  getNoiseBreakdown,
+  getPromotionEligible,
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';

@@ -17,6 +17,7 @@ export type LevelDistributionTrend = {
 export type MaintainerAnalyticsTrends = {
   weekly: WeeklyMaintainerTrend[];
   levelDistribution: LevelDistributionTrend[];
+  avgReviewTimeHours: number | null;
 };
 
 export type AnalyticsMergedPullRequest = {
@@ -49,6 +50,7 @@ export function buildMaintainerAnalyticsTrends(args: {
   completedRecommendations: AnalyticsCompletedRecommendation[];
   contributorProfiles: AnalyticsContributorProfile[];
   levelUps: AnalyticsLevelUp[];
+  avgReviewTimeHours?: number | null;
 }): MaintainerAnalyticsTrends {
   const weekly = buildWeeklyTrends(
     args.now,
@@ -61,7 +63,7 @@ export function buildMaintainerAnalyticsTrends(args: {
     args.levelUps,
   );
 
-  return { weekly, levelDistribution };
+  return { weekly, levelDistribution, avgReviewTimeHours: args.avgReviewTimeHours ?? null };
 }
 
 function buildWeeklyTrends(

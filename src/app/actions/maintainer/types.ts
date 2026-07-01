@@ -99,3 +99,17 @@ export type TimelineEvent = {
     state?: 'approved' | 'changes_requested' | 'commented' | 'dismissed';
   };
 };
+
+export type NoiseBreakdown = {
+  valid: number;
+  spamAi: number;
+  other: number;
+  total: number;
+};
+
+export type PromotionEligibleRow = {
+  githubHandle: string;
+  xp: number;
+  level: number;
+  xpNeeded: number;
+};

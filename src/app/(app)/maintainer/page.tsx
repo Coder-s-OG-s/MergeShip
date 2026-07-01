@@ -12,18 +12,21 @@ import {
   getTopContributors,
   getInstallationSettings,
   getReviewerLoad,
+  getPromotionEligible,
   type FlaggedAccountRow,
   type InstallationSettingsData,
   type RepoHealthRow,
   type StaleIssueRow,
   type ContributorRow,
   type ReviewerLoadRow,
+  type PromotionEligibleRow,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import type { MaintainerPrRow } from '@/lib/maintainer/queue';
 import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
+import InviteContributorButton from './invite-contributor-button';
 import CiStatusBadge from './ci-status-badge';
 import AnalyticsTrends from './analytics-trends';
 import { VerifyButton } from '../issues/verify-button';
@@ -92,7 +95,7 @@ export default async function MaintainerPage({
   const trendsRes = await getMaintainerAnalyticsTrends({ installationId: activeInstallId });
   const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
     ? trendsRes.data
-    : { weekly: [], levelDistribution: [] };
+    : { weekly: [], levelDistribution: [], avgReviewTimeHours: null };
   const repoHealthRes = await getRepoHealthOverview({ installationId: activeInstallId });
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
@@ -119,12 +122,29 @@ export default async function MaintainerPage({
   const reviewerLoads: ReviewerLoadRow[] = isOk(reviewerLoadsRes) ? reviewerLoadsRes.data : [];
   const maxLoad = reviewerLoads.length > 0 ? Math.max(...reviewerLoads.map((r) => r.prCount)) : 0;
 
+  const promotionEligibleRes = await getPromotionEligible({ installationId: activeInstallId });
+  const promotionEligible: PromotionEligibleRow[] = isOk(promotionEligibleRes)
+    ? promotionEligibleRes.data
+    : [];
+
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-5xl">
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <h1 className="font-display text-3xl font-bold">Maintainer</h1>
-          <RefreshButton installationId={activeInstallId} />
+          <div className="flex items-center gap-2">
+            <InviteContributorButton
+              installationId={activeInstallId}
+              accountLogin={activeInstall.accountLogin}
+            />
+            <Link
+              href={`/maintainer?install=${activeInstallId}&state=open`}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-600"
+            >
+              View PR Queue →
+            </Link>
+            <RefreshButton installationId={activeInstallId} />
+          </div>
         </header>
 
         <div className="mb-4 flex flex-wrap gap-2 text-xs">
@@ -181,6 +201,46 @@ export default async function MaintainerPage({
         </p>
         <QueueSettings settings={settings} />
         <AnalyticsTrends data={analyticsTrends} />
+        {promotionEligible.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-emerald-900/60 bg-emerald-950/20 p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-emerald-100">Promotion Eligible</h2>
+                <p className="mt-1 text-xs text-emerald-200/70">
+                  These contributors are within 10% of their next level.
+                </p>
+              </div>
+              <span className="rounded-full bg-emerald-900/50 px-2 py-1 text-xs text-emerald-100">
+                {promotionEligible.length} contributor{promotionEligible.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {promotionEligible.map((c) => (
+                <div key={c.githubHandle} className="rounded-lg border border-emerald-900/50 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-emerald-50">@{c.githubHandle}</p>
+                      <p className="mt-1 text-xs text-emerald-200/70">
+                        L{c.level} · {c.xp.toLocaleString()} XP
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="text-xs text-emerald-200/50">
+                        {c.xpNeeded} XP to L{c.level + 1}
+                      </span>
+                      <Link
+                        href={`/@${c.githubHandle}`}
+                        className="text-xs text-emerald-400 hover:text-emerald-300"
+                      >
+                        Review profile →
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {flaggedAccounts.length > 0 && (
           <section className="mb-8 rounded-2xl border border-amber-900/60 bg-amber-950/20 p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -227,6 +287,26 @@ export default async function MaintainerPage({
           </section>
         )}
         <div className="mb-8 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <section className="flex flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+            <div>
+              <h2 className="mb-4 text-sm font-semibold text-white">Average Review Time</h2>
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-bold text-white">
+                  {analyticsTrends.avgReviewTimeHours !== null
+                    ? `${analyticsTrends.avgReviewTimeHours.toFixed(1)}h`
+                    : '—'}
+                </span>
+                {analyticsTrends.avgReviewTimeHours !== null && (
+                  <span className="text-xs text-zinc-500">elapsed hours</span>
+                )}
+              </div>
+            </div>
+            <div className="mt-4 border-t border-zinc-800/60 pt-3">
+              <p className="text-[11px] text-zinc-500">
+                Average duration from PR open to mentor verification for this installation.
+              </p>
+            </div>
+          </section>
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>
 
