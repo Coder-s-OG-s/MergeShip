@@ -483,7 +483,7 @@ export default async function MaintainerPage({
                     )}
                     {r.aiFlagged && (
                       <span className="rounded-full bg-rose-900/40 px-2 py-0.5 text-xs font-medium text-rose-300 ring-1 ring-rose-700/40">
-                        ⚠ AI Flagged
+                        AI Flagged
                       </span>
                     )}
                     <span className={`rounded-full px-2 py-0.5 text-xs ${stateColor(r.state)}`}>
