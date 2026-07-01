@@ -468,3 +468,58 @@ export async function closePullRequest(prId: number): Promise<Result<{ ok: true 
 
   return ok({ ok: true });
 }
+
+export async function getPrDiff(
+  installationId: number,
+  repoFullName: string,
+  prNumber: number,
+): Promise<Result<string | null>> {
+  const authRes = await requireMaintainer({ requireService: true });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  if (!(await assertMaintainerInstall(service, user.id, installationId))) {
+    return err('not_authorised', 'not your install');
+  }
+
+  const cacheKey = `pr:diff:${repoFullName}:${prNumber}`;
+  const cached = await cacheGet<string | null>(cacheKey);
+  if (cached !== null) {
+    return ok(cached);
+  }
+
+  if (repoFullName.startsWith('demo/') || !process.env.GITHUB_APP_ID) {
+    const mockDiff = `diff --git a/demo.ts b/demo.ts
+index e69de29..d95f3ad 100644
+--- a/demo.ts
++++ b/demo.ts
+@@ -1,3 +1,4 @@
+ function demo() {
+-  console.log('old');
++  console.log('new');
+ }`;
+    await cacheSet(cacheKey, mockDiff, 300);
+    return ok(mockDiff);
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    const [owner, repo] = repoFullName.split('/');
+    if (!owner || !repo) {
+      return ok(null);
+    }
+
+    const diffRes = await octokit.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
+      mediaType: { format: 'diff' },
+    });
+
+    const diff = typeof diffRes.data === 'string' ? diffRes.data : null;
+    await cacheSet(cacheKey, diff, 300);
+    return ok(diff);
+  } catch (error) {
+    return ok(null);
+  }
+}
