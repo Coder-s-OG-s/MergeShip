@@ -104,10 +104,16 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-400">
           Merge Decision
         </h2>
-        <div className="flex flex-wrap gap-3">
-          <RequestChangesButton prId={prId} />
-          <ClosePrButton prId={prId} />
-        </div>
+        {pr.state === 'open' ? (
+          <div className="flex flex-wrap gap-3">
+            <RequestChangesButton prId={prId} />
+            <ClosePrButton prId={prId} />
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-500">
+            This PR is already {pr.state} — no actions available.
+          </p>
+        )}
       </div>
     </div>
   );
