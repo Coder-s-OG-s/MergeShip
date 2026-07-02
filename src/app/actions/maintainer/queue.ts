@@ -329,7 +329,10 @@ export async function getPrCiStatus(
   repoFullName: string,
   prNumber: number,
 ): Promise<Result<'passing' | 'failing' | 'pending' | null>> {
-  const authRes = await requireMaintainer({ requireService: true });
+  const authRes = await requireMaintainer({
+    requireService: true,
+    rateLimit: { namespace: 'maint:pr-ci-status', ...RATE_LIMIT_TIERS.GENEROUS },
+  });
   if (!authRes.ok) return authRes;
   const { user, service } = authRes.data;
 
