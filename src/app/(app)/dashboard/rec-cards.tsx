@@ -9,6 +9,7 @@ import {
   type RecCard,
 } from '@/app/actions/recommendations';
 import { sendHelpRequest } from '@/app/actions/help';
+import { CooldownTimer } from '@/components/cooldown-timer';
 
 const PR_URL_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
 
@@ -24,6 +25,13 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+
+  function handleRateLimit(resetAt?: number) {
+    if (resetAt) {
+      setCooldownUntil(resetAt);
+    }
+  }
 
   function handleClaim(rec: RecCard) {
     setBusyId(rec.id);
@@ -33,6 +41,10 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
       if (res.ok) {
         setRecs((prev) => prev.map((r) => (r.id === rec.id ? { ...r, status: 'claimed' } : r)));
       } else {
+        if (res.error.code === 'rate_limited') {
+          handleRateLimit(res.error.resetAt);
+        }
+
         setError(`${rec.title}: ${res.error.message}`);
       }
       setBusyId(null);
@@ -50,6 +62,10 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
           return res.data.replacement ? [...without, res.data.replacement] : without;
         });
       } else {
+        if (res.error.code === 'rate_limited') {
+          handleRateLimit(res.error.resetAt);
+        }
+
         setError(`${rec.title}: ${res.error.message}`);
       }
       setBusyId(null);
@@ -66,18 +82,33 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
 
   return (
     <div>
-      {error && (
+      {cooldownUntil ? (
         <div
           className="mb-4 border border-red-800 bg-red-900/20 px-4 py-3 text-[11px] uppercase tracking-widest text-red-400"
           role="alert"
         >
-          {error}
+          <CooldownTimer
+            resetAt={cooldownUntil}
+            onExpire={() => {
+              setCooldownUntil(null);
+              setError(null);
+            }}
+          />
         </div>
+      ) : (
+        error && (
+          <div
+            className="mb-4 border border-red-800 bg-red-900/20 px-4 py-3 text-[11px] uppercase tracking-widest text-red-400"
+            role="alert"
+          >
+            {error}
+          </div>
+        )
       )}
-      <div className="max-h-[520px] overflow-y-auto pr-1 [&::-webkit-scrollbar-thumb:hover]:bg-zinc-500 [&::-webkit-scrollbar-thumb]:bg-zinc-700 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:w-1">
+      <div>
         <ul>
           {recs.map((rec) => (
-            <li key={rec.id} className="border-b border-[#2d333b] py-6 last:border-0">
+            <li key={rec.id} className="border-b border-zinc-800 py-6 last:border-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span
                   className={`border px-2 py-0.5 text-[10px] font-bold uppercase ${TIER_COLOR[rec.difficulty]}`}
@@ -107,19 +138,30 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
 
               <div className="flex items-center justify-between">
                 {rec.status === 'claimed' ? (
-                  <ClaimedActions rec={rec} onError={setError} />
+                  <ClaimedActions
+                    rec={rec}
+                    onError={setError}
+                    onRateLimit={handleRateLimit}
+                    isCoolingDown={cooldownUntil !== null && cooldownUntil > Date.now()}
+                  />
                 ) : (
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => handleClaim(rec)}
-                      disabled={pending && busyId === rec.id}
+                      disabled={
+                        (cooldownUntil !== null && cooldownUntil > Date.now()) ||
+                        (pending && busyId === rec.id)
+                      }
                       className="border border-zinc-600 px-4 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {busyId === rec.id ? 'CLAIMING...' : 'CLAIM'}
                     </button>
                     <button
                       onClick={() => handleSkip(rec)}
-                      disabled={pending && busyId === rec.id}
+                      disabled={
+                        (cooldownUntil !== null && cooldownUntil > Date.now()) ||
+                        (pending && busyId === rec.id)
+                      }
                       className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-400 disabled:opacity-40"
                     >
                       SKIP
@@ -138,7 +180,17 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
   );
 }
 
-function ClaimedActions({ rec, onError }: { rec: RecCard; onError: (msg: string | null) => void }) {
+function ClaimedActions({
+  rec,
+  onError,
+  onRateLimit,
+  isCoolingDown,
+}: {
+  rec: RecCard;
+  onError: (msg: string | null) => void;
+  onRateLimit: (resetAt?: number) => void;
+  isCoolingDown: boolean;
+}) {
   const [input, setInput] = useState('');
   const [pending, startTransition] = useTransition();
   const [linked, setLinked] = useState(false);
@@ -152,7 +204,13 @@ function ClaimedActions({ rec, onError }: { rec: RecCard; onError: (msg: string 
     startTransition(async () => {
       const res = await linkPrToRec(rec.id, input.trim());
       if (res.ok) setLinked(true);
-      else onError(`${rec.title}: ${res.error.message}`);
+      else {
+        if (res.error.code === 'rate_limited') {
+          onRateLimit(res.error.resetAt);
+        }
+
+        onError(`${rec.title}: ${res.error.message}`);
+      }
     });
   }
 
@@ -165,7 +223,13 @@ function ClaimedActions({ rec, onError }: { rec: RecCard; onError: (msg: string 
     startTransition(async () => {
       const res = await sendHelpRequest({ recId: rec.id, prUrl: input.trim() });
       if (res.ok) setHelpSent(true);
-      else onError(`${rec.title}: ${res.error.message}`);
+      else {
+        if (res.error.code === 'rate_limited') {
+          onRateLimit(res.error.resetAt);
+        }
+
+        onError(`${rec.title}: ${res.error.message}`);
+      }
     });
   }
 
@@ -198,7 +262,7 @@ function ClaimedActions({ rec, onError }: { rec: RecCard; onError: (msg: string 
             {isValidPrUrl && (
               <button
                 onClick={onLink}
-                disabled={pending}
+                disabled={isCoolingDown || pending}
                 className="border border-zinc-600 px-4 py-1.5 text-[10px] uppercase tracking-widest text-zinc-300 transition-colors hover:border-white hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {pending ? 'LINKING...' : 'LINK PR'}
@@ -207,7 +271,7 @@ function ClaimedActions({ rec, onError }: { rec: RecCard; onError: (msg: string 
             {!helpSent && (
               <button
                 onClick={onHelp}
-                disabled={pending || input.trim().length === 0}
+                disabled={isCoolingDown || pending || input.trim().length === 0}
                 className="text-[10px] uppercase tracking-widest text-zinc-600 transition-colors hover:text-zinc-400 disabled:opacity-40"
                 title="Request review from L2+ contributors"
               >

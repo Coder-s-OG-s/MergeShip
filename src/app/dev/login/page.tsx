@@ -1,3 +1,4 @@
+import React from 'react';
 import { notFound } from 'next/navigation';
 import DevLoginButtons from './buttons';
 
@@ -8,10 +9,17 @@ export const dynamic = 'force-dynamic';
  * Used by contributors and CI to sign in as one of the seeded test users
  * without needing real GitHub OAuth.
  */
-export default function DevLoginPage() {
+export default function DevLoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
   if (process.env.NODE_ENV === 'production') {
     notFound();
   }
+
+  const params = React.use(searchParams);
+  const next = params.next ?? '/dashboard';
 
   const personas = [
     { email: 'alice@test.local', level: 'L0', label: 'Alice', blurb: 'Brand new, no audit yet' },
@@ -38,7 +46,7 @@ export default function DevLoginPage() {
           </p>
         </div>
 
-        <DevLoginButtons personas={personas} />
+        <DevLoginButtons personas={personas} next={next} />
       </div>
     </div>
   );

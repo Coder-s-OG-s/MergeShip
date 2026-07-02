@@ -11,7 +11,7 @@ import { rateLimit } from '@/lib/rate-limit';
  * computeCurrentStreak. Cheap query, runs on every dashboard render.
  */
 export async function getCurrentStreak(): Promise<{ days: number }> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return { days: 0 };
   const {
     data: { user },

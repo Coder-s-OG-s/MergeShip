@@ -6,7 +6,10 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-05-12T00:00:00Z'));
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  __setLlmProvider(null);
+  vi.useRealTimers();
+});
 
 const schema = z.object({ ok: z.boolean(), answer: z.string() });
 
@@ -68,5 +71,12 @@ describe('llmCall', () => {
     const r = await llmCall({ prompt: 'noop', schema });
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.data.answer).toBe('yo');
+  });
+
+  it('falls back to default provider or returns unavailable when override is cleared', async () => {
+    __setLlmProvider(null);
+    const r = await llmCall({ prompt: 'noop', schema });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe('llm_unavailable');
   });
 });

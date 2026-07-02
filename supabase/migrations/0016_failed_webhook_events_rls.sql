@@ -1,0 +1,1 @@
+ALTER TABLE IF EXISTS failed_webhook_events ENABLE ROW LEVEL SECURITY;

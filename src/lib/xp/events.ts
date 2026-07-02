@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, TransactionRollbackError } from 'drizzle-orm';
 import { getDb, schema } from '../db/client';
 import { shouldFireTripwire, TRIPWIRE_THRESHOLD } from './tripwire';
 
@@ -18,6 +18,10 @@ export type XpEventInsert = {
   difficulty?: 'E' | 'M' | 'H';
   xpDelta: number;
   metadata?: Record<string, unknown>;
+  dailyCapLimit?: {
+    action: string;
+    limit: number;
+  };
 };
 
 export async function insertXpEvent(event: XpEventInsert): Promise<boolean> {
@@ -33,24 +37,85 @@ export async function insertXpEvent(event: XpEventInsert): Promise<boolean> {
     // Tripwire is best-effort. Never block the XP insert.
   }
 
-  const result = await db
-    .insert(schema.xpEvents)
-    .values({
-      userId: event.userId,
-      source: event.source,
-      refType: event.refType,
-      refId: event.refId,
-      repo: event.repo,
-      difficulty: event.difficulty,
-      xpDelta: event.xpDelta,
-      metadata: event.metadata as never,
-    })
-    .onConflictDoNothing({
-      target: [schema.xpEvents.userId, schema.xpEvents.source, schema.xpEvents.refId],
-    })
-    .returning({ id: schema.xpEvents.id });
+  let inserted = false;
 
-  const inserted = result.length > 0;
+  if (event.dailyCapLimit) {
+    const { action, limit } = event.dailyCapLimit;
+    const todayDate = new Date().toISOString().slice(0, 10);
+
+    try {
+      inserted = await db.transaction(async (tx) => {
+        // Increment the count in xp_daily_usage table atomically
+        const res = await tx.execute<{ count: number }>(sql`
+          insert into xp_daily_usage (user_id, date, action, count)
+          values (${event.userId}, ${todayDate}::date, ${action}, 1)
+          on conflict (user_id, date, action)
+          do update set count = xp_daily_usage.count + 1
+          returning count
+        `);
+        const list = Array.isArray(res) ? res : (res as any).rows;
+        const count = list[0]?.count ?? 1;
+
+        if (count > limit) {
+          throw new Error('daily_review_cap_reached');
+        }
+
+        // Insert the event
+        const result = await tx
+          .insert(schema.xpEvents)
+          .values({
+            userId: event.userId,
+            source: event.source,
+            refType: event.refType,
+            refId: event.refId,
+            repo: event.repo,
+            difficulty: event.difficulty,
+            xpDelta: event.xpDelta,
+            metadata: event.metadata as never,
+          })
+          .onConflictDoNothing({
+            target: [schema.xpEvents.userId, schema.xpEvents.source, schema.xpEvents.refId],
+          })
+          .returning({ id: schema.xpEvents.id });
+
+        if (result.length === 0) {
+          // Duplicate insertion, roll back the daily count increment!
+          tx.rollback();
+          return false;
+        }
+
+        return true;
+      });
+    } catch (err: any) {
+      if (err.message === 'daily_review_cap_reached') {
+        throw err;
+      }
+      if (err instanceof TransactionRollbackError) {
+        inserted = false;
+      } else {
+        throw err;
+      }
+    }
+  } else {
+    const result = await db
+      .insert(schema.xpEvents)
+      .values({
+        userId: event.userId,
+        source: event.source,
+        refType: event.refType,
+        refId: event.refId,
+        repo: event.repo,
+        difficulty: event.difficulty,
+        xpDelta: event.xpDelta,
+        metadata: event.metadata as never,
+      })
+      .onConflictDoNothing({
+        target: [schema.xpEvents.userId, schema.xpEvents.source, schema.xpEvents.refId],
+      })
+      .returning({ id: schema.xpEvents.id });
+
+    inserted = result.length > 0;
+  }
   if (inserted && shouldFireTripwire(priorTodayTotal, event.xpDelta)) {
     try {
       await db.execute(sql`
