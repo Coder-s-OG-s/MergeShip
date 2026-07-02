@@ -74,6 +74,7 @@ export function MergeDecisionPanel({
     try {
       const res = await mergePullRequest(prId);
       if (isOk(res)) {
+        setMerging(false);
         router.push('/maintainer');
       } else {
         alert(res.error.message);

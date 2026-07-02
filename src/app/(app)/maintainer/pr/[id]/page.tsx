@@ -107,7 +107,7 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
           <MergeDecisionPanel
             prId={prId}
             mentorVerified={pr.mentor_verified}
-            aiFlagged={pr.ai_flagged}
+            aiFlagged={pr.ai_flagged ?? false}
             installationId={repoRow.installation_id}
             repoFullName={pr.repo_full_name}
             prNumber={pr.number}
