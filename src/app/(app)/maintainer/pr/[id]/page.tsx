@@ -3,8 +3,7 @@ import Link from 'next/link';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { isUserMaintainer, listMaintainerRepos } from '@/lib/maintainer/detect';
-import { RequestChangesButton } from './request-changes-button';
-import { ClosePrButton } from './close-pr-button';
+import { MergeDecisionPanel } from './merge-decision-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +28,7 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
   const { data: pr } = await service
     .from('pull_requests')
     .select(
-      'id, title, repo_full_name, number, author_login, author_user_id, state, draft, url, mentor_verified',
+      'id, title, repo_full_name, number, author_login, author_user_id, state, draft, url, mentor_verified, ai_flagged',
     )
     .eq('id', prId)
     .maybeSingle();
@@ -105,10 +104,14 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
           Merge Decision
         </h2>
         {pr.state === 'open' ? (
-          <div className="flex flex-wrap gap-3">
-            <RequestChangesButton prId={prId} />
-            <ClosePrButton prId={prId} />
-          </div>
+          <MergeDecisionPanel
+            prId={prId}
+            mentorVerified={pr.mentor_verified}
+            aiFlagged={pr.ai_flagged ?? false}
+            installationId={repoRow.installation_id}
+            repoFullName={pr.repo_full_name}
+            prNumber={pr.number}
+          />
         ) : (
           <p className="text-sm text-zinc-500">
             This PR is already {pr.state} — no actions available.

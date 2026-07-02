@@ -571,12 +571,7 @@ export async function mergePullRequest(prId: number): Promise<Result<{ ok: true 
     return err('github_error', error.message || 'Failed to merge PR via GitHub API');
   }
 
-  const { error: updateErr } = await service
-    .from('pull_requests')
-    .update({ state: 'merged' })
-    .eq('id', prId);
-
-  if (updateErr) return err('persist_failed', updateErr.message);
+  await service.from('pull_requests').update({ state: 'merged' }).eq('id', prId);
 
   return ok({ ok: true });
 }
