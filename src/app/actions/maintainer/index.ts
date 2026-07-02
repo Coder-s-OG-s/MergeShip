@@ -34,3 +34,9 @@ export {
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';
+
+export {
+  getFailedWebhookEvents,
+  retryFailedWebhookEvent,
+  type FailedWebhookEventRow,
+} from './failed-events';
