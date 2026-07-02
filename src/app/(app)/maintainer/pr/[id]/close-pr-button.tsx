@@ -1,39 +1,38 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { closePullRequest } from '@/app/actions/maintainer';
-import { Ban } from 'lucide-react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { closePullRequest } from '@/app/actions/maintainer';
+import { isOk } from '@/lib/result';
 
 export function ClosePrButton({ prId }: { prId: number }) {
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  function handleClose() {
-    if (!confirm('Are you sure you want to close this pull request on GitHub?')) return;
-    setError(null);
-    startTransition(async () => {
+  async function handleClose() {
+    if (!confirm('Are you sure you want to close this pull request?')) return;
+    setLoading(true);
+    try {
       const res = await closePullRequest(prId);
-      if (res.ok) {
-        router.refresh();
+      if (isOk(res)) {
+        router.push('/maintainer');
       } else {
-        setError(res.error.message);
+        alert(res.error.message);
+        setLoading(false);
       }
-    });
+    } catch {
+      alert('Failed to close PR');
+      setLoading(false);
+    }
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <button
-        onClick={handleClose}
-        disabled={pending}
-        className="flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-950/20 px-4 py-2.5 text-sm font-semibold text-red-400 transition-all hover:bg-red-950/40 active:scale-[0.98] disabled:opacity-50"
-      >
-        <Ban className="h-4 w-4" />
-        {pending ? 'Closing...' : 'Close PR'}
-      </button>
-      {error && <span className="text-[10px] uppercase tracking-widest text-red-400">{error}</span>}
-    </div>
+    <button
+      onClick={handleClose}
+      disabled={loading}
+      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+    >
+      {loading ? 'Closing...' : 'Close PR'}
+    </button>
   );
 }

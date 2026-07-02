@@ -482,6 +482,12 @@ export default async function MaintainerPage({
                     </div>
                   )
                 )}
+                <Link
+                  href={`/maintainer/pr/${r.id}`}
+                  className="shrink-0 text-sm text-zinc-400 hover:text-white"
+                >
+                  View →
+                </Link>
               </li>
             ))}
           </ul>

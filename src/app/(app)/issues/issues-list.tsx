@@ -456,6 +456,7 @@ export function IssuesList({
   const [difficulty, setDifficulty] = useState<string>(initialFilters.difficulty ?? '');
   const [repo, setRepo] = useState<string>(initialFilters.repo ?? '');
   const [showClaimed, setShowClaimed] = useState(initialFilters.showClaimed ?? false);
+  const [sort, setSort] = useState<string>(initialFilters.sort ?? 'newest');
 
   // Detail drawer state
   const [selectedIssue, setSelectedIssue] = useState<IssueWithStatus | null>(null);
@@ -467,6 +468,15 @@ export function IssuesList({
     if (updated) setSelectedIssue(updated);
   }, [initialData.issues]);
 
+  useEffect(() => {
+    setSearch(initialFilters.search ?? '');
+    setState(initialFilters.state ?? 'open');
+    setDifficulty(initialFilters.difficulty ?? '');
+    setRepo(initialFilters.repo ?? '');
+    setShowClaimed(initialFilters.showClaimed ?? false);
+    setSort(initialFilters.sort ?? 'newest');
+  }, [initialFilters]);
+
   const navigate = useCallback(
     (
       overrides: Partial<{
@@ -476,6 +486,7 @@ export function IssuesList({
         repo: string;
         claimed: string;
         page: string;
+        sort: string;
       }>,
     ) => {
       const params = new URLSearchParams(searchParams.toString());
@@ -484,6 +495,7 @@ export function IssuesList({
       const diff = overrides.difficulty ?? difficulty;
       const r = overrides.repo ?? repo;
       const sc = overrides.claimed ?? String(showClaimed);
+      const srt = overrides.sort !== undefined ? overrides.sort : sort;
       const pg = overrides.page ?? '1';
 
       if (q) {
@@ -516,6 +528,12 @@ export function IssuesList({
         params.delete('claimed');
       }
 
+      if (srt && srt !== 'newest') {
+        params.set('sort', srt);
+      } else {
+        params.delete('sort');
+      }
+
       if (pg && pg !== '1') {
         params.set('page', pg);
       } else {
@@ -526,7 +544,7 @@ export function IssuesList({
         router.push(`/issues${params.size > 0 ? `?${params.toString()}` : ''}`);
       });
     },
-    [router, searchParams, search, state, difficulty, repo, showClaimed],
+    [router, searchParams, search, state, difficulty, repo, showClaimed, sort],
   );
 
   const handleClaim = async (issueId: number) => {
@@ -615,6 +633,19 @@ export function IssuesList({
         >
           <option value="open">OPEN</option>
           <option value="closed">CLOSED</option>
+        </select>
+
+        <select
+          value={sort}
+          onChange={(e) => {
+            setSort(e.target.value);
+            navigate({ sort: e.target.value, page: '1' });
+          }}
+          className="border border-[#2d333b] bg-[#161b22] px-3 py-2 text-[11px] uppercase tracking-widest text-zinc-300 outline-none focus:border-zinc-500"
+        >
+          <option value="newest">NEWEST</option>
+          <option value="xp_desc">HIGHEST XP</option>
+          <option value="xp_asc">LOWEST XP</option>
         </select>
 
         <label className="flex cursor-pointer items-center gap-2 text-[11px] uppercase tracking-widest text-zinc-400">

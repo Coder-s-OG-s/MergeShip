@@ -17,6 +17,7 @@ export type IssueFilter = {
   repo?: string;
   showClaimed?: boolean;
   page?: number;
+  sort?: 'newest' | 'xp_desc' | 'xp_asc';
 };
 
 export type IssueWithStatus = {
@@ -201,9 +202,13 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
     .in('repo_full_name', allowedRepos)
     .range(from, to);
 
-  // When searching via RPC, results are naturally ordered by rank (from the SQL function).
-  // Otherwise, we order by fetched_at descending.
-  if (!isSearch) {
+  if (filters.sort === 'xp_desc') {
+    query = query.order('xp_reward', { ascending: false, nullsFirst: false });
+  } else if (filters.sort === 'xp_asc') {
+    query = query.order('xp_reward', { ascending: true, nullsFirst: false });
+  } else if (filters.sort === 'newest') {
+    query = query.order('fetched_at', { ascending: false });
+  } else if (!isSearch) {
     query = query.order('fetched_at', { ascending: false });
   }
 

@@ -18,6 +18,8 @@ export {
   closePullRequest,
   getPrActivityTimeline,
   getPrDetails,
+  requestChanges,
+  mergePullRequest,
 } from './queue';
 
 export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './community';
