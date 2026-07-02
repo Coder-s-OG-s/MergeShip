@@ -8,6 +8,7 @@ import {
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { isOk } from '@/lib/result';
+import { ContributorActionsMenu } from './contributor-actions-menu';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,7 @@ export default async function ContributorsPage({
                 <th className="px-4 py-3">In Review</th>
                 <th className="px-4 py-3">Issues Solved</th>
                 <th className="px-4 py-3">Last Active</th>
+                <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -72,6 +74,13 @@ export default async function ContributorsPage({
                   <td className="px-4 py-3 text-zinc-400">{c.issuesSolved}</td>
                   <td className="px-4 py-3 text-zinc-400">
                     {c.lastActiveAt ? new Date(c.lastActiveAt).toLocaleDateString() : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <ContributorActionsMenu
+                      installationId={installId}
+                      handle={c.handle}
+                      isOrganization={install.accountType === 'Organization'}
+                    />
                   </td>
                 </tr>
               ))}

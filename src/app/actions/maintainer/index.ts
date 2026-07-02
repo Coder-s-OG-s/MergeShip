@@ -18,8 +18,11 @@ export {
 } from './queue';
 
 export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './community';
-export { getContributorsList, type ContributorListRow } from './contributors';
-
+export {
+  getContributorsList,
+  removeContributorFromOrg,
+  type ContributorListRow,
+} from './contributors';
 export {
   getRepoHealthOverview,
   getStaleIssues,

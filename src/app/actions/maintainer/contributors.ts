@@ -4,6 +4,7 @@ import { ok, err, type Result } from '@/lib/result';
 import { requireMaintainer } from '@/lib/action-auth';
 import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerRepos } from '@/lib/maintainer/detect';
+import { getInstallOctokit } from '@/lib/github/app';
 
 export type ContributorListRow = {
   userId: string;
@@ -114,4 +115,43 @@ export async function getContributorsList(
   }));
 
   return ok(rows);
+}
+
+export async function removeContributorFromOrg(
+  installationId: number,
+  targetHandle: string,
+): Promise<Result<void>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:remove-contributor', ...RATE_LIMIT_TIERS.HOURLY },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  // Confirm the caller actually maintains this install.
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return err('not_authorised', 'not your install');
+  }
+
+  const { data: install } = await service
+    .from('github_installations')
+    .select('account_type, account_login')
+    .eq('id', installationId)
+    .maybeSingle();
+  if (!install) {
+    return err('not_found', 'installation not found');
+  }
+  if (install.account_type !== 'Organization') {
+    return err('not_organization', 'Cannot remove a contributor from a personal account install');
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    await octokit.orgs.removeMember({ org: install.account_login, username: targetHandle });
+  } catch (e) {
+    return err('github_api_failed', 'Failed to remove contributor from org');
+  }
+
+  return ok(undefined);
 }
