@@ -47,7 +47,7 @@ export async function getCurrentStreak(): Promise<{ days: number }> {
  */
 export async function getPublicStreak(userId: string): Promise<{ days: number }> {
   let rlKey = 'anon:' + userId;
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (sb) {
     const {
       data: { user },
