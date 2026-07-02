@@ -27,6 +27,8 @@ export type MaintainerPrRow = {
   mentorReviewerLevel: number | null;
   githubUpdatedAt: string; // ISO
   ciStatus?: 'passing' | 'failing' | 'pending' | null;
+  aiFlagged?: boolean | null;
+  installationId?: number;
 };
 
 export type QueueFilters = {

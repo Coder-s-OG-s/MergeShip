@@ -10,6 +10,7 @@ export function ClosePrButton({ prId }: { prId: number }) {
   const router = useRouter();
 
   async function handleClose() {
+    if (!confirm('Are you sure you want to close this pull request?')) return;
     setLoading(true);
     try {
       const res = await closePullRequest(prId);
