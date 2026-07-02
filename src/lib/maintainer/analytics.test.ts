@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMaintainerAnalyticsTrends } from './analytics';
+import { buildDayOverDayStats, buildMaintainerAnalyticsTrends } from './analytics';
 
 describe('buildMaintainerAnalyticsTrends', () => {
   it('groups merged PRs and completed XP into the last twelve UTC weeks', () => {
@@ -77,6 +77,39 @@ describe('buildMaintainerAnalyticsTrends', () => {
     });
 
     expect(trends.avgReviewTimeHours).toBe(1.8);
+  });
+
+  it('builds day-over-day deltas from UTC PR timestamps', () => {
+    const stats = buildDayOverDayStats(new Date('2026-05-21T12:00:00.000Z'), [
+      {
+        githubCreatedAt: '2026-05-21T02:00:00.000Z',
+        mergedAt: '2026-05-21T03:00:00.000Z',
+        mentorReviewAt: '2026-05-21T06:00:00.000Z',
+      },
+      {
+        githubCreatedAt: '2026-05-21T08:00:00.000Z',
+        mergedAt: '2026-05-21T09:00:00.000Z',
+        mentorReviewAt: '2026-05-21T10:00:00.000Z',
+      },
+      {
+        githubCreatedAt: '2026-05-20T04:00:00.000Z',
+        mergedAt: '2026-05-20T05:00:00.000Z',
+        mentorReviewAt: '2026-05-20T06:00:00.000Z',
+      },
+    ]);
+
+    expect(stats.openedPrs).toMatchObject({
+      current: 2,
+      previous: 1,
+      delta: 1,
+      direction: 'up',
+    });
+    expect(stats.avgReviewTimeHours).toMatchObject({
+      current: 3,
+      previous: 2,
+      delta: 1,
+      direction: 'up',
+    });
   });
 
   it('builds day-over-day deltas from UTC PR timestamps', () => {

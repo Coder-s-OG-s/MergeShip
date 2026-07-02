@@ -10,6 +10,7 @@ import { eq, inArray, sum, desc, and, count } from 'drizzle-orm';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
 import {
+  buildDayOverDayStats,
   buildMaintainerAnalyticsTrends,
   emptyMaintainerDayOverDayStats,
 } from '@/lib/maintainer/analytics';
@@ -204,12 +205,17 @@ export async function getMaintainerAnalyticsTrends(args: {
 
   if (error) return err('query_failed', error.message);
 
+  const yesterdayStart = new Date();
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+
   // Fetch review stats and day-over-day deltas from timestamped PR rows.
   const { data: prs } = await service
     .from('pull_requests')
     .select('github_created_at, merged_at, mentor_review_at')
     .in('repo_full_name', repos)
-    .not('github_created_at', 'is', null);
+    .eq('mentor_verified', true)
+    .not('github_created_at', 'is', null)
+    .gte('github_created_at', yesterdayStart.toISOString());
 
   let avgReviewTimeHours = null;
   const reviewRows = (
@@ -231,9 +237,9 @@ export async function getMaintainerAnalyticsTrends(args: {
     avgReviewTimeHours = totalSeconds / reviewRows.length / 3600;
   }
 
-  const dayOverDay = buildMaintainerAnalyticsTrends({
-    now: new Date(),
-    mergedPullRequests: (
+  const dayOverDay = buildDayOverDayStats(
+    new Date(),
+    (
       (prs ?? []) as {
         github_created_at: string | null;
         merged_at: string | null;
@@ -244,10 +250,7 @@ export async function getMaintainerAnalyticsTrends(args: {
       mergedAt: pr.merged_at,
       mentorReviewAt: pr.mentor_review_at,
     })),
-    completedRecommendations: [],
-    contributorProfiles: [],
-    levelUps: [],
-  }).dayOverDay;
+  );
 
   const trends = normaliseAnalyticsTrends(data, avgReviewTimeHours, dayOverDay);
   await cacheSet(cacheKey, trends, 30 * 60);

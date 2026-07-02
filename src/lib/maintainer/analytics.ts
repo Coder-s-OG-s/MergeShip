@@ -185,7 +185,7 @@ function buildLevelDistribution(
   });
 }
 
-function buildDayOverDayStats(
+export function buildDayOverDayStats(
   now: Date,
   pullRequests: AnalyticsMergedPullRequest[],
 ): MaintainerDayOverDayStats {
