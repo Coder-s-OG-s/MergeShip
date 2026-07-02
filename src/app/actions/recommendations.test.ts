@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
     mockCacheDel: vi.fn(),
     mockRateLimit: vi.fn(),
     mockTryGetDb: vi.fn(),
+    mockSql: vi.fn((strings: TemplateStringsArray, ...values: any[]) => ({ strings, values })),
     mockSql: vi.fn((strings, ...values) => ({ strings, values })),
     mockGetInstallationToken: vi.fn(),
   };
@@ -312,6 +313,7 @@ describe('Recommendations Server Actions', () => {
         .mockReturnValueOnce(
           createMockChain(null, { data: { id: 1, difficulty: 'E', issue_id: 10 }, error: null }),
         ) // update rec
+        .mockReturnValueOnce(createMockChain(null, { data: { level: 1 }, error: null })) // profiles
         .mockReturnValueOnce(createMockChain(null, { data: { level: 1 }, error: null })) // profile level
         .mockReturnValueOnce(createMockChain({ data: [{ issue_id: 10 }] })) // select seen
         .mockReturnValueOnce(
@@ -346,6 +348,7 @@ describe('Recommendations Server Actions', () => {
         .mockReturnValueOnce(
           createMockChain(null, { data: { id: 1, difficulty: 'E', issue_id: 10 }, error: null }),
         ) // update rec
+        .mockReturnValueOnce(createMockChain(null, { data: { level: 1 }, error: null })) // profiles
         .mockReturnValueOnce(createMockChain(null, { data: { level: 1 }, error: null })) // profile level
         .mockReturnValueOnce(createMockChain({ data: [{ issue_id: 10 }] })) // select seen
         .mockReturnValueOnce(createMockChain({ data: [] })) // select pool E

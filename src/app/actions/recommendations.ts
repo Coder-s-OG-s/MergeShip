@@ -308,6 +308,9 @@ export async function skipRecommendation(
   const { data: profile } = await service
     .from('profiles')
     .select('level')
+    .eq('user_id', user.id)
+    .single();
+
     .eq('id', user.id)
     .maybeSingle();
   const userLevel = profile?.level ?? 0;
@@ -316,6 +319,7 @@ export async function skipRecommendation(
     service,
     userId: user.id,
     preferDifficulty: data.difficulty as 'E' | 'M' | 'H',
+    level: userLevel,
     userLevel,
   });
 
@@ -327,6 +331,9 @@ async function pickReplacement(args: {
   service: NonNullable<ReturnType<typeof getServiceSupabase>>;
   userId: string;
   preferDifficulty: 'E' | 'M' | 'H';
+  level: number;
+}): Promise<RecCard | null> {
+  const { service, userId, preferDifficulty, level } = args;
   userLevel: number;
 }): Promise<RecCard | null> {
   const { service, userId, preferDifficulty, userLevel } = args;
@@ -338,6 +345,14 @@ async function pickReplacement(args: {
     .eq('user_id', userId);
   const excludeIds = new Set((seen ?? []).map((r) => r.issue_id));
 
+  const allowedDifficulties = new Set<string>();
+  if (level >= 0) allowedDifficulties.add('E');
+  if (level >= 1) allowedDifficulties.add('M');
+  if (level >= 2) allowedDifficulties.add('H');
+
+  // Try same tier first, then any allowed tier. Health >= 40 filter mirrors filterAndRank.
+  for (const fallback of [false, true]) {
+    let q = service
   // Try same tier first, then any tier. Health >= 40 filter mirrors filterAndRank.
   for (const where of [{ difficulty: preferDifficulty }, null]) {
     const q = service
@@ -348,6 +363,12 @@ async function pickReplacement(args: {
       .in('difficulty', where ? [where.difficulty] : allowedDifficulties)
       .order('scored_at', { ascending: false })
       .limit(50);
+
+    if (!fallback) {
+      q = q.eq('difficulty', preferDifficulty);
+    } else {
+      q = q.in('difficulty', Array.from(allowedDifficulties));
+    }
     const { data: pool } = await q;
     const pick = (pool ?? []).find((i) => !excludeIds.has(i.id));
     if (!pick) continue;

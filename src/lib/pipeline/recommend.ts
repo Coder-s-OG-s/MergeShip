@@ -100,6 +100,15 @@ export function filterAndRank(pool: readonly ScoredIssue[], opts: RecommendOptio
   // Fallback: if any tier came up empty, optionally borrow from adjacent (only easier).
   if (opts.allowFallback && result.length < totalDesired(mix)) {
     const seen = new Set(result.map((r) => r.id));
+    const allowed = new Set<string>();
+    if (opts.level >= 0) allowed.add('E');
+    if (opts.level >= 1) allowed.add('M');
+    if (opts.level >= 2) allowed.add('H');
+
+    const extras = eligible
+      .filter((i) => !seen.has(i.id) && allowed.has(i.difficulty))
+    const allowedDifficulties: Difficulty[] =
+      opts.level <= 0 ? ['E'] : opts.level === 1 ? ['E', 'M'] : ['E', 'M', 'H'];
     const allowedDifficulties = getAllowedDifficulties(opts.level);
 
     const extras = eligible

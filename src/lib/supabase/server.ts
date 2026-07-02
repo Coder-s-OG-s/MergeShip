@@ -15,12 +15,12 @@ export async function getServerSupabase() {
   return createServerClient(env.url, env.anonKey, {
     cookies: {
       getAll() {
-        return cookieStore.getAll();
+        return (cookieStore as any).getAll();
       },
       setAll(toSet: { name: string; value: string; options?: CookieOptions }[]) {
         try {
           for (const { name, value, options } of toSet) {
-            cookieStore.set(name, value, options);
+            (cookieStore as any).set(name, value, options);
           }
         } catch {
           // setAll called from a server component — middleware handles refresh, ignore.
