@@ -21,7 +21,11 @@ export {
 } from './queue';
 
 export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './community';
-
+export {
+  getContributorsList,
+  removeContributorFromOrg,
+  type ContributorListRow,
+} from './contributors';
 export {
   getRepoHealthOverview,
   getStaleIssues,
