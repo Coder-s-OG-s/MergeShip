@@ -405,6 +405,7 @@ export const pullRequests = pgTable(
     mentorReviewAt: timestamp('mentor_review_at', { withTimezone: true }),
     mentorCommentId: bigint('mentor_comment_id', { mode: 'number' }),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+    aiFlagged: boolean('ai_flagged').notNull().default(false),
   },
   (t) => ({
     uniqRepoNumber: uniqueIndex('pull_requests_repo_number_unique').on(t.repoFullName, t.number),
@@ -550,6 +551,25 @@ export const failedWebhookEvents = pgTable(
   }),
 );
 
+// ---------- mentor sessions and announcements ----------
+
+export const mentorSessions = pgTable('mentor_sessions', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  mentorLogin: text('mentor_login').notNull(),
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+  note: text('note'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const announcements = pgTable('announcements', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+});
 // ---------- daily challenges ----------
 
 export const dailyChallenges = pgTable('daily_challenges', {

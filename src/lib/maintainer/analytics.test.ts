@@ -65,4 +65,17 @@ describe('buildMaintainerAnalyticsTrends', () => {
       l3Plus: 1,
     });
   });
+
+  it('passes through avgReviewTimeHours when provided', () => {
+    const trends = buildMaintainerAnalyticsTrends({
+      now: new Date('2026-05-21T12:00:00.000Z'),
+      mergedPullRequests: [],
+      completedRecommendations: [],
+      contributorProfiles: [],
+      levelUps: [],
+      avgReviewTimeHours: 1.8,
+    });
+
+    expect(trends.avgReviewTimeHours).toBe(1.8);
+  });
 });
