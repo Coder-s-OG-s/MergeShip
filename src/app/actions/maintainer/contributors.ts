@@ -5,6 +5,7 @@ import { requireMaintainer } from '@/lib/action-auth';
 import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerRepos } from '@/lib/maintainer/detect';
 import { getInstallOctokit } from '@/lib/github/app';
+import { computeTrustScore } from '@/lib/maintainer/trust';
 
 export type ContributorListRow = {
   userId: string;
@@ -16,6 +17,8 @@ export type ContributorListRow = {
   issuesSolved: number;
   lastActiveAt: string | null;
   repoFullNames: string[];
+  trustScore: number;
+  aiFlaggedPrCount: number;
 };
 
 export async function getContributorsList(
@@ -33,24 +36,26 @@ export async function getContributorsList(
     return ok([]);
   }
 
-  // Grouped counts (state + mentor_verified) per author, aggregated in
+  // Grouped counts (state + mentor_verified + ai_flagged) per author, aggregated in
   // Postgres via PostgREST's count() so we never pull raw PR rows and hit
   // the default 1000-row truncation on large installs.
   type PrAggRow = {
     author_user_id: string | null;
     state: 'open' | 'closed' | 'merged';
     mentor_verified: boolean;
+    ai_flagged: boolean;
     count: number;
   };
   const { data: prAggRaw } = await service
     .from('pull_requests')
-    .select('author_user_id, state, mentor_verified, count:id.count()')
+    .select('author_user_id, state, mentor_verified, ai_flagged, count:id.count()')
     .in('repo_full_name', repos)
     .not('author_user_id', 'is', null);
   const prAgg = (prAggRaw ?? []) as unknown as PrAggRow[];
 
   const mergedCount = new Map<string, number>();
   const inReviewCount = new Map<string, number>();
+  const aiFlaggedCount = new Map<string, number>();
   const userIdsSet = new Set<string>();
 
   for (const row of prAgg) {
@@ -63,6 +68,12 @@ export async function getContributorsList(
       inReviewCount.set(
         row.author_user_id,
         (inReviewCount.get(row.author_user_id) ?? 0) + row.count,
+      );
+    }
+    if (row.ai_flagged) {
+      aiFlaggedCount.set(
+        row.author_user_id,
+        (aiFlaggedCount.get(row.author_user_id) ?? 0) + row.count,
       );
     }
   }
@@ -90,7 +101,7 @@ export async function getContributorsList(
 
   const { data: profileRows } = await service
     .from('profiles')
-    .select('id, github_handle, level, xp')
+    .select('id, github_handle, level, xp, github_streak')
     .in('id', userIds);
 
   // Last active: DB-side MAX(created_at) grouped by user_id, instead of
@@ -117,17 +128,34 @@ export async function getContributorsList(
     solvedCount.set(row.user_id, row.count);
   }
 
-  const rows: ContributorListRow[] = (profileRows ?? []).map((p) => ({
-    userId: p.id,
-    handle: p.github_handle,
-    level: p.level ?? 0,
-    xp: p.xp ?? 0,
-    mergedPrs: mergedCount.get(p.id) ?? 0,
-    inReview: inReviewCount.get(p.id) ?? 0,
-    issuesSolved: solvedCount.get(p.id) ?? 0,
-    lastActiveAt: lastActiveByUser.get(p.id) ?? null,
-    repoFullNames: Array.from(reposByUser.get(p.id) ?? []),
-  }));
+  const rows: ContributorListRow[] = (profileRows ?? []).map((p) => {
+    const aiFlaggedPrCount = aiFlaggedCount.get(p.id) ?? 0;
+    const mergedPrs = mergedCount.get(p.id) ?? 0;
+    const issuesSolved = solvedCount.get(p.id) ?? 0;
+    const githubStreak = p.github_streak ?? 0;
+
+    const trustScore = computeTrustScore({
+      level: p.level ?? 0,
+      mergedPrs,
+      issuesSolved,
+      githubStreak,
+      aiFlaggedPrCount,
+    });
+
+    return {
+      userId: p.id,
+      handle: p.github_handle,
+      level: p.level ?? 0,
+      xp: p.xp ?? 0,
+      mergedPrs,
+      inReview: inReviewCount.get(p.id) ?? 0,
+      issuesSolved,
+      lastActiveAt: lastActiveByUser.get(p.id) ?? null,
+      repoFullNames: Array.from(reposByUser.get(p.id) ?? []),
+      trustScore,
+      aiFlaggedPrCount,
+    };
+  });
 
   rows.sort((a, b) => b.xp - a.xp);
 
