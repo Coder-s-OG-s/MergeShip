@@ -3,7 +3,7 @@
  *
  * Instead of every Inngest function manually catching errors and inserting
  * into `failed_webhook_events`, this single function listens to the
- * built-in `inngest/function.failed` event that fires *only* when a
+ * built-in `inngest/function.failed` event that fires only when a
  * function exhausts ALL retries (default 3).
  *
  * Benefits:
@@ -35,7 +35,7 @@ const WEBHOOK_FUNCTION_IDS = new Set([
 export const deadLetterHandler = inngest.createFunction(
   {
     id: 'dead-letter-handler',
-    // No retries on the DLQ handler itself — if this fails we log to
+    // No retries on the DLQ handler itself, if this fails we log to
     // console so ops can see it in the runtime logs.
     retries: 0,
   },
@@ -43,7 +43,7 @@ export const deadLetterHandler = inngest.createFunction(
   async ({ event }) => {
     const functionId: string = event.data?.function_id ?? 'unknown';
 
-    // Only persist dead-letter rows for webhook-triggered functions.
+    // Only persist dead letter rows for webhook triggered functions.
     // Scheduled/cron functions (maintenance, digest, etc.) failing is
     // important but not actionable via the retry endpoint.
     if (!WEBHOOK_FUNCTION_IDS.has(functionId)) {
