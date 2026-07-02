@@ -264,7 +264,7 @@ export async function exportPrQueueCsv(
     .from('pull_requests')
     .select(
       'id, repo_full_name, number, title, url, state, draft, author_login, ' +
-        'author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at',
+        'author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at, ai_flagged',
     )
     .in('repo_full_name', scopedRepos);
 
@@ -285,6 +285,7 @@ export async function exportPrQueueCsv(
     mentor_verified: boolean;
     mentor_reviewer_id: string | null;
     github_updated_at: string;
+    ai_flagged: boolean;
   };
 
   const { data: prs } = await q.order('github_updated_at', { ascending: false }).limit(1000);
@@ -347,6 +348,7 @@ export async function exportPrQueueCsv(
       mentorReviewerHandle: mentor?.handle ?? null,
       mentorReviewerLevel: mentor?.level ?? null,
       githubUpdatedAt: r.github_updated_at,
+      aiFlagged: r.ai_flagged,
     };
   });
 
