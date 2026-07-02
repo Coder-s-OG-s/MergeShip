@@ -6,6 +6,7 @@ import { ok, err, type Result } from '@/lib/result';
 import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { cacheDel, cacheGet, cacheSet } from '@/lib/cache';
 import { repoFilterPattern } from './issues-helpers';
+import { getInstallOctokit } from '@/lib/github/app';
 import { getInstallationToken } from '@/lib/github/app';
 
 const PAGE_SIZE = 10;
@@ -59,6 +60,43 @@ export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
 
   const cacheKey = `repo-options:${user.id}`;
 
+  const { data: insts } = await service
+    .from('github_installations')
+    .select('id')
+    .eq('user_id', user.id);
+
+  const instIds = (insts ?? []).map((i: { id: number }) => i.id);
+  if (instIds.length === 0) return ok([]);
+
+  const { data: repoRows } = await service
+    .from('installation_repositories')
+    .select('repo_full_name, installation_id')
+    .in('installation_id', instIds);
+
+  const repoMap = new Map<string, number>();
+  for (const r of (repoRows ?? []) as { repo_full_name: string; installation_id: number }[]) {
+    repoMap.set(r.repo_full_name, r.installation_id);
+  }
+
+  const userRepos = [...repoMap.keys()];
+  if (userRepos.length === 0) return ok([]);
+
+  // Resolve each repo: if it's a fork, use the upstream (parent) as the issues source
+  const options = await Promise.all(
+    userRepos.map(async (repo): Promise<RepoOption> => {
+      const instId = repoMap.get(repo);
+      if (!instId) return { label: repo, value: repo };
+      try {
+        const octokit = await getInstallOctokit(instId);
+        const [owner, name] = repo.split('/');
+        if (!owner || !name) return { label: repo, value: repo };
+        const { data } = await octokit.repos.get({ owner, repo: name });
+        if (data.fork && data.parent?.full_name) {
+          return { label: repo, value: data.parent.full_name };
+        }
+        return { label: repo, value: repo };
+      } catch {
+        return { label: repo, value: repo };
   // Return active in-flight request if there is one (deduplicates concurrent calls during page load)
   const inFlight = inFlightRepoOptions.get(user.id);
   if (inFlight) return inFlight;
