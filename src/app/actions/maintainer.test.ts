@@ -20,6 +20,7 @@ import {
   getReviewerLoad,
   closePullRequest,
   requestChanges,
+  mergePullRequest,
   getNoiseBreakdown,
   getPromotionEligible,
 } from './maintainer';
@@ -84,11 +85,13 @@ vi.mock('@/inngest/client', () => ({
 
 const mockPullsUpdate = vi.fn();
 const mockPullsCreateReview = vi.fn();
+const mockPullsMerge = vi.fn();
 vi.mock('@/lib/github/app', () => ({
   getInstallOctokit: vi.fn(() => ({
     pulls: {
       update: mockPullsUpdate,
       createReview: mockPullsCreateReview,
+      merge: mockPullsMerge,
     },
   })),
 }));
@@ -1204,6 +1207,102 @@ describe('maintainer actions', () => {
         event: 'REQUEST_CHANGES',
         body: 'Please address these issues',
       });
+    });
+  });
+
+  // mergePullRequest
+
+  describe('mergePullRequest', () => {
+    beforeEach(() => {
+      mockPullsMerge.mockClear();
+    });
+
+    it('returns rate_limited when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns not_found when PR does not exist in DB', async () => {
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('PR not found');
+      }
+    });
+
+    it('returns invalid_input when PR is not open', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42, state: 'closed' };
+      mockFrom.mockReturnValueOnce(chain(mockPr));
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('invalid_input');
+        expect(res.error.message).toBe('PR is not open');
+      }
+    });
+
+    it('returns not_found when installation not found for repo', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42, state: 'open' };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(null));
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('Installation not found for this repository');
+      }
+    });
+
+    it('returns not_authorised when repo not in maintainer scope', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42, state: 'open' };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/other']);
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+
+    it('returns github_error when GitHub API throws', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42, state: 'open' };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockPullsMerge.mockRejectedValueOnce(new Error('GitHub error'));
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('github_error');
+    });
+
+    it('returns ok, calls merge with squash, and updates DB state to merged', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42, state: 'open' };
+      const mockRepo = { installation_id: 1 };
+      const updateChain = chain({ id: 123 });
+      mockFrom
+        .mockReturnValueOnce(chain(mockPr))
+        .mockReturnValueOnce(chain(mockRepo))
+        .mockReturnValueOnce(updateChain);
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockPullsMerge.mockResolvedValueOnce({});
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(true);
+      expect(mockPullsMerge).toHaveBeenCalledWith({
+        owner: 'org',
+        repo: 'repo',
+        pull_number: 42,
+        merge_method: 'squash',
+      });
+      expect(updateChain.update).toHaveBeenCalledWith({ state: 'merged' });
     });
   });
 
