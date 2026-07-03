@@ -27,6 +27,9 @@ export type MaintainerPrRow = {
   mentorReviewerLevel: number | null;
   githubUpdatedAt: string; // ISO
   ciStatus?: 'passing' | 'failing' | 'pending' | null;
+  aiFlagged: boolean;
+  bodyExcerpt?: string | null;
+  mentorReviewAt?: string | null;
 };
 
 export type QueueFilters = {
@@ -35,6 +38,7 @@ export type QueueFilters = {
   authorLevel?: number[];
   mentorVerified?: MentorVerifiedFilter;
   authorLogin?: string;
+  aiFlagged?: 'yes' | 'no';
 };
 
 const VALID_STATES: readonly PrState[] = ['open', 'closed', 'merged'];
@@ -46,7 +50,9 @@ const VALID_LEVELS = [0, 1, 2, 3, 4, 5] as const;
  * signal (someone with more context has already screened the PR).
  */
 export function prTier(row: MaintainerPrRow): number {
-  if (row.state !== 'open') return 6;
+  if (row.state !== 'open') return 7;
+  // AI-flagged PRs sink to tier 6 so maintainers see legitimate PRs first.
+  if (row.aiFlagged) return 6;
   if (row.mentorVerified) {
     return (row.authorLevel ?? 0) >= 1 ? 1 : 2;
   }
@@ -74,6 +80,7 @@ export function validateFilters(input: Partial<QueueFilters>): {
   authorLevel: number[];
   mentorVerified: MentorVerifiedFilter;
   authorLogin?: string;
+  aiFlagged: 'yes' | 'no' | undefined;
 } {
   const repos = Array.isArray(input.repos)
     ? input.repos.filter((r): r is string => typeof r === 'string')
@@ -96,5 +103,8 @@ export function validateFilters(input: Partial<QueueFilters>): {
       : 'either';
   const authorLogin = typeof input.authorLogin === 'string' ? input.authorLogin : undefined;
 
-  return { repos, state, authorLevel, mentorVerified, authorLogin };
+  const aiFlagged: 'yes' | 'no' | undefined =
+    input.aiFlagged === 'yes' || input.aiFlagged === 'no' ? input.aiFlagged : undefined;
+
+  return { repos, state, authorLevel, mentorVerified, authorLogin, aiFlagged };
 }

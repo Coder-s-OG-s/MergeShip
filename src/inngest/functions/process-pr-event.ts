@@ -11,6 +11,7 @@ import {
   MENTOR_MIN_LEVEL,
   type SeniorMaintainer,
 } from '@/lib/maintainer/mentor-assign';
+import { classifyPrAsAi } from '@/lib/maintainer/pr-classify';
 
 /**
  * Webhook handler for GitHub `pull_request` events.
@@ -153,7 +154,7 @@ async function upsertPrRow(
   // polluting the table if a misconfigured webhook ever reaches us.
   const { data: knownRepo } = await sb
     .from('installation_repositories')
-    .select('repo_full_name')
+    .select('repo_full_name, installation_id')
     .eq('repo_full_name', repo)
     .limit(1)
     .maybeSingle();
@@ -166,9 +167,20 @@ async function upsertPrRow(
     .eq('github_handle', pr.user.login)
     .maybeSingle();
 
+  // Run classification only when the maintainer has enabled aiPrDetection.
+  let aiFlagged = false;
+  const { data: settings } = await sb
+    .from('installation_settings')
+    .select('ai_pr_detection')
+    .eq('installation_id', knownRepo.installation_id)
+    .maybeSingle();
+  if (settings?.ai_pr_detection) {
+    aiFlagged = classifyPrAsAi({ title: pr.title, body: pr.body });
+  }
+
   await sb
     .from('pull_requests')
-    .upsert(buildPrRow(pr as IngestiblePr, authorProfile?.id ?? null, action), {
+    .upsert(buildPrRow(pr as IngestiblePr, authorProfile?.id ?? null, action, aiFlagged), {
       onConflict: 'repo_full_name,number',
     });
 }
@@ -230,8 +242,7 @@ async function maybeAutoAssignMentor(
           user_id: string;
           // Supabase types a single-row !inner join as an array; normalise below.
           profiles:
-            | { github_handle: string; level: number }
-            | { github_handle: string; level: number }[];
+            { github_handle: string; level: number } | { github_handle: string; level: number }[];
         }[]
       | null;
   };
