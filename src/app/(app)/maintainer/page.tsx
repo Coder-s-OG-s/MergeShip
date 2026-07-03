@@ -465,14 +465,12 @@ export default async function MaintainerPage({
                       repoFullName={r.repoFullName}
                       prNumber={r.number}
                     />
-                    <a
-                      href={r.url}
-                      target="_blank"
-                      rel="noreferrer"
+                    <Link
+                      href={`/maintainer/pr/${r.id}?install=${activeInstallId}`}
                       className="font-display text-base font-semibold text-white hover:underline"
                     >
                       {r.title}
-                    </a>
+                    </Link>
                     <span className="text-xs text-zinc-500">
                       {r.repoFullName} · #{r.number}
                     </span>
@@ -515,6 +513,12 @@ export default async function MaintainerPage({
                     </div>
                   )
                 )}
+                <Link
+                  href={`/maintainer/pr/${r.id}`}
+                  className="shrink-0 text-sm text-zinc-400 hover:text-white"
+                >
+                  View →
+                </Link>
               </li>
             ))}
           </ul>

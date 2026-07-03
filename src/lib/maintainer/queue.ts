@@ -28,6 +28,8 @@ export type MaintainerPrRow = {
   githubUpdatedAt: string; // ISO
   ciStatus?: 'passing' | 'failing' | 'pending' | null;
   aiFlagged: boolean;
+  bodyExcerpt?: string | null;
+  mentorReviewAt?: string | null;
 };
 
 export type QueueFilters = {
