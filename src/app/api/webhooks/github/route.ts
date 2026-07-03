@@ -106,3 +106,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, duplicate });
 }
+
+// RELIABILITY NOTE (Issue #547): XP award events must use unique idempotency keys
+// to prevent duplicate webhook delivery replays from awarding duplicate XP to the same user.
