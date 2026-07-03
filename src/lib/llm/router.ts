@@ -91,3 +91,6 @@ export async function llmCall<T>(args: LlmCallArgs<T>): Promise<Result<T>> {
   }
   return ok(result.data);
 }
+
+// SECURITY NOTE (Issue #550): Groq API keys must be restricted to minimal access scopes in the console.
+// Ensure key rotation is scheduled and documented to prevent leakage/abuse.
