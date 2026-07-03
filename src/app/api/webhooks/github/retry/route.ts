@@ -93,3 +93,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, event_type: eventType });
 }
+
+// SECURITY NOTE (Issue #546): Webhook retries and events must verify the GitHub signature
+// using the configured GITHUB_WEBHOOK_SECRET to prevent spoofed event injections.
