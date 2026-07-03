@@ -96,6 +96,7 @@ export async function getMaintainerPrQueue(args: {
   if (filters.state.length > 0) q = q.in('state', filters.state);
   if (filters.mentorVerified === 'yes') q = q.eq('mentor_verified', true);
   else if (filters.mentorVerified === 'no') q = q.eq('mentor_verified', false);
+  if (filters.authorLogin) q = q.eq('author_login', filters.authorLogin);
 
   // Pull a generous slice; we re-sort by tier client-side.
   type RawPr = {

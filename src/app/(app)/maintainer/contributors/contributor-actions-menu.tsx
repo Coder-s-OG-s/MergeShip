@@ -2,24 +2,26 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { MoreHorizontal } from 'lucide-react';
 import { removeContributorFromOrg } from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 
 export function ContributorActionsMenu({
   installationId,
+  userId,
   handle,
   isOrganization,
+  onRemoved,
 }: {
   installationId: number;
+  userId: string;
   handle: string;
   isOrganization: boolean;
+  onRemoved?: (userId: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -48,7 +50,7 @@ export function ContributorActionsMenu({
     try {
       const res = await removeContributorFromOrg(installationId, handle);
       if (isOk(res)) {
-        router.refresh();
+        onRemoved?.(userId);
       } else {
         alert(res.error.message);
       }

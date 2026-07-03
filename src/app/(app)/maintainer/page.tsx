@@ -42,7 +42,7 @@ const TIER_LABEL: Record<'open' | 'closed' | 'merged', string> = {
 export default async function MaintainerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ install?: string; state?: string; verified?: string }>;
+  searchParams: Promise<{ install?: string; state?: string; verified?: string; author?: string }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const sb = await getServerSupabase();
@@ -72,7 +72,11 @@ export default async function MaintainerPage({
 
   const activeInstall = installs.find((i) => i.installationId === activeInstallId)!;
 
-  const filters: { state?: ('open' | 'closed' | 'merged')[]; mentorVerified?: 'yes' | 'no' } = {};
+  const filters: {
+    state?: ('open' | 'closed' | 'merged')[];
+    mentorVerified?: 'yes' | 'no';
+    authorLogin?: string;
+  } = {};
   if (resolvedSearchParams.state) {
     const parts = resolvedSearchParams.state
       .split(',')
@@ -83,7 +87,9 @@ export default async function MaintainerPage({
     filters.mentorVerified = resolvedSearchParams.verified;
   }
   if (!filters.state) filters.state = ['open']; // default
-
+  if (resolvedSearchParams.author) {
+    filters.authorLogin = resolvedSearchParams.author;
+  }
   const queueRes = await getMaintainerPrQueue({
     installationId: activeInstallId,
     filters,

@@ -34,6 +34,7 @@ export type QueueFilters = {
   state?: PrState[];
   authorLevel?: number[];
   mentorVerified?: MentorVerifiedFilter;
+  authorLogin?: string;
 };
 
 const VALID_STATES: readonly PrState[] = ['open', 'closed', 'merged'];
@@ -72,6 +73,7 @@ export function validateFilters(input: Partial<QueueFilters>): {
   state: PrState[];
   authorLevel: number[];
   mentorVerified: MentorVerifiedFilter;
+  authorLogin?: string;
 } {
   const repos = Array.isArray(input.repos)
     ? input.repos.filter((r): r is string => typeof r === 'string')
@@ -92,6 +94,7 @@ export function validateFilters(input: Partial<QueueFilters>): {
     input.mentorVerified === 'yes' || input.mentorVerified === 'no'
       ? input.mentorVerified
       : 'either';
+  const authorLogin = typeof input.authorLogin === 'string' ? input.authorLogin : undefined;
 
-  return { repos, state, authorLevel, mentorVerified };
+  return { repos, state, authorLevel, mentorVerified, authorLogin };
 }

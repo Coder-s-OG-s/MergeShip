@@ -8,7 +8,7 @@ import {
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { isOk } from '@/lib/result';
-import { ContributorActionsMenu } from './contributor-actions-menu';
+import { ContributorsTable } from './contributors-table';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,51 +49,11 @@ export default async function ContributorsPage({
           repos.
         </p>
 
-        <div className="mt-8 overflow-hidden rounded-md border border-[#2d333b]">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-[#161b22] text-xs uppercase tracking-wider text-zinc-500">
-              <tr>
-                <th className="px-4 py-3">Handle</th>
-                <th className="px-4 py-3">Level</th>
-                <th className="px-4 py-3">XP</th>
-                <th className="px-4 py-3">Merged PRs</th>
-                <th className="px-4 py-3">In Review</th>
-                <th className="px-4 py-3">Issues Solved</th>
-                <th className="px-4 py-3">Last Active</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {contributors.map((c) => (
-                <tr key={c.userId} className="border-t border-[#2d333b]">
-                  <td className="px-4 py-3 text-zinc-200">{c.handle}</td>
-                  <td className="px-4 py-3 text-zinc-400">{c.level}</td>
-                  <td className="px-4 py-3 text-zinc-400">{c.xp}</td>
-                  <td className="px-4 py-3 text-zinc-400">{c.mergedPrs}</td>
-                  <td className="px-4 py-3 text-zinc-400">{c.inReview}</td>
-                  <td className="px-4 py-3 text-zinc-400">{c.issuesSolved}</td>
-                  <td className="px-4 py-3 text-zinc-400">
-                    {c.lastActiveAt ? new Date(c.lastActiveAt).toLocaleDateString() : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <ContributorActionsMenu
-                      installationId={installId}
-                      handle={c.handle}
-                      isOrganization={install.accountType === 'Organization'}
-                    />
-                  </td>
-                </tr>
-              ))}
-              {contributors.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
-                    No contributors yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ContributorsTable
+          installationId={installId}
+          isOrganization={install.accountType === 'Organization'}
+          initialContributors={contributors}
+        />
       </div>
     </div>
   );
