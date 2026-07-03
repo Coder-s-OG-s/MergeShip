@@ -465,3 +465,6 @@ function mapReviewRow(row: ReviewAuditRow): SuspiciousReview {
     submittedAt: row.submitted_at,
   };
 }
+
+// BACKGROUND JOB NOTE (Issue #445): Stale-PR alerts should run on a weekly cron
+// and notify reviewers using batch notification dispatches.
