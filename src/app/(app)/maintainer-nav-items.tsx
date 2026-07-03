@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Users2,
+  Users,
   Settings,
   Activity,
   ArrowLeftRight,
@@ -20,6 +21,7 @@ import type { MaintainerInstall } from '@/lib/maintainer/detect';
 const MAINTAINER_NAV = [
   { name: 'OVERVIEW', href: '/maintainer', icon: LayoutDashboard },
   { name: 'ISSUE TRIAGE', href: '/maintainer/issues', icon: ListChecks },
+  { name: 'CONTRIBUTORS', href: '/maintainer/contributors', icon: Users },
   { name: 'COMMUNITY', href: '/maintainer/community', icon: Users2 },
   { name: 'SETTINGS', href: '/settings/profile', icon: Settings },
   { name: 'USAGE', href: '/settings/usage', icon: Activity },

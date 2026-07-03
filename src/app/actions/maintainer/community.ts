@@ -2,11 +2,15 @@
 
 import { ok, err, type Result } from '@/lib/result';
 import { requireMaintainer } from '@/lib/action-auth';
+import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { validateCommunityUrl, type CommunityKind } from '@/lib/maintainer/community';
 import { type CommunityLink } from './types';
 
 export async function getCommunityLinks(installationId: number): Promise<Result<CommunityLink[]>> {
-  const authRes = await requireMaintainer({ requireService: true });
+  const authRes = await requireMaintainer({
+    requireService: true,
+    rateLimit: { namespace: 'maint:community-links', ...RATE_LIMIT_TIERS.GENEROUS },
+  });
   if (!authRes.ok) return authRes;
   const { service } = authRes.data;
 
