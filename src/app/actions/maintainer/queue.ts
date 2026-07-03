@@ -319,10 +319,16 @@ export async function refreshMaintainerBackfill(
   installationId: number,
 ): Promise<Result<{ ok: true }>> {
   const authRes = await requireMaintainer({
+    requireService: true,
     rateLimit: { namespace: 'maint:backfill', ...RATE_LIMIT_TIERS.HOURLY },
     rateLimitMessage: 'try again in an hour',
   });
   if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  if (!(await assertMaintainerInstall(service, user.id, installationId))) {
+    return err('not_authorised', 'not your install');
+  }
 
   await inngest.send({
     name: 'pr-backfill/installation',
