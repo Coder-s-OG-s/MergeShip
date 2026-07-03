@@ -38,3 +38,4 @@ export {
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';
+export { previewMergeXp, type XpPreviewBreakdown } from './xp-preview';

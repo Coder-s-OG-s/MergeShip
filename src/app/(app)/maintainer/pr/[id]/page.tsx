@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
-import { getPrDetails, getPrActivityTimeline } from '@/app/actions/maintainer';
+import { getPrDetails, getPrActivityTimeline, previewMergeXp } from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 import { VerifyButton } from '@/app/(app)/issues/verify-button';
 import { MergeDecisionPanel } from './merge-decision-panel';
@@ -81,6 +81,9 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
 
   const timelineRes = await getPrActivityTimeline(prId);
   const timelineEvents = isOk(timelineRes) ? timelineRes.data : [];
+
+  const previewRes = await previewMergeXp(prId);
+  const preview = isOk(previewRes) ? previewRes.data : null;
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -333,8 +336,75 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
           </div>
 
           {/* Merge Decision Sidebar (1 col) */}
-          <div className="lg:col-span-1">
-            <div className="sticky top-6 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+          <div className="space-y-6 lg:col-span-1">
+            {/* Rewards Preview Panel */}
+            {preview && (
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900/60 p-6 backdrop-blur-md">
+                <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+                  <Award className="h-4 w-4 text-amber-400" />
+                  {pr.state === 'open' ? 'Rewards Preview' : 'Rewards Awarded'}
+                </h2>
+
+                <div className="space-y-4">
+                  {/* Author Reward Card */}
+                  <div className="flex items-center justify-between rounded-2xl border border-zinc-800/50 bg-zinc-900/40 p-4 transition-all hover:border-zinc-700/50">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-zinc-200">
+                        @{preview.author.login}
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        {preview.author.status === 'recommended' && 'Recommended Merge'}
+                        {preview.author.status === 'unrecommended' && 'Unrecommended Merge'}
+                        {preview.author.status === 'self_merge' && 'Self Merge (0 XP)'}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-xl px-2.5 py-1 text-sm font-bold ${
+                        preview.author.xp > 0
+                          ? 'border border-emerald-500/30 bg-emerald-950/80 text-emerald-400'
+                          : 'bg-zinc-800 text-zinc-500'
+                      }`}
+                    >
+                      +{preview.author.xp} XP
+                    </span>
+                  </div>
+
+                  {/* Reviewers Rewards list */}
+                  <div className="border-t border-zinc-800/80 pt-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                      Reviewer Rewards
+                    </p>
+                    {preview.reviewers.length === 0 ? (
+                      <p className="text-xs italic text-zinc-500">No reviewers registered yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {preview.reviewers.map((rev) => (
+                          <div
+                            key={rev.login}
+                            className="flex items-center justify-between rounded-xl border border-zinc-800/30 bg-zinc-900/20 px-3 py-2.5 transition-all hover:border-zinc-800"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-medium text-zinc-300">
+                                @{rev.login}
+                              </p>
+                              <p className="text-[10px] text-zinc-500">
+                                {rev.isMentor ? 'Mentor Reviewer' : 'Reviewer'}
+                              </p>
+                            </div>
+                            <span className="shrink-0 rounded-lg border border-indigo-500/20 bg-indigo-950/80 px-2 py-0.5 text-xs font-bold text-indigo-400">
+                              +{rev.xp} XP
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Merge Decision Card */}
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
               <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-400">
                 Merge Decision
               </h2>

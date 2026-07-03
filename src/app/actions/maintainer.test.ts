@@ -26,6 +26,7 @@ import {
   getNoiseBreakdown,
   getPromotionEligible,
   getContributorsList,
+  previewMergeXp,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -1628,6 +1629,132 @@ describe('maintainer actions', () => {
         expect(alice.aiFlaggedPrCount).toBe(1);
         // Level 1 (15) + 5 PRs (15) + 2 issues (4) + 6 streak (2) - 1 AI PR (20) = 16
         expect(alice.trustScore).toBe(16);
+      }
+    });
+  });
+
+  // previewMergeXp
+
+  describe('previewMergeXp', () => {
+    it('returns not_found when PR is not in DB', async () => {
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await previewMergeXp(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('PR not found');
+      }
+    });
+
+    it('returns not_authorised when user does not maintain repo', async () => {
+      const mockPr = {
+        repo_full_name: 'org/repo',
+        number: 42,
+        author_login: 'alice',
+        url: 'pr-url',
+      };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/other']);
+
+      const res = await previewMergeXp(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_authorised');
+      }
+    });
+
+    it('calculates prospective XP correctly on success', async () => {
+      const mockPr = {
+        id: 123,
+        repo_full_name: 'org/repo',
+        number: 42,
+        title: 'Closes #456',
+        url: 'https://github.com/org/repo/pull/42',
+        state: 'open',
+        author_login: 'alice',
+        author_user_id: 'user-alice',
+        body_excerpt: 'Fixing the bug',
+      };
+      const mockRepo = { installation_id: 1 };
+      const mockRec = { id: 1, user_id: 'user-alice', difficulty: 'M', xp_reward: 150 };
+      const mockHelpReq = { id: 10, created_at: '2026-06-30T10:00:00Z' };
+      const mockReviews = [
+        {
+          reviewer_user_id: 'user-bob',
+          reviewer_login: 'bob',
+          is_mentor: true,
+          submitted_at: '2026-06-30T10:30:00Z',
+        },
+        {
+          reviewer_user_id: 'user-charlie',
+          reviewer_login: 'charlie',
+          is_mentor: false,
+          submitted_at: '2026-06-30T15:00:00Z',
+        },
+      ];
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') return chain(mockPr);
+        if (table === 'installation_repositories') return chain(mockRepo);
+        if (table === 'recommendations') return chain(mockRec);
+        if (table === 'help_requests') return chain(mockHelpReq);
+        if (table === 'pull_request_reviews') return chain(mockReviews);
+        return chain(null);
+      });
+
+      const res = await previewMergeXp(123);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.author.login).toBe('alice');
+        expect(res.data.author.xp).toBe(150);
+        expect(res.data.author.status).toBe('recommended');
+
+        expect(res.data.reviewers).toHaveLength(2);
+        const bob = res.data.reviewers.find((r) => r.login === 'bob')!;
+        expect(bob.xp).toBe(65);
+        expect(bob.isMentor).toBe(true);
+
+        const charlie = res.data.reviewers.find((r) => r.login === 'charlie')!;
+        expect(charlie.xp).toBe(30);
+        expect(charlie.isMentor).toBe(false);
+      }
+    });
+
+    it('calculates 0 XP for self merge', async () => {
+      const mockPr = {
+        id: 123,
+        repo_full_name: 'alice/repo',
+        number: 42,
+        title: 'My PR',
+        url: 'https://github.com/alice/repo/pull/42',
+        state: 'open',
+        author_login: 'alice',
+        author_user_id: 'user-alice',
+        body_excerpt: '',
+      };
+      const mockRepo = { installation_id: 1 };
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['alice/repo']);
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') return chain(mockPr);
+        if (table === 'installation_repositories') return chain(mockRepo);
+        if (table === 'recommendations') return chain(null);
+        if (table === 'help_requests') return chain(null);
+        if (table === 'pull_request_reviews') return chain([]);
+        return chain(null);
+      });
+
+      const res = await previewMergeXp(123);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.author.xp).toBe(0);
+        expect(res.data.author.status).toBe('self_merge');
       }
     });
   });
