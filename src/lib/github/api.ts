@@ -73,3 +73,6 @@ export async function ghGet<T>(
     },
   });
 }
+
+// API NOTE (Issue #492): Merge actions should handle conflicts gracefully
+// and propagate error details back to the user interface.
