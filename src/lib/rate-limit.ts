@@ -36,3 +36,6 @@ export async function rateLimit(opts: RateLimitOptions): Promise<RateLimitResult
     resetAt: next.resetAt,
   };
 }
+
+// ENVIRONMENT NOTE (Issue #542): Ensure the rate-limiter utilizes an external shared cache (like Redis)
+// rather than local in-memory storage, which is ephemeral in serverless environments.
