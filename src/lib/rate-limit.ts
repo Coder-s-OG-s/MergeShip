@@ -1,4 +1,4 @@
-import { cacheRateLimitHit } from './cache';
+import { cacheRateLimitHit, isSharedCacheAvailable } from './cache';
 
 export const RATE_LIMIT_TIERS = {
   STANDARD: { limit: 30, windowSec: 60 },
@@ -26,6 +26,14 @@ export type RateLimitResult = {
  * If we ever need true sliding window precision, swap the backend without touching callers.
  */
 export async function rateLimit(opts: RateLimitOptions): Promise<RateLimitResult> {
+  if (process.env.NODE_ENV === 'production' && !isSharedCacheAvailable()) {
+    return {
+      ok: false,
+      remaining: 0,
+      resetAt: Date.now() + opts.windowSec * 1000,
+    };
+  }
+
   const bucketKey = `rl:v2:${opts.namespace}:${opts.key}`;
   const now = Date.now();
   const next = await cacheRateLimitHit(bucketKey, opts.windowSec, now);

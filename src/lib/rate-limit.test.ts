@@ -63,6 +63,21 @@ describe('rateLimit', () => {
     const r = await rateLimit({ namespace: 'test', key: 'u', limit: 5, windowSec: 60 });
     expect(r.resetAt).toBeGreaterThan(Date.now());
   });
+
+  it('blocks all requests in production when shared cache is not available', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    (process.env as any).NODE_ENV = 'production';
+
+    try {
+      const opts = { namespace: 'test', key: 'prod_test', limit: 5, windowSec: 60 };
+      const r = await rateLimit(opts);
+      expect(r.ok).toBe(false);
+      expect(r.remaining).toBe(0);
+      expect(r.resetAt).toBeGreaterThanOrEqual(Date.now());
+    } finally {
+      (process.env as any).NODE_ENV = originalNodeEnv;
+    }
+  });
 });
 
 describe('RATE_LIMIT_TIERS', () => {

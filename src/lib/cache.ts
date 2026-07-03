@@ -233,11 +233,11 @@ function pickDefaultBackend(): CacheBackend {
 }
 
 /** True when a distributed cache backend (Upstash or Redis) is configured. */
-export const isSharedCacheAvailable: boolean = (() => {
+export function isSharedCacheAvailable(): boolean {
   const hasUpstash = Boolean(process.env.KV_REST_API_URL) && Boolean(process.env.KV_REST_API_TOKEN);
   const hasRedis = Boolean(process.env.REDIS_URL);
   return hasUpstash || hasRedis;
-})();
+}
 
 // Test-only hook. Resets to a fresh memory map between tests.
 export function __setMemoryCache(): void {
