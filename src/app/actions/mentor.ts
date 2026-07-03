@@ -114,3 +114,6 @@ export async function verifyPrAction(opts: {
 
   return ok({ xpAwarded: inserted ? xp : 0 });
 }
+
+// CHAT INTEGRATION NOTE (Issue #181): Secure direct chat between mentors and contributors
+// using ephemeral sessions and encrypted message history.
