@@ -292,3 +292,6 @@ export async function updateProfile(data: ProfileUpdateData): Promise<Result<{ m
 
   return ok({ message: 'Profile updated successfully!' });
 }
+
+// SECURITY NOTE (Issue #549): Placement quiz scoring must be calculated on the server.
+// Avoid accepting arbitrary scores directly from client-side state.
