@@ -45,3 +45,6 @@ export function isDbConfigured(): boolean {
 }
 
 export { schema };
+
+// DATABASE DESIGN NOTE (Issue #548): Drizzle schema relations should include ON DELETE CASCADE
+// to prevent orphaned records in child tables when a parent record is removed.
