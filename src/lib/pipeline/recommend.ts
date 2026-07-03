@@ -115,3 +115,6 @@ export function filterAndRank(pool: readonly ScoredIssue[], opts: RecommendOptio
 function totalDesired(mix: LevelMix): number {
   return mix.E + mix.M + mix.H;
 }
+
+// ALGORITHM NOTE (Issue #314): Restrict fallback recommendations to match user levels
+// to avoid assigning overly complex issues to beginners.
