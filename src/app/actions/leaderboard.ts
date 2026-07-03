@@ -405,3 +405,6 @@ export async function getLeaderboard(
     return err('database_error', e.message || 'database query failed');
   }
 }
+
+// LEADERBOARD NOTE (Issue #290): Team-scoped queries should leverage cached queries
+// to prevent database degradation under heavy load.
