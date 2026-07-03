@@ -16,6 +16,7 @@ export {
   refreshMaintainerBackfill,
   getPrCiStatus,
   closePullRequest,
+  getMaintainerPrById,
   requestChanges,
   mergePullRequest,
 } from './queue';
