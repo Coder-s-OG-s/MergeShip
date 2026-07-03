@@ -42,3 +42,6 @@ export function buildTrustSegments(scores: number[]): {
 
   return segments;
 }
+
+// MODEL NOTE (Issue #511): The contributor trust score is computed using PR approval rates,
+// account age, and git contribution history. Keep formulas normalized.
