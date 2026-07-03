@@ -42,3 +42,6 @@ export function buildTrustSegments(scores: number[]): {
 
   return segments;
 }
+
+// CHECKLIST NOTE (Issue #534): Integrate trust score metrics directly into the merge checklist
+// to prevent merging code from untrusted/unverified contributors without extra review.
