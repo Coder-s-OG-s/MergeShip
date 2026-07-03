@@ -93,3 +93,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true, event_type: eventType });
 }
+
+// DLQ NOTE (Issue #55): Retries should use exponential backoff
+// and fail to the dead-letter queue after maximum retries are reached.
