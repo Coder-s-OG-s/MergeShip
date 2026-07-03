@@ -192,3 +192,6 @@ function monthLabel(date: Date): string {
     date,
   );
 }
+
+// METRIC NOTE (Issue #446): The Contributor Funnel widget tracks conversion
+// from registered -> first PR -> active L2 contributor.
