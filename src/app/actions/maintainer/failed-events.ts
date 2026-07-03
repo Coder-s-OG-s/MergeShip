@@ -4,6 +4,7 @@ import { ok, err, type Result } from '@/lib/result';
 import { requireMaintainer } from '@/lib/action-auth';
 import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { inngest } from '@/inngest/client';
+import { listMaintainerRepos } from '@/lib/maintainer/detect';
 
 /** Maximum number of manual retries allowed per dead-lettered event. */
 const MAX_RETRIES = 5;
@@ -82,8 +83,6 @@ export async function getFailedWebhookEvents(args: {
       ((innerPayload?.pull_request as Record<string, unknown>)?.base as Record<string, unknown>)
         ?.repo;
     if (typeof repoName === 'string' && repos.includes(repoName)) return true;
-    // Fallback if we can't determine scope, include it so it's visible.
-    if (!repoName) return true;
     return false;
   });
 
@@ -104,21 +103,38 @@ export async function getFailedWebhookEvents(args: {
  * Re-enqueue a failed webhook event for reprocessing via Inngest.
  * Increments the retry count and deletes the dead letter row on success.
  */
-export async function retryFailedWebhookEvent(eventId: number): Promise<Result<{ ok: true }>> {
+export async function retryFailedWebhookEvent(args: {
+  eventId: number;
+  installationId: number;
+}): Promise<Result<{ ok: true }>> {
   const authRes = await requireMaintainer({
     rateLimit: { namespace: 'maint:retry-event', ...RATE_LIMIT_TIERS.STANDARD },
     requireService: true,
   });
   if (!authRes.ok) return authRes;
-  const { service } = authRes.data;
+  const { user, service } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) return err('forbidden', 'No repos maintained');
 
   const { data: failedEvent } = await service
     .from('failed_webhook_events')
     .select('*')
-    .eq('id', eventId)
+    .eq('id', args.eventId)
     .maybeSingle();
 
   if (!failedEvent) return err('not_found', 'Event not found');
+
+  const payload = failedEvent.payload as Record<string, unknown>;
+  const innerPayload = (payload?.payload ?? payload) as Record<string, unknown>;
+  const repoName =
+    (innerPayload?.repository as Record<string, unknown>)?.full_name ??
+    ((innerPayload?.pull_request as Record<string, unknown>)?.base as Record<string, unknown>)
+      ?.repo;
+
+  if (typeof repoName !== 'string' || !repos.includes(repoName)) {
+    return err('forbidden', 'You do not have access to this event');
+  }
 
   const eventType: string | undefined = failedEvent.event_type;
   if (!eventType || !eventType.startsWith('github/')) {
@@ -134,7 +150,7 @@ export async function retryFailedWebhookEvent(eventId: number): Promise<Result<{
   await service
     .from('failed_webhook_events')
     .update({ retry_count: currentRetries + 1 })
-    .eq('id', eventId);
+    .eq('id', args.eventId);
 
   await inngest.send({
     name: eventType,
@@ -142,7 +158,7 @@ export async function retryFailedWebhookEvent(eventId: number): Promise<Result<{
   });
 
   // Clean up the dead-letter row after successful dispatch.
-  await service.from('failed_webhook_events').delete().eq('id', eventId);
+  await service.from('failed_webhook_events').delete().eq('id', args.eventId);
 
   return ok({ ok: true });
 }
