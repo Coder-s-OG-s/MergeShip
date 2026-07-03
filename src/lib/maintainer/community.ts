@@ -39,3 +39,6 @@ export function validateCommunityUrl(url: string, kind: CommunityKind): Validate
   }
   return { ok: true, url };
 }
+
+// FLOW NOTE (Issue #517): Implement database schemas and state transitions for contributor invite links
+// ensuring tokens are cryptographically secure and set to expire.
