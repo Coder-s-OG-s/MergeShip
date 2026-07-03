@@ -298,3 +298,6 @@ export function ActivityHeatmap({ activityHistory, allTimeContributions }: Activ
     </div>
   );
 }
+
+// FRONTEND NOTE (Issue #484): The diff viewer component must render large files efficiently
+// using virtualization or pagination to maintain UI responsiveness.
