@@ -89,7 +89,7 @@ export async function getMaintainerPrQueue(args: {
     .from('pull_requests')
     .select(
       'id, repo_full_name, number, title, url, state, draft, author_login, ' +
-        'author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at',
+        'author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at, ai_flagged',
     )
     .in('repo_full_name', scopedRepos);
 
@@ -111,6 +111,7 @@ export async function getMaintainerPrQueue(args: {
     mentor_verified: boolean;
     mentor_reviewer_id: string | null;
     github_updated_at: string;
+    ai_flagged: boolean;
   };
   const { data: prs } = await q
     .order('github_updated_at', { ascending: false })
@@ -179,6 +180,7 @@ export async function getMaintainerPrQueue(args: {
       mentorReviewerHandle: mentor?.handle ?? null,
       mentorReviewerLevel: mentor?.level ?? null,
       githubUpdatedAt: r.github_updated_at,
+      aiFlagged: r.ai_flagged,
     };
   });
 
@@ -187,6 +189,11 @@ export async function getMaintainerPrQueue(args: {
   let filtered = rows.filter((row) => (row.authorLevel ?? 0) >= minContributorLevel);
   if (filters.authorLevel.length > 0) {
     filtered = filtered.filter((row) => filters.authorLevel.includes(row.authorLevel ?? 0));
+  }
+  if (filters.aiFlagged === 'yes') {
+    filtered = filtered.filter((row) => row.aiFlagged);
+  } else if (filters.aiFlagged === 'no') {
+    filtered = filtered.filter((row) => !row.aiFlagged);
   }
 
   filtered.sort(comparePrRows);
@@ -329,7 +336,10 @@ export async function getPrCiStatus(
   repoFullName: string,
   prNumber: number,
 ): Promise<Result<'passing' | 'failing' | 'pending' | null>> {
-  const authRes = await requireMaintainer({ requireService: true });
+  const authRes = await requireMaintainer({
+    requireService: true,
+    rateLimit: { namespace: 'maint:pr-ci-status', ...RATE_LIMIT_TIERS.GENEROUS },
+  });
   if (!authRes.ok) return authRes;
   const { user, service } = authRes.data;
 
@@ -467,6 +477,98 @@ export async function closePullRequest(prId: number): Promise<Result<{ ok: true 
   }
 
   return ok({ ok: true });
+}
+
+// Fetch a single PR by its ID, used by the PR detail page
+export async function getMaintainerPrById(args: {
+  installationId: number;
+  prId: number;
+}): Promise<Result<MaintainerPrRow | null>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:pr:detail', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  // Verify the maintainer has access to the installation
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) return ok(null);
+
+  // Fetch the PR row
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select(
+      'id, repo_full_name, number, title, url, state, draft, author_login, author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at, ai_flagged, body_excerpt, mentor_review_at',
+    )
+    .eq('id', args.prId)
+    .maybeSingle();
+
+  if (!pr) return ok(null);
+
+  // Guard: ensure this PR belongs to a repo the maintainer actually controls.
+  // Without this check a maintainer on org A could read PRs from org B by
+  // supplying a foreign prId with their own installationId.
+  if (!repos.includes(pr.repo_full_name)) return ok(null);
+
+  // Load profiles for author and mentor if present
+  const ids: string[] = [];
+  if (pr.author_user_id) ids.push(pr.author_user_id);
+  if (pr.mentor_reviewer_id) ids.push(pr.mentor_reviewer_id);
+
+  const profilesById = new Map<
+    string,
+    { handle: string; level: number; xp: number; mergedPrs: number }
+  >();
+  if (ids.length > 0) {
+    const { data: profileRows } = await service
+      .from('profiles')
+      .select('id, github_handle, level, xp')
+      .in('id', ids);
+    const merged = await service
+      .from('xp_events')
+      .select('user_id')
+      .in('user_id', ids)
+      .eq('source', 'recommended_merge');
+    const mergedCount = new Map<string, number>();
+    for (const row of merged.data ?? []) {
+      mergedCount.set(row.user_id, (mergedCount.get(row.user_id) ?? 0) + 1);
+    }
+    for (const p of profileRows ?? []) {
+      profilesById.set(p.id, {
+        handle: p.github_handle,
+        level: p.level ?? 0,
+        xp: p.xp ?? 0,
+        mergedPrs: mergedCount.get(p.id) ?? 0,
+      });
+    }
+  }
+
+  const author = pr.author_user_id ? (profilesById.get(pr.author_user_id) ?? null) : null;
+  const mentor = pr.mentor_reviewer_id ? (profilesById.get(pr.mentor_reviewer_id) ?? null) : null;
+
+  const row: MaintainerPrRow = {
+    id: pr.id,
+    repoFullName: pr.repo_full_name,
+    number: pr.number,
+    title: pr.title,
+    url: pr.url,
+    state: pr.state as 'open' | 'closed' | 'merged',
+    draft: pr.draft,
+    authorLogin: pr.author_login,
+    authorUserId: pr.author_user_id,
+    authorLevel: author?.level ?? null,
+    authorXp: author?.xp ?? null,
+    authorMergedPrs: author?.mergedPrs ?? null,
+    mentorVerified: pr.mentor_verified,
+    mentorReviewerHandle: mentor?.handle ?? null,
+    mentorReviewerLevel: mentor?.level ?? null,
+    githubUpdatedAt: pr.github_updated_at,
+    aiFlagged: pr.ai_flagged,
+    bodyExcerpt: pr.body_excerpt,
+    mentorReviewAt: pr.mentor_review_at,
+  };
+  return ok(row);
 }
 
 export async function requestChanges(prId: number, comment: string): Promise<Result<{ ok: true }>> {
@@ -676,36 +778,33 @@ export async function getPrActivityTimeline(prId: number): Promise<Result<Timeli
   try {
     const octokit = await getInstallOctokit(installationId);
 
-    // Fetch PR detail (live)
-    const prRes = await octokit.pulls.get({
-      owner,
-      repo,
-      pull_number: pr.number,
-    });
+    // Fetch live data in parallel to reduce latency
+    const [prRes, commentsRes, reviewsRes, commitsRes] = await Promise.all([
+      octokit.pulls.get({
+        owner,
+        repo,
+        pull_number: pr.number,
+      }),
+      octokit.issues.listComments({
+        owner,
+        repo,
+        issue_number: pr.number,
+      }),
+      octokit.pulls.listReviews({
+        owner,
+        repo,
+        pull_number: pr.number,
+      }),
+      octokit.pulls.listCommits({
+        owner,
+        repo,
+        pull_number: pr.number,
+      }),
+    ]);
+
     const prData = prRes.data;
-
-    // Fetch issue comments (live)
-    const commentsRes = await octokit.issues.listComments({
-      owner,
-      repo,
-      issue_number: pr.number,
-    });
     const commentsData = commentsRes.data || [];
-
-    // Fetch reviews (live)
-    const reviewsRes = await octokit.pulls.listReviews({
-      owner,
-      repo,
-      pull_number: pr.number,
-    });
     const reviewsData = reviewsRes.data || [];
-
-    // Fetch commits (live)
-    const commitsRes = await octokit.pulls.listCommits({
-      owner,
-      repo,
-      pull_number: pr.number,
-    });
     const commitsData = commitsRes.data || [];
 
     // 1. Process PR Opened Event
@@ -842,14 +941,19 @@ export async function getPrDetails(prId: number): Promise<Result<MaintainerPrRow
   if (rawPr.author_user_id) {
     const { data: authorProfile, error: authorProfileErr } = await service
       .from('profiles')
-      .select('level, xp, merged_prs')
+      .select('level, xp')
       .eq('id', rawPr.author_user_id)
       .maybeSingle();
     if (authorProfile && !authorProfileErr) {
       authorLevel = authorProfile.level;
       authorXp = authorProfile.xp;
-      authorMergedPrs = authorProfile.merged_prs;
     }
+    const { data: mergedEvents } = await service
+      .from('xp_events')
+      .select('id')
+      .eq('user_id', rawPr.author_user_id)
+      .eq('source', 'recommended_merge');
+    authorMergedPrs = mergedEvents?.length ?? 0;
   }
 
   let mentorReviewerHandle: string | null = null;

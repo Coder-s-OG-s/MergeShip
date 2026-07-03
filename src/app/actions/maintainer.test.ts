@@ -25,6 +25,7 @@ import {
   getPrDetails,
   getNoiseBreakdown,
   getPromotionEligible,
+  getContributorsList,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -1530,13 +1531,15 @@ describe('maintainer actions', () => {
         ai_flagged: true,
       };
       const mockRepo = { installation_id: 1 };
-      const mockAuthorProfile = { level: 2, xp: 500, merged_prs: 3 };
+      const mockAuthorProfile = { level: 2, xp: 500 };
+      const mockMergedEvents = [{ id: 1 }, { id: 2 }, { id: 3 }];
       const mockMentorProfile = { github_handle: 'mentor-bob', level: 5 };
 
       mockFrom
         .mockReturnValueOnce(chain(mockPr)) // pull_requests
         .mockReturnValueOnce(chain(mockRepo)) // installation_repositories
         .mockReturnValueOnce(chain(mockAuthorProfile)) // profiles author
+        .mockReturnValueOnce(chain(mockMergedEvents)) // xp_events author
         .mockReturnValueOnce(chain(mockMentorProfile)); // profiles mentor
 
       vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
@@ -1552,6 +1555,79 @@ describe('maintainer actions', () => {
         expect(res.data.mentorReviewerHandle).toBe('mentor-bob');
         expect(res.data.mentorReviewerLevel).toBe(5);
         expect(res.data.aiFlagged).toBe(true);
+      }
+    });
+  });
+
+  // getContributorsList
+
+  describe('getContributorsList', () => {
+    it('returns empty array when user maintains no repos for the install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+      const res = await getContributorsList(99);
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('returns contributor list with correct trust score and AI-flagged PR count', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+      const mockPrAgg = [
+        {
+          author_user_id: 'user-alice',
+          state: 'merged',
+          mentor_verified: true,
+          ai_flagged: false,
+          count: 5,
+        },
+        {
+          author_user_id: 'user-alice',
+          state: 'open',
+          mentor_verified: false,
+          ai_flagged: true,
+          count: 1,
+        },
+      ];
+
+      const mockRepoAgg = [{ author_user_id: 'user-alice', repo_full_name: 'org/repo' }];
+
+      const mockProfiles = [
+        { id: 'user-alice', github_handle: 'alice', level: 1, xp: 100, github_streak: 6 },
+      ];
+
+      const mockLastActive = [{ user_id: 'user-alice', last_active: '2026-07-02T10:00:00Z' }];
+
+      const mockSolved = [{ user_id: 'user-alice', count: 2 }];
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') {
+          if (mockFrom.mock.calls.filter((c) => c[0] === 'pull_requests').length === 1) {
+            return chain(mockPrAgg);
+          }
+          return chain(mockRepoAgg);
+        }
+        if (table === 'profiles') return chain(mockProfiles);
+        if (table === 'xp_events') {
+          if (mockFrom.mock.calls.filter((c) => c[0] === 'xp_events').length === 1) {
+            return chain(mockLastActive);
+          }
+          return chain(mockSolved);
+        }
+        return chain([]);
+      });
+
+      const res = await getContributorsList(1);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(1);
+        const alice = res.data[0]!;
+        expect(alice.handle).toBe('alice');
+        expect(alice.mergedPrs).toBe(5);
+        expect(alice.inReview).toBe(1);
+        expect(alice.issuesSolved).toBe(2);
+        expect(alice.aiFlaggedPrCount).toBe(1);
+        // Level 1 (15) + 5 PRs (15) + 2 issues (4) + 6 streak (2) - 1 AI PR (20) = 16
+        expect(alice.trustScore).toBe(16);
       }
     });
   });
