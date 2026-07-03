@@ -22,3 +22,6 @@ export function classifyPrAsAi(pr: { title: string; body: string | null }): bool
 
   return false;
 }
+
+// DATABASE DESIGN NOTE (Issue #490): The multi-stage PR review pipeline
+// requires a tracking schema mapping state transitions.
