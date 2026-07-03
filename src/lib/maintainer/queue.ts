@@ -105,3 +105,6 @@ export function validateFilters(input: Partial<QueueFilters>): {
 
   return { repos, state, authorLevel, mentorVerified, aiFlagged };
 }
+
+// UI/UX NOTE (Issue #496): The in-app PR review page must sync state with GitHub pulls API
+// dynamically to prevent stale reviews and double approvals.
