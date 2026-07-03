@@ -329,7 +329,10 @@ export async function getPrCiStatus(
   repoFullName: string,
   prNumber: number,
 ): Promise<Result<'passing' | 'failing' | 'pending' | null>> {
-  const authRes = await requireMaintainer({ requireService: true });
+  const authRes = await requireMaintainer({
+    requireService: true,
+    rateLimit: { namespace: 'maint:pr-ci-status', ...RATE_LIMIT_TIERS.GENEROUS },
+  });
   if (!authRes.ok) return authRes;
   const { user, service } = authRes.data;
 
@@ -559,4 +562,111 @@ export async function getMaintainerPrById(args: {
     mentorReviewAt: pr.mentor_review_at,
   };
   return ok(row);
+}
+
+export async function requestChanges(prId: number, comment: string): Promise<Result<{ ok: true }>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:request-changes', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select('repo_full_name, number')
+    .eq('id', prId)
+    .maybeSingle();
+
+  if (!pr) return err('not_found', 'PR not found');
+
+  const { data: repoRow } = await service
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', pr.repo_full_name)
+    .maybeSingle();
+
+  if (!repoRow?.installation_id) {
+    return err('not_found', 'Installation not found for this repository');
+  }
+  const installationId = repoRow.installation_id;
+
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(pr.repo_full_name)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  if (comment.trim().length === 0) {
+    return err('invalid_input', 'Comment is required');
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    const [owner, repo] = pr.repo_full_name.split('/');
+    if (!owner || !repo) return err('invalid_input', 'Invalid repository format');
+    await octokit.pulls.createReview({
+      owner,
+      repo,
+      pull_number: pr.number,
+      event: 'REQUEST_CHANGES',
+      body: comment,
+    });
+  } catch (error: any) {
+    return err('github_error', error.message || 'Failed to request changes via GitHub API');
+  }
+
+  return ok({ ok: true });
+}
+
+export async function mergePullRequest(prId: number): Promise<Result<{ ok: true }>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:merge-pr', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select('repo_full_name, number, state')
+    .eq('id', prId)
+    .maybeSingle();
+
+  if (!pr) return err('not_found', 'PR not found');
+
+  if (pr.state !== 'open') return err('invalid_input', 'PR is not open');
+
+  const { data: repoRow } = await service
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', pr.repo_full_name)
+    .maybeSingle();
+
+  if (!repoRow?.installation_id) {
+    return err('not_found', 'Installation not found for this repository');
+  }
+  const installationId = repoRow.installation_id;
+
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(pr.repo_full_name)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    const [owner, repo] = pr.repo_full_name.split('/');
+    if (!owner || !repo) return err('invalid_input', 'Invalid repository format');
+    await octokit.pulls.merge({
+      owner,
+      repo,
+      pull_number: pr.number,
+      merge_method: 'squash',
+    });
+  } catch (error: any) {
+    return err('github_error', error.message || 'Failed to merge PR via GitHub API');
+  }
+
+  await service.from('pull_requests').update({ state: 'merged' }).eq('id', prId);
+
+  return ok({ ok: true });
 }

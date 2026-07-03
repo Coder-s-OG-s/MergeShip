@@ -17,6 +17,8 @@ export {
   getPrCiStatus,
   closePullRequest,
   getMaintainerPrById,
+  requestChanges,
+  mergePullRequest,
 } from './queue';
 
 export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './community';

@@ -241,4 +241,64 @@ describe('getIssuesPage', () => {
       expect(mockChain.in).toHaveBeenCalledWith('repo_full_name', ['owner/allowed-repo']);
     }
   });
+
+  it('applies Highest XP sorting correctly', async () => {
+    const mockChain = createMockChain({
+      data: [],
+      count: 0,
+      error: null,
+    });
+
+    mocks.mockServiceFrom.mockImplementation((table: string) => {
+      if (table === 'github_installations') {
+        return createMockChain({ data: [{ id: 10 }] });
+      }
+      if (table === 'installation_repositories') {
+        return createMockChain({
+          data: [{ repo_full_name: 'owner/allowed-repo', installation_id: 10 }],
+        });
+      }
+      if (table === 'issues') {
+        return mockChain;
+      }
+      return createMockChain({ data: [] });
+    });
+
+    await getIssuesPage({ sort: 'xp_desc' });
+
+    expect(mockChain.order).toHaveBeenCalledWith('xp_reward', {
+      ascending: false,
+      nullsFirst: false,
+    });
+  });
+
+  it('applies Lowest XP sorting correctly', async () => {
+    const mockChain = createMockChain({
+      data: [],
+      count: 0,
+      error: null,
+    });
+
+    mocks.mockServiceFrom.mockImplementation((table: string) => {
+      if (table === 'github_installations') {
+        return createMockChain({ data: [{ id: 10 }] });
+      }
+      if (table === 'installation_repositories') {
+        return createMockChain({
+          data: [{ repo_full_name: 'owner/allowed-repo', installation_id: 10 }],
+        });
+      }
+      if (table === 'issues') {
+        return mockChain;
+      }
+      return createMockChain({ data: [] });
+    });
+
+    await getIssuesPage({ sort: 'xp_asc' });
+
+    expect(mockChain.order).toHaveBeenCalledWith('xp_reward', {
+      ascending: true,
+      nullsFirst: false,
+    });
+  });
 });
