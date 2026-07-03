@@ -462,7 +462,7 @@ export default async function MaintainerPage({
                         {relativeTime(evt.createdAt)} · {evt.retryCount} manual retries
                       </p>
                     </div>
-                    <RetryEventButton eventId={evt.id} />
+                    <RetryEventButton eventId={evt.id} installationId={activeInstallId} />
                   </div>
                 </div>
               ))}

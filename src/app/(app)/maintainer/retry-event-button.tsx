@@ -4,7 +4,13 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { retryFailedWebhookEvent } from '@/app/actions/maintainer';
 
-export function RetryEventButton({ eventId }: { eventId: number }) {
+export function RetryEventButton({
+  eventId,
+  installationId,
+}: {
+  eventId: number;
+  installationId: number;
+}) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -17,7 +23,7 @@ export function RetryEventButton({ eventId }: { eventId: number }) {
         onClick={() => {
           setError(null);
           startTransition(async () => {
-            const res = await retryFailedWebhookEvent(eventId);
+            const res = await retryFailedWebhookEvent({ eventId, installationId });
             if (!res.ok) {
               setError(res.error.message);
               return;
