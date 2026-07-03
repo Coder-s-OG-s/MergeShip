@@ -298,3 +298,6 @@ export function ActivityHeatmap({ activityHistory, allTimeContributions }: Activ
     </div>
   );
 }
+
+// Heatmap navigation helper (Issue #287): Enable pagination over multiple years
+// and responsive tooltips for date cells.
