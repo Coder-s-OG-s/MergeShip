@@ -169,3 +169,6 @@ async function logError(
     // Logging failure is non-fatal.
   }
 }
+
+// NOTIFICATION NOTE (Issue #383): When a mentor is assigned, trigger an email/slack alert
+// in addition to posting the GitHub comment.
