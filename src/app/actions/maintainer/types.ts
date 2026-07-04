@@ -84,6 +84,22 @@ export type ReviewerLoadRow = {
   prCount: number;
 };
 
+export type TimelineEvent = {
+  id: string;
+  type: 'opened' | 'comment' | 'commit' | 'review';
+  timestamp: string;
+  actor: {
+    login: string;
+    avatarUrl: string | null;
+  };
+  details: {
+    body?: string;
+    message?: string;
+    sha?: string;
+    state?: 'approved' | 'changes_requested' | 'commented' | 'dismissed';
+  };
+};
+
 export type NoiseBreakdown = {
   valid: number;
   spamAi: number;

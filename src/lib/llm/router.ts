@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import Groq from 'groq-sdk';
 import type { Result } from '../result';
 import { ok, err } from '../result';
+import { getGroqClient, isGroqConfigured } from '../groq-client';
 
 /**
  * LLM router. v1 = Groq only. Phase 2 adds Cerebras / Together / Gemini fallback chain
@@ -26,22 +26,17 @@ type LlmCallArgs<T> = {
   schema: z.ZodType<T>;
 };
 
-const groqApiKey = process.env.GROQ_API_KEY;
-
 const groqProvider: LlmProvider = {
   name: 'groq',
   complete: async (prompt: string) => {
-    if (!groqApiKey) {
-      throw new Error('GROQ_API_KEY is not set');
-    }
-    const groq = new Groq({ apiKey: groqApiKey });
+    const groq = getGroqClient();
     const completion = await groq.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
       model: 'llama3-8b-8192',
     });
     return completion.choices[0]?.message?.content ?? '';
   },
-  isHealthy: () => !!groqApiKey,
+  isHealthy: () => isGroqConfigured(),
 };
 
 let providerOverride: LlmProvider | null = null;
@@ -51,7 +46,7 @@ export function __setLlmProvider(p: LlmProvider | null): void {
 }
 
 function pickProvider(): LlmProvider | null {
-  return providerOverride || (groqApiKey ? groqProvider : null);
+  return providerOverride || (isGroqConfigured() ? groqProvider : null);
 }
 
 function extractJson(raw: string): string {
