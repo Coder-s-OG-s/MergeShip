@@ -27,6 +27,7 @@ import {
   getPromotionEligible,
   getContributorsList,
   previewMergeXp,
+  getContributorStats,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -1629,6 +1630,101 @@ describe('maintainer actions', () => {
         expect(alice.aiFlaggedPrCount).toBe(1);
         // Level 1 (15) + 5 PRs (15) + 2 issues (4) + 6 streak (2) - 1 AI PR (20) = 16
         expect(alice.trustScore).toBe(16);
+      }
+    });
+  });
+
+  // getContributorStats
+
+  describe('getContributorStats', () => {
+    it('returns empty stats when no contributors exist', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+      const res = await getContributorStats(99);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({
+          total: 0,
+          active: 0,
+          l2Plus: 0,
+          joinedLast7d: 0,
+          avgTrust: 0,
+          pendingInvites: 0,
+        });
+      }
+    });
+
+    it('calculates correct metrics for contributors', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+      const mockPrAgg = [
+        {
+          author_user_id: 'user-alice',
+          state: 'merged',
+          mentor_verified: true,
+          ai_flagged: false,
+          count: 5,
+        },
+        {
+          author_user_id: 'user-bob',
+          state: 'merged',
+          mentor_verified: true,
+          ai_flagged: false,
+          count: 2,
+        },
+      ];
+
+      const mockRepoAgg = [
+        { author_user_id: 'user-alice', repo_full_name: 'org/repo' },
+        { author_user_id: 'user-bob', repo_full_name: 'org/repo' },
+      ];
+
+      const mockProfiles = [
+        { id: 'user-alice', github_handle: 'alice', level: 2, xp: 100, github_streak: 6 },
+        { id: 'user-bob', github_handle: 'bob', level: 1, xp: 50, github_streak: 0 },
+      ];
+
+      const now = new Date();
+      const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
+      const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString();
+      const fortyDaysAgo = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000).toISOString();
+      const fortyFiveDaysAgo = new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000).toISOString();
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') {
+          if (mockFrom.mock.calls.filter((c) => c[0] === 'pull_requests').length === 1) {
+            return chain(mockPrAgg);
+          }
+          return chain(mockRepoAgg);
+        }
+        if (table === 'profiles') return chain(mockProfiles);
+        if (table === 'xp_events') {
+          const calls = mockFrom.mock.calls.filter((c) => c[0] === 'xp_events');
+          if (calls.length === 1) {
+            return chain([
+              { user_id: 'user-alice', last_active: twoDaysAgo },
+              { user_id: 'user-bob', last_active: fortyDaysAgo },
+            ]);
+          }
+          if (calls.length === 2) {
+            return chain([
+              { user_id: 'user-alice', first_active: fiveDaysAgo },
+              { user_id: 'user-bob', first_active: fortyFiveDaysAgo },
+            ]);
+          }
+          return chain([]);
+        }
+        return chain([]);
+      });
+
+      const res = await getContributorStats(1);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.total).toBe(2);
+        expect(res.data.active).toBe(1);
+        expect(res.data.l2Plus).toBe(1);
+        expect(res.data.joinedLast7d).toBe(1);
+        expect(res.data.avgTrust).toBeGreaterThan(0);
+        expect(res.data.pendingInvites).toBe(0);
       }
     });
   });
