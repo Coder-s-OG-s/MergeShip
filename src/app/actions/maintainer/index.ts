@@ -17,9 +17,15 @@ export {
   getPrCiStatus,
   closePullRequest,
   getPrDiff,
+  getPrActivityTimeline,
+  getPrDetails,
+  getMaintainerPrById,
+  requestChanges,
+  mergePullRequest,
 } from './queue';
 
 export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './community';
+export { getContributorsList, type ContributorListRow } from './contributors';
 
 export {
   getRepoHealthOverview,
@@ -33,3 +39,4 @@ export {
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';
+export { previewMergeXp, type XpPreviewBreakdown } from './xp-preview';

@@ -19,8 +19,14 @@ import {
   getPrCiStatus,
   getReviewerLoad,
   closePullRequest,
+  requestChanges,
+  mergePullRequest,
+  getPrActivityTimeline,
+  getPrDetails,
   getNoiseBreakdown,
   getPromotionEligible,
+  getContributorsList,
+  previewMergeXp,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -82,10 +88,25 @@ vi.mock('@/inngest/client', () => ({
 }));
 
 const mockPullsUpdate = vi.fn();
+const mockPullsCreateReview = vi.fn();
+const mockPullsMerge = vi.fn();
+const mockPullsGet = vi.fn();
+const mockIssuesListComments = vi.fn();
+const mockPullsListReviews = vi.fn();
+const mockPullsListCommits = vi.fn();
+
 vi.mock('@/lib/github/app', () => ({
   getInstallOctokit: vi.fn(() => ({
     pulls: {
       update: mockPullsUpdate,
+      createReview: mockPullsCreateReview,
+      merge: mockPullsMerge,
+      get: mockPullsGet,
+      listReviews: mockPullsListReviews,
+      listCommits: mockPullsListCommits,
+    },
+    issues: {
+      listComments: mockIssuesListComments,
     },
   })),
 }));
@@ -1110,6 +1131,196 @@ describe('maintainer actions', () => {
     });
   });
 
+  // requestChanges
+
+  describe('requestChanges', () => {
+    beforeEach(() => {
+      mockPullsCreateReview.mockClear();
+    });
+
+    it('returns rate_limited when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+      const res = await requestChanges(123, 'Please fix this');
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns not_found when PR does not exist in DB', async () => {
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await requestChanges(123, 'Please fix this');
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('PR not found');
+      }
+    });
+
+    it('returns not_found when installation not found for repo', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(null));
+
+      const res = await requestChanges(123, 'Please fix this');
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('Installation not found for this repository');
+      }
+    });
+
+    it('returns not_authorised when repo not in maintainer scope', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/other']);
+
+      const res = await requestChanges(123, 'Please fix this');
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+
+    it('returns invalid_input when comment is empty or whitespace', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+      const res = await requestChanges(123, '   ');
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('invalid_input');
+        expect(res.error.message).toBe('Comment is required');
+      }
+    });
+
+    it('returns github_error when GitHub API throws', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockPullsCreateReview.mockRejectedValueOnce(new Error('GitHub error'));
+
+      const res = await requestChanges(123, 'Please fix this');
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('github_error');
+    });
+
+    it('returns ok and calls createReview on success', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockPullsCreateReview.mockResolvedValueOnce({});
+
+      const res = await requestChanges(123, 'Please address these issues');
+      expect(res.ok).toBe(true);
+      expect(mockPullsCreateReview).toHaveBeenCalledWith({
+        owner: 'org',
+        repo: 'repo',
+        pull_number: 42,
+        event: 'REQUEST_CHANGES',
+        body: 'Please address these issues',
+      });
+    });
+  });
+
+  // mergePullRequest
+
+  describe('mergePullRequest', () => {
+    beforeEach(() => {
+      mockPullsMerge.mockClear();
+    });
+
+    it('returns rate_limited when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns not_found when PR does not exist in DB', async () => {
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('PR not found');
+      }
+    });
+
+    it('returns invalid_input when PR is not open', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42, state: 'closed' };
+      mockFrom.mockReturnValueOnce(chain(mockPr));
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('invalid_input');
+        expect(res.error.message).toBe('PR is not open');
+      }
+    });
+
+    it('returns not_found when installation not found for repo', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42, state: 'open' };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(null));
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('Installation not found for this repository');
+      }
+    });
+
+    it('returns not_authorised when repo not in maintainer scope', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42, state: 'open' };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/other']);
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+
+    it('returns github_error when GitHub API throws', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42, state: 'open' };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockPullsMerge.mockRejectedValueOnce(new Error('GitHub error'));
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('github_error');
+    });
+
+    it('returns ok, calls merge with squash, and updates DB state to merged', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42, state: 'open' };
+      const mockRepo = { installation_id: 1 };
+      const updateChain = chain({ id: 123 });
+      mockFrom
+        .mockReturnValueOnce(chain(mockPr))
+        .mockReturnValueOnce(chain(mockRepo))
+        .mockReturnValueOnce(updateChain);
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockPullsMerge.mockResolvedValueOnce({});
+
+      const res = await mergePullRequest(123);
+      expect(res.ok).toBe(true);
+      expect(mockPullsMerge).toHaveBeenCalledWith({
+        owner: 'org',
+        repo: 'repo',
+        pull_number: 42,
+        merge_method: 'squash',
+      });
+      expect(updateChain.update).toHaveBeenCalledWith({ state: 'merged' });
+    });
+  });
+
   // getNoiseBreakdown
 
   describe('getNoiseBreakdown', () => {
@@ -1160,6 +1371,390 @@ describe('maintainer actions', () => {
           valid: 14, // 10 + 4
           total: 24,
         });
+      }
+    });
+  });
+
+  // getPrActivityTimeline
+
+  describe('getPrActivityTimeline', () => {
+    beforeEach(() => {
+      mockPullsGet.mockClear();
+      mockIssuesListComments.mockClear();
+      mockPullsListReviews.mockClear();
+      mockPullsListCommits.mockClear();
+    });
+
+    it('returns not_found when PR is not in DB', async () => {
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await getPrActivityTimeline(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('PR not found');
+      }
+    });
+
+    it('returns fallback mock data for demo repos', async () => {
+      const mockPr = { repo_full_name: 'demo/repo', number: 42, author_login: 'contributor' };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['demo/repo']);
+
+      const res = await getPrActivityTimeline(123);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(4);
+        expect(res.data[0]?.type).toBe('opened');
+        expect(res.data[1]?.type).toBe('commit');
+        expect(res.data[2]?.type).toBe('comment');
+        expect(res.data[3]?.type).toBe('review');
+      }
+    });
+
+    it('returns sorted live data on success', async () => {
+      const originalAppId = process.env.GITHUB_APP_ID;
+      process.env.GITHUB_APP_ID = '123456';
+      try {
+        const mockPr = { repo_full_name: 'org/repo', number: 42, author_login: 'alice' };
+        const mockRepo = { installation_id: 1 };
+        mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+
+        vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+        // Setup Octokit mock responses
+        mockPullsGet.mockResolvedValueOnce({
+          data: {
+            created_at: '2026-06-30T10:00:00Z',
+            user: { login: 'alice', avatar_url: 'url-alice' },
+          },
+        });
+
+        mockIssuesListComments.mockResolvedValueOnce({
+          data: [
+            {
+              id: 101,
+              created_at: '2026-06-30T10:15:00Z',
+              user: { login: 'bob', avatar_url: 'url-bob' },
+              body: 'My comment',
+            },
+          ],
+        });
+
+        mockPullsListReviews.mockResolvedValueOnce({
+          data: [
+            {
+              id: 201,
+              submitted_at: '2026-06-30T10:30:00Z',
+              state: 'APPROVED',
+              user: { login: 'charlie', avatar_url: 'url-charlie' },
+              body: 'Approved!',
+            },
+          ],
+        });
+
+        mockPullsListCommits.mockResolvedValueOnce({
+          data: [
+            {
+              sha: 'commit-sha-123',
+              commit: {
+                committer: { date: '2026-06-30T10:10:00Z' },
+                message: 'My commit message',
+              },
+              author: { login: 'alice', avatar_url: 'url-alice' },
+            },
+          ],
+        });
+
+        const res = await getPrActivityTimeline(123);
+        expect(res.ok).toBe(true);
+        if (res.ok) {
+          expect(res.data).toHaveLength(4);
+          // Order should be chronological: opened (10:00) -> commit (10:10) -> comment (10:15) -> review (10:30)
+          expect(res.data[0]?.type).toBe('opened');
+          expect(res.data[1]?.type).toBe('commit');
+          expect(res.data[1]?.details.message).toBe('My commit message');
+          expect(res.data[2]?.type).toBe('comment');
+          expect(res.data[2]?.details.body).toBe('My comment');
+          expect(res.data[3]?.type).toBe('review');
+          expect(res.data[3]?.details.state).toBe('approved');
+        }
+      } finally {
+        process.env.GITHUB_APP_ID = originalAppId;
+      }
+    });
+  });
+
+  // getPrDetails
+
+  describe('getPrDetails', () => {
+    it('returns not_found when PR is not in DB', async () => {
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await getPrDetails(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('PR not found');
+      }
+    });
+
+    it('returns not_authorised when user does not maintain repo', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42, author_user_id: 'user-123' };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/other']);
+
+      const res = await getPrDetails(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_authorised');
+      }
+    });
+
+    it('returns PR details on success', async () => {
+      const mockPr = {
+        id: 123,
+        repo_full_name: 'org/repo',
+        number: 42,
+        title: 'Awesome PR',
+        url: 'https://github.com/org/repo/pull/42',
+        state: 'open',
+        draft: false,
+        author_login: 'alice',
+        author_user_id: 'user-123',
+        mentor_verified: false,
+        mentor_reviewer_id: 'user-456',
+        github_updated_at: '2026-06-30T10:00:00Z',
+        ai_flagged: true,
+      };
+      const mockRepo = { installation_id: 1 };
+      const mockAuthorProfile = { level: 2, xp: 500 };
+      const mockMergedEvents = [{ id: 1 }, { id: 2 }, { id: 3 }];
+      const mockMentorProfile = { github_handle: 'mentor-bob', level: 5 };
+
+      mockFrom
+        .mockReturnValueOnce(chain(mockPr)) // pull_requests
+        .mockReturnValueOnce(chain(mockRepo)) // installation_repositories
+        .mockReturnValueOnce(chain(mockAuthorProfile)) // profiles author
+        .mockReturnValueOnce(chain(mockMergedEvents)) // xp_events author
+        .mockReturnValueOnce(chain(mockMentorProfile)); // profiles mentor
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+      const res = await getPrDetails(123);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.id).toBe(123);
+        expect(res.data.title).toBe('Awesome PR');
+        expect(res.data.authorLevel).toBe(2);
+        expect(res.data.authorXp).toBe(500);
+        expect(res.data.authorMergedPrs).toBe(3);
+        expect(res.data.mentorReviewerHandle).toBe('mentor-bob');
+        expect(res.data.mentorReviewerLevel).toBe(5);
+        expect(res.data.aiFlagged).toBe(true);
+      }
+    });
+  });
+
+  // getContributorsList
+
+  describe('getContributorsList', () => {
+    it('returns empty array when user maintains no repos for the install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+      const res = await getContributorsList(99);
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data).toEqual([]);
+    });
+
+    it('returns contributor list with correct trust score and AI-flagged PR count', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+      const mockPrAgg = [
+        {
+          author_user_id: 'user-alice',
+          state: 'merged',
+          mentor_verified: true,
+          ai_flagged: false,
+          count: 5,
+        },
+        {
+          author_user_id: 'user-alice',
+          state: 'open',
+          mentor_verified: false,
+          ai_flagged: true,
+          count: 1,
+        },
+      ];
+
+      const mockRepoAgg = [{ author_user_id: 'user-alice', repo_full_name: 'org/repo' }];
+
+      const mockProfiles = [
+        { id: 'user-alice', github_handle: 'alice', level: 1, xp: 100, github_streak: 6 },
+      ];
+
+      const mockLastActive = [{ user_id: 'user-alice', last_active: '2026-07-02T10:00:00Z' }];
+
+      const mockSolved = [{ user_id: 'user-alice', count: 2 }];
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') {
+          if (mockFrom.mock.calls.filter((c) => c[0] === 'pull_requests').length === 1) {
+            return chain(mockPrAgg);
+          }
+          return chain(mockRepoAgg);
+        }
+        if (table === 'profiles') return chain(mockProfiles);
+        if (table === 'xp_events') {
+          if (mockFrom.mock.calls.filter((c) => c[0] === 'xp_events').length === 1) {
+            return chain(mockLastActive);
+          }
+          return chain(mockSolved);
+        }
+        return chain([]);
+      });
+
+      const res = await getContributorsList(1);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(1);
+        const alice = res.data[0]!;
+        expect(alice.handle).toBe('alice');
+        expect(alice.mergedPrs).toBe(5);
+        expect(alice.inReview).toBe(1);
+        expect(alice.issuesSolved).toBe(2);
+        expect(alice.aiFlaggedPrCount).toBe(1);
+        // Level 1 (15) + 5 PRs (15) + 2 issues (4) + 6 streak (2) - 1 AI PR (20) = 16
+        expect(alice.trustScore).toBe(16);
+      }
+    });
+  });
+
+  // previewMergeXp
+
+  describe('previewMergeXp', () => {
+    it('returns not_found when PR is not in DB', async () => {
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await previewMergeXp(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('PR not found');
+      }
+    });
+
+    it('returns not_authorised when user does not maintain repo', async () => {
+      const mockPr = {
+        repo_full_name: 'org/repo',
+        number: 42,
+        author_login: 'alice',
+        url: 'pr-url',
+      };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/other']);
+
+      const res = await previewMergeXp(123);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_authorised');
+      }
+    });
+
+    it('calculates prospective XP correctly on success', async () => {
+      const mockPr = {
+        id: 123,
+        repo_full_name: 'org/repo',
+        number: 42,
+        title: 'Closes #456',
+        url: 'https://github.com/org/repo/pull/42',
+        state: 'open',
+        author_login: 'alice',
+        author_user_id: 'user-alice',
+        body_excerpt: 'Fixing the bug',
+      };
+      const mockRepo = { installation_id: 1 };
+      const mockRec = { id: 1, user_id: 'user-alice', difficulty: 'M', xp_reward: 150 };
+      const mockHelpReq = { id: 10, created_at: '2026-06-30T10:00:00Z' };
+      const mockReviews = [
+        {
+          reviewer_user_id: 'user-bob',
+          reviewer_login: 'bob',
+          is_mentor: true,
+          submitted_at: '2026-06-30T10:30:00Z',
+        },
+        {
+          reviewer_user_id: 'user-charlie',
+          reviewer_login: 'charlie',
+          is_mentor: false,
+          submitted_at: '2026-06-30T15:00:00Z',
+        },
+      ];
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') return chain(mockPr);
+        if (table === 'installation_repositories') return chain(mockRepo);
+        if (table === 'recommendations') return chain(mockRec);
+        if (table === 'help_requests') return chain(mockHelpReq);
+        if (table === 'pull_request_reviews') return chain(mockReviews);
+        return chain(null);
+      });
+
+      const res = await previewMergeXp(123);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.author.login).toBe('alice');
+        expect(res.data.author.xp).toBe(150);
+        expect(res.data.author.status).toBe('recommended');
+
+        expect(res.data.reviewers).toHaveLength(2);
+        const bob = res.data.reviewers.find((r) => r.login === 'bob')!;
+        expect(bob.xp).toBe(65);
+        expect(bob.isMentor).toBe(true);
+
+        const charlie = res.data.reviewers.find((r) => r.login === 'charlie')!;
+        expect(charlie.xp).toBe(30);
+        expect(charlie.isMentor).toBe(false);
+      }
+    });
+
+    it('calculates 0 XP for self merge', async () => {
+      const mockPr = {
+        id: 123,
+        repo_full_name: 'alice/repo',
+        number: 42,
+        title: 'My PR',
+        url: 'https://github.com/alice/repo/pull/42',
+        state: 'open',
+        author_login: 'alice',
+        author_user_id: 'user-alice',
+        body_excerpt: '',
+      };
+      const mockRepo = { installation_id: 1 };
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['alice/repo']);
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') return chain(mockPr);
+        if (table === 'installation_repositories') return chain(mockRepo);
+        if (table === 'recommendations') return chain(null);
+        if (table === 'help_requests') return chain(null);
+        if (table === 'pull_request_reviews') return chain([]);
+        return chain(null);
+      });
+
+      const res = await previewMergeXp(123);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.author.xp).toBe(0);
+        expect(res.data.author.status).toBe('self_merge');
       }
     });
   });
