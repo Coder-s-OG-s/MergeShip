@@ -15,9 +15,14 @@ export {
   getMaintainerIssueQueue,
   refreshMaintainerBackfill,
   getPrCiStatus,
+  closePullRequest,
+  getMaintainerPrById,
+  requestChanges,
+  mergePullRequest,
 } from './queue';
 
 export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './community';
+export { getContributorsList, type ContributorListRow } from './contributors';
 
 export {
   getRepoHealthOverview,
@@ -26,6 +31,8 @@ export {
   getMaintainerAnalyticsTrends,
   exportPrQueueCsv,
   getReviewerLoad,
+  getNoiseBreakdown,
+  getPromotionEligible,
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';
