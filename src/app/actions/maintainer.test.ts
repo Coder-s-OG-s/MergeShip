@@ -1757,5 +1757,45 @@ describe('maintainer actions', () => {
         expect(res.data.author.status).toBe('self_merge');
       }
     });
+
+    it('returns empty reviewers list when help request is absent', async () => {
+      const mockPr = {
+        id: 123,
+        repo_full_name: 'org/repo',
+        number: 42,
+        title: 'Fix',
+        url: 'https://github.com/org/repo/pull/42',
+        state: 'open',
+        author_login: 'alice',
+        author_user_id: 'user-alice',
+        body_excerpt: '',
+      };
+      const mockRepo = { installation_id: 1 };
+      const mockReviews = [
+        {
+          reviewer_user_id: 'user-bob',
+          reviewer_login: 'bob',
+          is_mentor: true,
+          submitted_at: '2026-06-30T10:30:00Z',
+        },
+      ];
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') return chain(mockPr);
+        if (table === 'installation_repositories') return chain(mockRepo);
+        if (table === 'recommendations') return chain(null);
+        if (table === 'help_requests') return chain(null);
+        if (table === 'pull_request_reviews') return chain(mockReviews);
+        return chain(null);
+      });
+
+      const res = await previewMergeXp(123);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.reviewers).toHaveLength(0);
+      }
+    });
   });
 });

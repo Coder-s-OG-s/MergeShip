@@ -164,33 +164,35 @@ export async function previewMergeXp(prId: number): Promise<Result<XpPreviewBrea
     isMentor: boolean;
   }> = [];
 
-  const seenReviewers = new Set<string>();
+  if (helpReq) {
+    const seenReviewers = new Set<string>();
 
-  for (const rev of reviews ?? []) {
-    const key = rev.reviewer_user_id ?? rev.reviewer_login;
-    if (seenReviewers.has(key)) continue;
-    seenReviewers.add(key);
+    for (const rev of reviews ?? []) {
+      const key = rev.reviewer_user_id ?? rev.reviewer_login;
+      if (seenReviewers.has(key)) continue;
+      seenReviewers.add(key);
 
-    let reviewerXp = XP_REWARDS.HELP_REVIEW_BASE; // 30
-    if (rev.is_mentor) {
-      reviewerXp += XP_REWARDS.HELP_REVIEW_MENTOR_BONUS; // 25
-    }
-
-    if (helpReq && rev.submitted_at) {
-      const responseMs =
-        new Date(rev.submitted_at).getTime() - new Date(helpReq.created_at).getTime();
-      const isFast = responseMs <= 2 * 3600 * 1000; // responded < 2h
-      if (isFast) {
-        reviewerXp += XP_REWARDS.HELP_REVIEW_SPEED_BONUS; // 10
+      let reviewerXp = XP_REWARDS.HELP_REVIEW_BASE; // 30
+      if (rev.is_mentor) {
+        reviewerXp += XP_REWARDS.HELP_REVIEW_MENTOR_BONUS; // 25
       }
-    }
 
-    reviewers.push({
-      userId: rev.reviewer_user_id,
-      login: rev.reviewer_login,
-      xp: reviewerXp,
-      isMentor: rev.is_mentor,
-    });
+      if (rev.submitted_at) {
+        const responseMs =
+          new Date(rev.submitted_at).getTime() - new Date(helpReq.created_at).getTime();
+        const isFast = responseMs <= 2 * 3600 * 1000; // responded < 2h
+        if (isFast) {
+          reviewerXp += XP_REWARDS.HELP_REVIEW_SPEED_BONUS; // 10
+        }
+      }
+
+      reviewers.push({
+        userId: rev.reviewer_user_id,
+        login: rev.reviewer_login,
+        xp: reviewerXp,
+        isMentor: rev.is_mentor,
+      });
+    }
   }
 
   return ok({
