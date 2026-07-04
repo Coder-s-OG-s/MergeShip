@@ -404,7 +404,7 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
             )}
 
             {/* Merge Decision Card */}
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+            <div className="sticky top-6 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
               <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-400">
                 Merge Decision
               </h2>
