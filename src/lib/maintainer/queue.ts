@@ -28,6 +28,7 @@ export type MaintainerPrRow = {
   githubUpdatedAt: string; // ISO
   ciStatus?: 'passing' | 'failing' | 'pending' | null;
   aiFlagged: boolean;
+  installationId?: number;
   bodyExcerpt?: string | null;
   mentorReviewAt?: string | null;
 };

@@ -16,6 +16,8 @@ export {
   refreshMaintainerBackfill,
   getPrCiStatus,
   closePullRequest,
+  getPrActivityTimeline,
+  getPrDetails,
   getMaintainerPrById,
   requestChanges,
   mergePullRequest,
@@ -39,3 +41,4 @@ export {
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';
+export { previewMergeXp, type XpPreviewBreakdown } from './xp-preview';
