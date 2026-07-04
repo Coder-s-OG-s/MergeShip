@@ -1757,7 +1757,6 @@ describe('maintainer actions', () => {
         expect(res.data.author.status).toBe('self_merge');
       }
     });
-
     it('returns empty reviewers list when help request is absent', async () => {
       const mockPr = {
         id: 123,

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PRBreadcrumb } from './breadcrumb';
 import { notFound, redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
@@ -98,6 +99,11 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
           </Link>
         </div>
 
+        <PRBreadcrumb
+          repoFullName={pr.repoFullName}
+          prNumber={pr.number}
+          installationId={pr.installationId!}
+        />
         {/* Layout grid */}
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           {/* Main timeline + Header (2 cols) */}
@@ -403,8 +409,7 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
               </div>
             )}
 
-            {/* Merge Decision Card */}
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+            <div className="sticky top-6 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
               <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-400">
                 Merge Decision
               </h2>
