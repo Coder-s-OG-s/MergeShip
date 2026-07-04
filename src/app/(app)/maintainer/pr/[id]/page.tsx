@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PRBreadcrumb } from './breadcrumb';
 import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
@@ -158,6 +159,11 @@ export default async function MaintainerPrDetailPage({
           <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
           Back to PR Queue
         </Link>
+        <PRBreadcrumb
+          repoFullName={pr.repoFullName}
+          prNumber={pr.number}
+          installationId={activeInstallId}
+        />
 
         {/* Top Header Card */}
         <div className="relative mb-8 overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6 shadow-2xl backdrop-blur-md sm:p-8">
