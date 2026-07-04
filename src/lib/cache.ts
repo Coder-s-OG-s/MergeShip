@@ -25,6 +25,12 @@ function rateLimitResetAt(ttlSeconds: number, windowSec: number, now: number): n
   return now + Math.max(1, ttlSeconds > 0 ? ttlSeconds : windowSec) * 1000;
 }
 
+const RATE_LIMIT_STRICT = process.env.RATE_LIMIT_STRICT === 'true';
+
+function failOpenRateLimitBucket(windowSec: number, now: number): RateLimitBucket {
+  return { count: 0, resetAt: now + windowSec * 1000 };
+}
+
 export function blockedRateLimitBucket(windowSec: number, now: number): RateLimitBucket {
   return { count: Number.MAX_SAFE_INTEGER, resetAt: now + windowSec * 1000 };
 }
@@ -129,7 +135,9 @@ export class UpstashBackend implements CacheBackend {
       if (ttl <= 0) await this.redis.expire(key, windowSec);
       return { count, resetAt: rateLimitResetAt(ttl, windowSec, now) };
     } catch {
-      return blockedRateLimitBucket(windowSec, now);
+      console.warn('[cache] rateLimitHit failed, falling back to fail-open mode');
+      if (RATE_LIMIT_STRICT) return blockedRateLimitBucket(windowSec, now);
+      return failOpenRateLimitBucket(windowSec, now);
     }
   }
 }
@@ -187,7 +195,9 @@ export class IoRedisBackend implements CacheBackend {
       if (ttl <= 0) await this.redis.expire(key, windowSec);
       return { count, resetAt: rateLimitResetAt(ttl, windowSec, now) };
     } catch {
-      return blockedRateLimitBucket(windowSec, now);
+      console.warn('[cache] rateLimitHit failed, falling back to fail-open mode');
+      if (RATE_LIMIT_STRICT) return blockedRateLimitBucket(windowSec, now);
+      return failOpenRateLimitBucket(windowSec, now);
     }
   }
 }
