@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 
 interface PlacementLevel {
   score: number;
@@ -35,7 +34,7 @@ const QUIZ_QUESTIONS = [
     options: [
       'Use single words like "fix" or "update"',
       'Write descriptive messages explaining the why',
-      'Don\'t bother with messages',
+      "Don't bother with messages",
       'Copy commit messages from other projects',
     ],
   },
@@ -143,9 +142,7 @@ export function PlacementQuiz({ onComplete }: PlacementQuizProps) {
       <div className="flex flex-col gap-6">
         <div className="rounded-lg border border-green-500 bg-green-50 p-6">
           <h2 className="text-2xl font-bold text-green-900">Quiz Complete!</h2>
-          <p className="mt-2 text-green-800">
-            Score: {Math.round(result.score * 100)}%
-          </p>
+          <p className="mt-2 text-green-800">Score: {Math.round(result.score * 100)}%</p>
           <p className="mt-4 text-lg font-semibold text-green-900">
             {levelDescriptions[result.level]}
           </p>
@@ -168,14 +165,18 @@ export function PlacementQuiz({ onComplete }: PlacementQuizProps) {
             <p className="text-red-900">{error}</p>
           </div>
         )}
-        <Button onClick={handleSubmit} disabled={loading} size="lg">
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          className="rounded-lg bg-blue-500 px-6 py-3 font-semibold text-white hover:bg-blue-600 disabled:opacity-50"
+        >
           {loading ? 'Submitting...' : 'Submit Quiz'}
-        </Button>
+        </button>
       </div>
     );
   }
 
-  const question = QUIZ_QUESTIONS[currentQuestion];
+  const question = QUIZ_QUESTIONS[currentQuestion]!;
   const answered = currentQuestion in answers;
 
   return (
@@ -223,20 +224,23 @@ export function PlacementQuiz({ onComplete }: PlacementQuizProps) {
       )}
 
       <div className="flex gap-3">
-        <Button
+        <button
           onClick={() => setCurrentQuestion(Math.max(0, currentQuestion - 1))}
           disabled={currentQuestion === 0}
-          variant="outline"
+          className="rounded-lg border border-gray-300 px-4 py-2 font-medium hover:bg-gray-100 disabled:opacity-50"
         >
           Previous
-        </Button>
+        </button>
         {currentQuestion < QUIZ_QUESTIONS.length - 1 && (
-          <Button
-            onClick={() => setCurrentQuestion(Math.min(QUIZ_QUESTIONS.length - 1, currentQuestion + 1))}
+          <button
+            onClick={() =>
+              setCurrentQuestion(Math.min(QUIZ_QUESTIONS.length - 1, currentQuestion + 1))
+            }
             disabled={!answered}
+            className="rounded-lg bg-blue-500 px-4 py-2 font-medium text-white hover:bg-blue-600 disabled:opacity-50"
           >
             Next
-          </Button>
+          </button>
         )}
       </div>
     </div>
