@@ -1666,7 +1666,7 @@ describe('maintainer actions', () => {
       }
     });
 
-    it('calculates prospective XP correctly on success', async () => {
+    it('calculates prospective XP correctly on success with open help request', async () => {
       const mockPr = {
         id: 123,
         repo_full_name: 'org/repo',
@@ -1680,7 +1680,7 @@ describe('maintainer actions', () => {
       };
       const mockRepo = { installation_id: 1 };
       const mockRec = { id: 1, user_id: 'user-alice', difficulty: 'M', xp_reward: 150 };
-      const mockHelpReq = { id: 10, created_at: '2026-06-30T10:00:00Z' };
+      const mockHelpReq = { id: 10, created_at: '2026-06-30T10:00:00Z', status: 'open' };
       const mockReviews = [
         {
           reviewer_user_id: 'user-bob',
@@ -1714,14 +1714,11 @@ describe('maintainer actions', () => {
         expect(res.data.author.xp).toBe(150);
         expect(res.data.author.status).toBe('recommended');
 
-        expect(res.data.reviewers).toHaveLength(2);
+        // Only bob (earliest responder) should receive XP
+        expect(res.data.reviewers).toHaveLength(1);
         const bob = res.data.reviewers.find((r) => r.login === 'bob')!;
         expect(bob.xp).toBe(65);
         expect(bob.isMentor).toBe(true);
-
-        const charlie = res.data.reviewers.find((r) => r.login === 'charlie')!;
-        expect(charlie.xp).toBe(30);
-        expect(charlie.isMentor).toBe(false);
       }
     });
 
@@ -1794,6 +1791,64 @@ describe('maintainer actions', () => {
       expect(res.ok).toBe(true);
       if (res.ok) {
         expect(res.data.reviewers).toHaveLength(0);
+      }
+    });
+
+    it('calculates prospective XP correctly on success with resolved help request', async () => {
+      const mockPr = {
+        id: 123,
+        repo_full_name: 'org/repo',
+        number: 42,
+        title: 'Closes #456',
+        url: 'https://github.com/org/repo/pull/42',
+        state: 'open',
+        author_login: 'alice',
+        author_user_id: 'user-alice',
+        body_excerpt: 'Fixing the bug',
+      };
+      const mockRepo = { installation_id: 1 };
+      const mockRec = { id: 1, user_id: 'user-alice', difficulty: 'M', xp_reward: 150 };
+      const mockHelpReq = {
+        id: 10,
+        created_at: '2026-06-30T10:00:00Z',
+        status: 'resolved',
+        resolved_by: 'user-charlie',
+        resolved_at: '2026-06-30T15:00:00Z',
+      };
+      const mockReviews = [
+        {
+          reviewer_user_id: 'user-bob',
+          reviewer_login: 'bob',
+          is_mentor: true,
+          submitted_at: '2026-06-30T10:30:00Z',
+        },
+        {
+          reviewer_user_id: 'user-charlie',
+          reviewer_login: 'charlie',
+          is_mentor: false,
+          submitted_at: '2026-06-30T15:00:00Z',
+        },
+      ];
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') return chain(mockPr);
+        if (table === 'installation_repositories') return chain(mockRepo);
+        if (table === 'recommendations') return chain(mockRec);
+        if (table === 'help_requests') return chain(mockHelpReq);
+        if (table === 'pull_request_reviews') return chain(mockReviews);
+        return chain(null);
+      });
+
+      const res = await previewMergeXp(123);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        // Only charlie (who resolved it) should receive XP
+        expect(res.data.reviewers).toHaveLength(1);
+        const charlie = res.data.reviewers.find((r) => r.login === 'charlie')!;
+        expect(charlie.xp).toBe(30);
+        expect(charlie.isMentor).toBe(false);
       }
     });
   });
