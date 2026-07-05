@@ -114,11 +114,11 @@ describe('IoRedisBackend', () => {
     expect(mockRedis.del).toHaveBeenCalledWith('k3');
   });
 
-  it('rateLimitHit returns fail-open bucket on redis error (default)', async () => {
+  it('rateLimitHit returns blocked bucket on redis error (fail-closed)', async () => {
     const mockRedis = { incr: vi.fn().mockRejectedValue(new Error('Redis down')) };
     const backend = new IoRedisBackend(mockRedis as any);
     const result = await backend.rateLimitHit('rl:key', 60, 1000);
-    expect(result.count).toBe(0);
+    expect(result.count).toBe(Number.MAX_SAFE_INTEGER);
     expect(result.resetAt).toBe(1000 + 60 * 1000);
   });
 });
@@ -179,11 +179,11 @@ describe('UpstashBackend', () => {
     expect(mockUpstash.del).toHaveBeenCalledWith('k3');
   });
 
-  it('rateLimitHit returns fail-open bucket on redis error (default)', async () => {
+  it('rateLimitHit returns blocked bucket on redis error (fail-closed)', async () => {
     const mockUpstash = { incr: vi.fn().mockRejectedValue(new Error('Redis down')) };
     const backend = new UpstashBackend(mockUpstash as any);
     const result = await backend.rateLimitHit('rl:key', 60, 1000);
-    expect(result.count).toBe(0);
+    expect(result.count).toBe(Number.MAX_SAFE_INTEGER);
     expect(result.resetAt).toBe(1000 + 60 * 1000);
   });
 });
