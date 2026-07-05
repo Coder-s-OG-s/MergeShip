@@ -1007,12 +1007,16 @@ export async function getPrDiff(
   repoFullName: string,
   prNumber: number,
 ): Promise<Result<string | null>> {
-  const authRes = await requireMaintainer({ requireService: true });
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:pr-diff', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
+  });
   if (!authRes.ok) return authRes;
   const { user, service } = authRes.data;
 
-  if (!(await assertMaintainerInstall(service, user.id, installationId))) {
-    return err('not_authorised', 'not your install');
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(repoFullName)) {
+    return err('not_authorised', 'You do not maintain this repository');
   }
 
   const cacheKey = `pr:diff:${repoFullName}:${prNumber}`;
