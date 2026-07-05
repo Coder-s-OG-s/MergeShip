@@ -242,7 +242,8 @@ async function maybeAutoAssignMentor(
           user_id: string;
           // Supabase types a single-row !inner join as an array; normalise below.
           profiles:
-            { github_handle: string; level: number } | { github_handle: string; level: number }[];
+            | { github_handle: string; level: number }
+            | { github_handle: string; level: number }[];
         }[]
       | null;
   };

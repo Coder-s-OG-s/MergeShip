@@ -257,7 +257,11 @@ async function upsertReviews(
         reviewer_login: login,
         reviewer_user_id: reviewer?.id ?? null,
         state: r.state.toLowerCase() as
-          'approved' | 'changes_requested' | 'commented' | 'dismissed' | 'pending',
+          | 'approved'
+          | 'changes_requested'
+          | 'commented'
+          | 'dismissed'
+          | 'pending',
         body_excerpt: (r.body ?? '').slice(0, 500) || null,
         is_mentor: isMentor,
         submitted_at: r.submitted_at,
