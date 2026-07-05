@@ -33,18 +33,13 @@ export async function getFailedWebhookEvents(args: {
     requireService: true,
   });
   if (!authRes.ok) return authRes;
-  const { service } = authRes.data;
+  const { user, service } = authRes.data;
 
   const limit = Math.min(args.limit ?? 20, 50);
 
-  // Fetch the repos this installation covers so we only show events
-  // relevant to the maintainer's scope.
-  const { data: repoRows } = await service
-    .from('installation_repositories')
-    .select('repo_full_name')
-    .eq('installation_id', args.installationId);
-
-  const repos = (repoRows ?? []).map((r) => r.repo_full_name);
+  // Scope to repos the caller actually maintains — not just any repos
+  // on the installation. This prevents IDOR via a forged installationId.
+  const repos = await listMaintainerRepos(user.id, args.installationId);
   if (repos.length === 0) {
     return ok({ count: 0, rows: [] });
   }
