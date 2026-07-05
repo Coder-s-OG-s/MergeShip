@@ -16,12 +16,19 @@ export {
   refreshMaintainerBackfill,
   getPrCiStatus,
   closePullRequest,
+  getPrActivityTimeline,
+  getPrDetails,
+  getMaintainerPrById,
   requestChanges,
   mergePullRequest,
 } from './queue';
 
 export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './community';
-
+export {
+  getContributorsList,
+  removeContributorFromOrg,
+  type ContributorListRow,
+} from './contributors';
 export {
   getRepoHealthOverview,
   getStaleIssues,
@@ -40,3 +47,4 @@ export {
   retryFailedWebhookEvent,
   type FailedWebhookEventRow,
 } from './failed-events';
+export { previewMergeXp, type XpPreviewBreakdown } from './xp-preview';

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { readSupabaseEnv } from '@/lib/supabase/env';
+import { getServiceSupabase } from '@/lib/supabase/service';
 
 /**
  * Middleware:
@@ -71,13 +72,34 @@ export async function middleware(req: NextRequest) {
 
   if (shouldBypassGate(pathname)) return res;
 
-  const { data } = await supabase
-    .from('github_installations')
-    .select('id')
-    .eq('user_id', user.id)
-    .is('uninstalled_at', null)
-    .maybeSingle();
-  const installed = Boolean(data);
+  // Read via service role, not the user-scoped client above. The RLS-scoped
+  // client can miss a perfectly good install row during the brief window
+  // when this middleware is refreshing the session's access token — same
+  // race documented in /install's page.tsx. Bypassing RLS here avoids
+  // bouncing a freshly-installed user back to /install right after they
+  // land on their first gated page.
+  const service = getServiceSupabase();
+  const installed = service
+    ? Boolean(
+        (
+          await service
+            .from('github_installations')
+            .select('id')
+            .eq('user_id', user.id)
+            .is('uninstalled_at', null)
+            .limit(1)
+        ).data?.length,
+      )
+    : Boolean(
+        (
+          await supabase
+            .from('github_installations')
+            .select('id')
+            .eq('user_id', user.id)
+            .is('uninstalled_at', null)
+            .maybeSingle()
+        ).data,
+      );
 
   if (!installed) {
     if (

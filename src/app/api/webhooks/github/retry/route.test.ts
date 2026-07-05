@@ -18,6 +18,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mocks
 // ---------------------------------------------------------------------------
 
+const { mockRateLimit } = vi.hoisted(() => ({
+  mockRateLimit: vi.fn(),
+}));
+
+vi.mock('@/lib/rate-limit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/rate-limit')>();
+  return {
+    ...actual,
+    rateLimit: mockRateLimit,
+  };
+});
+
 const mockSend = vi.fn().mockResolvedValue(undefined);
 vi.mock('@/inngest/client', () => ({ inngest: { send: mockSend } }));
 
@@ -68,6 +80,7 @@ describe('POST /api/webhooks/github/retry', () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
     mockUpdate.mockReturnValue({ eq: vi.fn().mockResolvedValue({}) });
     mockDelete.mockReturnValue({ eq: vi.fn().mockResolvedValue({}) });
+    mockRateLimit.mockResolvedValue({ ok: true, remaining: 9, resetAt: Date.now() + 60000 });
   });
 
   it('dispatches with the stored event_type, not a hardcoded value', async () => {
@@ -112,6 +125,19 @@ describe('POST /api/webhooks/github/retry', () => {
       name: 'github/pull_request',
       data: { pull_request: { number: 7 } },
     });
+  });
+
+  it('returns 429 when rate limited', async () => {
+    mockRateLimit.mockResolvedValue({ ok: false, remaining: 0, resetAt: Date.now() + 60000 });
+
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ id: 'evt-1' }));
+    const json = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(json.error).toBe('too many requests');
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it('rejects events with an invalid event_type (422)', async () => {

@@ -3,6 +3,7 @@ import { inngest } from '@/inngest/client';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
+import { rateLimit } from '@/lib/rate-limit';
 
 /** Maximum number of times a dead-lettered event may be retried. */
 const MAX_RETRIES = 5;
@@ -26,6 +27,17 @@ export async function POST(req: Request) {
 
   if (!maintainer) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+
+  const limited = await rateLimit({
+    namespace: 'webhook:retry',
+    key: user.id,
+    limit: 10,
+    windowSec: 60,
+  });
+
+  if (!limited.ok) {
+    return NextResponse.json({ error: 'too many requests' }, { status: 429 });
   }
 
   const { id } = await req.json();
