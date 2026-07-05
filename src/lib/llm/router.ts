@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Result } from '../result';
 import { ok, err } from '../result';
+import { getGroqClient, isGroqConfigured } from '../groq-client';
 
 /**
  * LLM router. v1 = Groq only. Phase 2 adds Cerebras / Together / Gemini fallback chain
@@ -25,6 +26,19 @@ type LlmCallArgs<T> = {
   schema: z.ZodType<T>;
 };
 
+const groqProvider: LlmProvider = {
+  name: 'groq',
+  complete: async (prompt: string) => {
+    const groq = getGroqClient();
+    const completion = await groq.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: 'llama3-8b-8192',
+    });
+    return completion.choices[0]?.message?.content ?? '';
+  },
+  isHealthy: () => isGroqConfigured(),
+};
+
 let providerOverride: LlmProvider | null = null;
 
 export function __setLlmProvider(p: LlmProvider | null): void {
@@ -32,7 +46,7 @@ export function __setLlmProvider(p: LlmProvider | null): void {
 }
 
 function pickProvider(): LlmProvider | null {
-  return providerOverride;
+  return providerOverride || (isGroqConfigured() ? groqProvider : null);
 }
 
 function extractJson(raw: string): string {

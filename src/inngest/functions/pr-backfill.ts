@@ -2,6 +2,7 @@ import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
 import { buildPrRow, isWithinBackfillWindow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
+import { classifyPrAsAi } from '@/lib/maintainer/pr-classify';
 
 /**
  * Backfill historic PRs for a newly-installed App or for a newly-added repo
@@ -91,6 +92,15 @@ async function backfillSingleRepo(
   // Pre-load author handles -> profile id so we can resolve in batch.
   const authorHandleToId = new Map<string, string>();
 
+  // Check if AI PR detection is enabled for this installation
+  let aiDetectionEnabled = false;
+  const { data: settings } = await sb
+    .from('installation_settings')
+    .select('ai_pr_detection')
+    .eq('installation_id', installationId)
+    .maybeSingle();
+  aiDetectionEnabled = settings?.ai_pr_detection ?? false;
+
   const now = Date.now();
   let totalUpserts = 0;
 
@@ -145,7 +155,11 @@ async function backfillSingleRepo(
           base: { repo: { full_name: repoFullName } },
         };
 
-        const row = buildPrRow(ingestible, authorUserId, 'backfill');
+        const aiFlagged = aiDetectionEnabled
+          ? classifyPrAsAi({ title: ingestible.title, body: ingestible.body })
+          : false;
+
+        const row = buildPrRow(ingestible, authorUserId, 'backfill', aiFlagged);
         const { error: upsertErr } = await sb
           .from('pull_requests')
           .upsert(row, { onConflict: 'repo_full_name,number' });
@@ -202,7 +216,7 @@ async function upsertReviews(
   // Resolve author level once to compute is_mentor retroactively.
   const { data: authorPr } = await sb
     .from('pull_requests')
-    .select('author_user_id')
+    .select('author_user_id, author_login')
     .eq('id', prRow.id)
     .maybeSingle();
   let authorLevel = 0;
@@ -232,7 +246,7 @@ async function upsertReviews(
       reviewerCache.set(login, reviewer);
     }
 
-    const isSelf = login.toLowerCase() === (authorPr?.author_user_id ?? '').toLowerCase();
+    const isSelf = login.toLowerCase() === (authorPr?.author_login ?? '').toLowerCase();
     const substantive = isSubstantive(r);
     const isMentor = !isSelf && substantive && reviewer !== null && reviewer.level > authorLevel;
 

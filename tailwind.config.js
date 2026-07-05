@@ -1,7 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
@@ -19,6 +18,11 @@ module.exports = {
           green: "#10B981",
           amber: "#F59E0B",
           red: "#EF4444",
+        },
+        neon: {
+          green: "#00FF87",
+          "green-muted": "rgba(0,255,135,0.15)",
+          "green-glow": "rgba(0,255,135,0.4)",
         },
         dark: {
           900: "#060611",
@@ -52,6 +56,9 @@ module.exports = {
         "glow": "glow 2s ease-in-out infinite alternate",
         "slide-in": "slideIn 0.3s ease-out",
         "fade-in": "fadeIn 0.4s ease-out",
+        "scan-avatar": "scanAvatar 2s ease-in-out infinite alternate",
+        "scan-progress": "scanProgress 2s ease-in-out infinite",
+        "scan-pulse": "scanPulse 2s ease-in-out infinite",
       },
       keyframes: {
         float: {
@@ -69,6 +76,18 @@ module.exports = {
         fadeIn: {
           from: { opacity: "0", transform: "translateY(8px)" },
           to: { opacity: "1", transform: "translateY(0)" },
+        },
+        scanAvatar: {
+          "0%": { boxShadow: "0 0 15px rgba(0,255,135,0.3), 0 0 30px rgba(0,255,135,0.1)" },
+          "100%": { boxShadow: "0 0 25px rgba(0,255,135,0.6), 0 0 50px rgba(0,255,135,0.3), 0 0 80px rgba(0,255,135,0.1)" },
+        },
+        scanProgress: {
+          "0%": { backgroundPosition: "200% 0" },
+          "100%": { backgroundPosition: "-200% 0" },
+        },
+        scanPulse: {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.5" },
         },
       },
     },

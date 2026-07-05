@@ -1,0 +1,55 @@
+name: Stale PRs
+
+on:
+  schedule:
+    # Run daily at 09:00 UTC
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+
+jobs:
+  # Job 1: Post a check-in comment after 7 days of inactivity (no label yet)
+  check-in:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/stale@v9
+        with:
+          stale-pr-message: >
+            This PR has had no activity for 7 days.
+            Are you still working on it?
+            If so, please push an update or leave a comment.
+            Otherwise it will be labeled `stale` in another 7 days.
+          days-before-stale: 7
+          days-before-close: -1
+          stale-pr-label: 'stale-warned'
+          exempt-pr-labels: 'pinned,work-in-progress'
+          only-pr-labels: ''
+          operations-per-run: 100
+          # Disable issue handling entirely
+          stale-issue-message: ''
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+          remove-stale-when-updated: true
+
+  # Job 2: Apply the stale label after 14 days of inactivity
+  label-stale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/stale@v9
+        with:
+          stale-pr-message: ''
+          days-before-stale: 14
+          days-before-close: -1
+          stale-pr-label: stale
+          exempt-pr-labels: 'pinned,work-in-progress'
+          only-pr-labels: ''
+          operations-per-run: 100
+          # Disable issue handling entirely
+          stale-issue-message: ''
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+          remove-stale-when-updated: true

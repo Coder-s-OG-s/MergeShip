@@ -10,6 +10,7 @@ const row = (overrides: Partial<MaintainerPrRow>): MaintainerPrRow => ({
   state: 'open',
   draft: false,
   authorLogin: 'a',
+  authorUserId: null,
   authorLevel: null,
   authorXp: null,
   authorMergedPrs: null,
@@ -17,6 +18,7 @@ const row = (overrides: Partial<MaintainerPrRow>): MaintainerPrRow => ({
   mentorReviewerHandle: null,
   mentorReviewerLevel: null,
   githubUpdatedAt: '2026-05-14T00:00:00Z',
+  aiFlagged: false,
   ...overrides,
 });
 
@@ -45,10 +47,17 @@ describe('prTier', () => {
     expect(prTier(row({ state: 'open', mentorVerified: false, authorLevel: null }))).toBe(5);
   });
 
-  it('tier 6: closed and merged regardless of verification', () => {
-    expect(prTier(row({ state: 'closed' }))).toBe(6);
-    expect(prTier(row({ state: 'merged' }))).toBe(6);
-    expect(prTier(row({ state: 'merged', mentorVerified: true, authorLevel: 3 }))).toBe(6);
+  it('tier 6: open + AI flagged regardless of level or verification', () => {
+    expect(prTier(row({ state: 'open', aiFlagged: true }))).toBe(6);
+    expect(
+      prTier(row({ state: 'open', aiFlagged: true, mentorVerified: true, authorLevel: 3 })),
+    ).toBe(6);
+  });
+
+  it('tier 7: closed and merged regardless of verification', () => {
+    expect(prTier(row({ state: 'closed' }))).toBe(7);
+    expect(prTier(row({ state: 'merged' }))).toBe(7);
+    expect(prTier(row({ state: 'merged', mentorVerified: true, authorLevel: 3 }))).toBe(7);
   });
 });
 
@@ -98,5 +107,12 @@ describe('validateFilters', () => {
   it('repos: keep strings, drop non-strings', () => {
     const out = validateFilters({ repos: ['acme/api', 42 as never, 'acme/web'] });
     expect(out.repos).toEqual(['acme/api', 'acme/web']);
+  });
+
+  it('aiFlagged defaults to undefined', () => {
+    expect(validateFilters({}).aiFlagged).toBeUndefined();
+    expect(validateFilters({ aiFlagged: 'yes' }).aiFlagged).toBe('yes');
+    expect(validateFilters({ aiFlagged: 'no' }).aiFlagged).toBe('no');
+    expect(validateFilters({ aiFlagged: 'maybe' as never }).aiFlagged).toBeUndefined();
   });
 });
