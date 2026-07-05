@@ -17,6 +17,8 @@ export type ContributorListRow = {
   issuesSolved: number;
   lastActiveAt: string | null;
   repoFullNames: string[];
+  trustScore: number;
+  aiFlaggedPrCount: number;
 };
 
 export async function getContributorsList(
