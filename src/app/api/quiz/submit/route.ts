@@ -53,7 +53,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<QuizSubmi
           level: 0,
           message: 'Invalid quiz submission: missing or invalid answers array',
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<QuizSubmi
         level,
         message: `Quiz completed. Your placement level: ${level}`,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error('[quiz/submit] Error processing quiz submission:', error);
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<QuizSubmi
         level: 0,
         message: 'Failed to process quiz submission',
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
