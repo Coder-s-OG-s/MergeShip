@@ -26,11 +26,11 @@ export {
 export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './community';
 export {
   getContributorsList,
+  removeContributorFromOrg,
   type ContributorListRow,
   getContributorStats,
   type ContributorStats,
 } from './contributors';
-
 export {
   getRepoHealthOverview,
   getStaleIssues,

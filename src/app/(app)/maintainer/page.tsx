@@ -51,6 +51,7 @@ export default async function MaintainerPage({
     install?: string;
     state?: string;
     verified?: string;
+    author?: string;
     ai_flagged?: string;
   }>;
 }) {
@@ -85,6 +86,7 @@ export default async function MaintainerPage({
   const filters: {
     state?: ('open' | 'closed' | 'merged')[];
     mentorVerified?: 'yes' | 'no';
+    authorLogin?: string;
     aiFlagged?: 'yes' | 'no';
   } = {};
   if (resolvedSearchParams.state) {
@@ -100,7 +102,9 @@ export default async function MaintainerPage({
     filters.aiFlagged = resolvedSearchParams.ai_flagged;
   }
   if (!filters.state) filters.state = ['open']; // default
-
+  if (resolvedSearchParams.author) {
+    filters.authorLogin = resolvedSearchParams.author;
+  }
   const queueRes = await getMaintainerPrQueue({
     installationId: activeInstallId,
     filters,

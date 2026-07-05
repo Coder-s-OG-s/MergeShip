@@ -186,6 +186,7 @@ export async function removeContributorFromOrg(
   if (!authRes.ok) return authRes;
   const { user, service } = authRes.data;
 
+  // Confirm the caller actually maintains this install.
   const repos = await listMaintainerRepos(user.id, installationId);
   if (repos.length === 0) {
     return err('not_authorised', 'not your install');
