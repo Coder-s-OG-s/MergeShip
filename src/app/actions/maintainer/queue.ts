@@ -978,6 +978,18 @@ export async function getPrDetails(prId: number): Promise<Result<MaintainerPrRow
     }
   }
 
+  const { data: stagesData } = await service
+    .from('pull_request_pipeline_stages')
+    .select('stage_type, status, reviewer_level_snapshot')
+    .eq('pr_id', rawPr.id);
+
+  const pipelineStages =
+    stagesData?.map((s) => ({
+      stageType: s.stage_type,
+      status: s.status,
+      reviewerLevelSnapshot: s.reviewer_level_snapshot,
+    })) || [];
+
   const row: MaintainerPrRow = {
     id: rawPr.id,
     repoFullName: rawPr.repo_full_name,
@@ -997,6 +1009,7 @@ export async function getPrDetails(prId: number): Promise<Result<MaintainerPrRow
     githubUpdatedAt: rawPr.github_updated_at,
     aiFlagged: rawPr.ai_flagged,
     installationId,
+    pipelineStages,
   };
 
   return ok(row);

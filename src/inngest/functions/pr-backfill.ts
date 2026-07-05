@@ -250,24 +250,28 @@ async function upsertReviews(
     const substantive = isSubstantive(r);
     const isMentor = !isSelf && substantive && reviewer !== null && reviewer.level > authorLevel;
 
-    await sb.from('pull_request_reviews').upsert(
-      {
-        pr_id: prRow.id,
-        github_review_id: r.id,
-        reviewer_login: login,
-        reviewer_user_id: reviewer?.id ?? null,
-        state: r.state.toLowerCase() as
-          | 'approved'
-          | 'changes_requested'
-          | 'commented'
-          | 'dismissed'
-          | 'pending',
-        body_excerpt: (r.body ?? '').slice(0, 500) || null,
-        is_mentor: isMentor,
-        submitted_at: r.submitted_at,
-      },
-      { onConflict: 'github_review_id' },
-    );
+    const { data: reviewRow, error: reviewErr } = await sb
+      .from('pull_request_reviews')
+      .upsert(
+        {
+          pr_id: prRow.id,
+          github_review_id: r.id,
+          reviewer_login: login,
+          reviewer_user_id: reviewer?.id ?? null,
+          state: r.state.toLowerCase() as
+            | 'approved'
+            | 'changes_requested'
+            | 'commented'
+            | 'dismissed'
+            | 'pending',
+          body_excerpt: (r.body ?? '').slice(0, 500) || null,
+          is_mentor: isMentor,
+          submitted_at: r.submitted_at,
+        },
+        { onConflict: 'github_review_id' },
+      )
+      .select('id')
+      .single();
 
     // Retroactively flip mentor_verified for the highest-level mentor.
     if (isMentor && reviewer) {
@@ -289,6 +293,27 @@ async function upsertReviews(
             mentor_review_at: r.submitted_at,
           })
           .eq('id', prRow.id);
+
+        if (!reviewErr && reviewRow) {
+          let status: 'pending' | 'approved' | 'changes_requested' | 'dismissed' = 'pending';
+          const rState = r.state.toLowerCase();
+          if (rState === 'approved') status = 'approved';
+          else if (rState === 'changes_requested') status = 'changes_requested';
+          else if (rState === 'dismissed') status = 'dismissed';
+
+          await sb.from('pull_request_pipeline_stages').upsert(
+            {
+              pr_id: prRow.id,
+              stage_type: 'mentor_approval',
+              status,
+              reviewer_user_id: reviewer.id,
+              reviewer_level_snapshot: reviewer.level,
+              review_id: reviewRow.id,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'pr_id, stage_type' },
+          );
+        }
       }
     }
   }

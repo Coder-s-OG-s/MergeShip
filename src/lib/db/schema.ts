@@ -23,7 +23,23 @@ import {
   index,
   primaryKey,
   bigint,
+  pgEnum,
 } from 'drizzle-orm/pg-core';
+
+// ---------- enums ----------
+export const reviewStageEnum = pgEnum('review_stage', [
+  'mentor_approval',
+  'l2_approval',
+  'l3_approval',
+  'maintainer_approval',
+]);
+
+export const reviewStatusEnum = pgEnum('review_status', [
+  'pending',
+  'approved',
+  'changes_requested',
+  'dismissed',
+]);
 
 // ---------- users / identity ----------
 
@@ -440,6 +456,31 @@ export const pullRequestReviews = pgTable(
   (t) => ({
     prMentorIdx: index('pull_request_reviews_pr_mentor_idx').on(t.prId, t.isMentor),
     reviewerIdx: index('pull_request_reviews_reviewer_idx').on(t.reviewerUserId, t.submittedAt),
+  }),
+);
+
+export const pullRequestPipelineStages = pgTable(
+  'pull_request_pipeline_stages',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    prId: bigint('pr_id', { mode: 'number' })
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    reviewId: bigint('review_id', { mode: 'number' }).references(() => pullRequestReviews.id, {
+      onDelete: 'set null',
+    }),
+    stageType: reviewStageEnum('stage_type').notNull(),
+    status: reviewStatusEnum('status').notNull(),
+    reviewerUserId: uuid('reviewer_user_id').references(() => profiles.id, {
+      onDelete: 'set null',
+    }),
+    reviewerLevelSnapshot: integer('reviewer_level_snapshot'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    prStageIdx: uniqueIndex('pull_request_pipeline_stages_pr_stage_idx').on(t.prId, t.stageType),
+    prStatusIdx: index('pull_request_pipeline_stages_pr_status_idx').on(t.prId, t.status),
   }),
 );
 

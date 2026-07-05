@@ -411,10 +411,8 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
             )}
 
             {/* Merge Decision Card */}
-            <div className="sticky top-6 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-400">
-                Merge Decision
-              </h2>
+            <div className="sticky top-6 rounded-sm border border-emerald-500 bg-[#0c0c0e] p-6 shadow-[0_0_20px_rgba(16,185,129,0.05)]">
+              <h2 className="mb-6 text-sm font-medium text-zinc-200">Merge Decision</h2>
               {pr.state === 'open' ? (
                 <MergeDecisionPanel
                   prId={prId}
@@ -423,6 +421,7 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
                   installationId={pr.installationId!}
                   repoFullName={pr.repoFullName}
                   prNumber={pr.number}
+                  pipelineStages={pr.pipelineStages}
                 />
               ) : (
                 <p className="text-sm text-zinc-500">
