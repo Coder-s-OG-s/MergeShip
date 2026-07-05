@@ -113,3 +113,9 @@ export type PromotionEligibleRow = {
   level: number;
   xpNeeded: number;
 };
+
+export type ContributorFunnelData = {
+  registered: number;
+  firstPr: number;
+  l2Promoted: number;
+};
