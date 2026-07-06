@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Result } from '../result';
 import { ok, err } from '../result';
 import { groqProvider } from './groq-provider';
+import { geminiProvider } from './gemini-provider';
 
 export type LlmProvider = {
   name: string;
@@ -18,7 +19,7 @@ type LlmCallArgs<T> = {
 const TIMEOUT_MS = 10000;
 const MAX_RETRIES = 2;
 
-const defaultProviders: LlmProvider[] = [groqProvider];
+const defaultProviders: LlmProvider[] = [groqProvider, geminiProvider];
 let providerOverrides: LlmProvider[] | null = null;
 
 export function __setLlmProviders(p: LlmProvider[] | null): void {
