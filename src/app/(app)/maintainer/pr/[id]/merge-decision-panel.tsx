@@ -62,7 +62,6 @@ export function MergeDecisionPanel({
   repoFullName,
   prNumber,
   pipelineStages,
-  headSha,
 }: {
   prId: number;
   mentorVerified: boolean;
@@ -75,12 +74,10 @@ export function MergeDecisionPanel({
     status: string;
     reviewerLevelSnapshot?: number | null;
   }>;
-  headSha?: string;
 }) {
   const [ciStatus, setCiStatus] = useState<CiStatus>(null);
   const [ciLoading, setCiLoading] = useState(true);
   const [merging, setMerging] = useState(false);
-  const [mergeMethod, setMergeMethod] = useState<'squash' | 'merge' | 'rebase'>('squash');
   const router = useRouter();
 
   useEffect(() => {
@@ -102,7 +99,7 @@ export function MergeDecisionPanel({
   async function handleMerge() {
     setMerging(true);
     try {
-      const res = await mergePullRequest(prId, { mergeMethod, expectedHeadSha: headSha });
+      const res = await mergePullRequest(prId);
       if (isOk(res)) {
         setMerging(false);
         router.push('/maintainer');
@@ -148,26 +145,14 @@ export function MergeDecisionPanel({
         <CheckRow label="CI Pipeline Passed" status={ciStatus || 'pending'} loading={ciLoading} />
       </div>
 
-      <div className="mt-6 flex flex-col gap-3">
-        <select
-          value={mergeMethod}
-          onChange={(e) => setMergeMethod(e.target.value as any)}
-          disabled={!allPassing || merging}
-          className="w-full rounded-sm border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-        >
-          <option value="squash">Squash and merge</option>
-          <option value="merge">Create a merge commit</option>
-          <option value="rebase">Rebase and merge</option>
-        </select>
-        <button
-          onClick={handleMerge}
-          disabled={!allPassing || merging}
-          className="flex w-full items-center justify-center gap-2 rounded-sm bg-[#34F898] px-4 py-2.5 font-mono text-sm font-semibold text-black transition-colors hover:bg-emerald-300 disabled:opacity-50"
-        >
-          <GitMerge className="h-4 w-4" />
-          {merging ? 'Merging...' : 'Merge pull request'}
-        </button>
-      </div>
+      <button
+        onClick={handleMerge}
+        disabled={!allPassing || merging}
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-sm bg-[#34F898] px-4 py-2.5 font-mono text-sm font-semibold text-black transition-colors hover:bg-emerald-300 disabled:opacity-50"
+      >
+        <GitMerge className="h-4 w-4" />
+        {merging ? 'Merging...' : 'Merge pull request'}
+      </button>
 
       <div className="my-6 border-t border-zinc-800" />
 

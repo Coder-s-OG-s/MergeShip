@@ -521,7 +521,6 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
                   repoFullName={pr.repoFullName}
                   prNumber={pr.number}
                   pipelineStages={pr.pipelineStages}
-                  headSha={pr.headSha}
                 />
               ) : (
                 <p className="text-sm text-zinc-500">
