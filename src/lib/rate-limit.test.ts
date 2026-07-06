@@ -75,10 +75,11 @@ describe('rateLimit production guard', () => {
 
   afterEach(() => {
     process.env = OLD_ENV;
+    vi.unstubAllEnvs();
   });
 
   it('blocks all requests when NODE_ENV=production and no shared cache configured', async () => {
-    process.env.NODE_ENV = 'production';
+    vi.stubEnv('NODE_ENV', 'production');
     delete process.env.KV_REST_API_URL;
     delete process.env.KV_REST_API_TOKEN;
     delete process.env.REDIS_URL;
@@ -91,7 +92,7 @@ describe('rateLimit production guard', () => {
   });
 
   it('allows requests when NODE_ENV is not production even without shared cache', async () => {
-    process.env.NODE_ENV = 'development';
+    vi.stubEnv('NODE_ENV', 'development');
 
     const { rateLimit: rl } = await import('./rate-limit');
 
