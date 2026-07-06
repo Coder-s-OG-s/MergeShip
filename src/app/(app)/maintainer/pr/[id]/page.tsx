@@ -3,7 +3,12 @@ import { PRBreadcrumb } from './breadcrumb';
 import { notFound, redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
-import { getPrDetails, getPrActivityTimeline, previewMergeXp } from '@/app/actions/maintainer';
+import {
+  getPrDetails,
+  getPrActivityTimeline,
+  previewMergeXp,
+  getPrDiff,
+} from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 import { VerifyButton } from '@/app/(app)/issues/verify-button';
 import { MergeDecisionPanel } from './merge-decision-panel';
@@ -87,6 +92,11 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
   const previewRes = await previewMergeXp(prId);
   const preview = isOk(previewRes) ? previewRes.data : null;
 
+  const diffRes = pr.installationId
+    ? await getPrDiff(pr.installationId, pr.repoFullName, pr.number)
+    : null;
+  const diffContent = diffRes && isOk(diffRes) ? diffRes.data : null;
+
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-6xl">
@@ -105,7 +115,6 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
           prNumber={pr.number}
           installationId={pr.installationId!}
         />
-
         {/* Layout grid */}
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           {/* Main timeline + Header (2 cols) */}
@@ -384,6 +393,50 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
                 </div>
               )}
             </section>
+
+            {/* Unified Diff Section */}
+            <section className="rounded-3xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-md">
+              <h2 className="mb-6 text-lg font-bold text-white">Unified Diff</h2>
+              <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/40">
+                <div className="overflow-x-auto p-4 font-mono text-sm leading-tight">
+                  {diffContent ? (
+                    <pre>
+                      {diffContent.split('\n').map((line, i) => {
+                        let colorClass = 'text-zinc-300';
+                        let bgClass = '';
+                        if (line.startsWith('+') && !line.startsWith('+++')) {
+                          colorClass = 'text-emerald-300';
+                          bgClass = 'block bg-emerald-900/20';
+                        } else if (line.startsWith('-') && !line.startsWith('---')) {
+                          colorClass = 'text-red-300';
+                          bgClass = 'block bg-red-900/20';
+                        } else if (line.startsWith('@@')) {
+                          colorClass = 'text-purple-400';
+                        }
+
+                        if (bgClass) {
+                          return (
+                            <div key={i} className={bgClass}>
+                              <span className={colorClass}>{line || ' '}</span>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={i}>
+                            <span className={colorClass}>{line || ' '}</span>
+                          </div>
+                        );
+                      })}
+                    </pre>
+                  ) : (
+                    <div className="py-8 text-center text-zinc-500">
+                      Could not fetch diff (perhaps no GitHub App credentials, or diff is too
+                      large).
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
           </div>
 
           {/* Merge Decision Sidebar (1 col) */}
@@ -393,7 +446,9 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900/60 p-6 backdrop-blur-md">
                 <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-400">
                   <Award className="h-4 w-4 text-amber-400" />
-                  {pr.state === 'open' ? 'Rewards Preview' : 'Rewards Awarded'}
+                  {pr.state === 'open'
+                    ? `Rewards Preview (#${pr.number})`
+                    : `Rewards Awarded (#${pr.number})`}
                 </h2>
 
                 <div className="space-y-4">
