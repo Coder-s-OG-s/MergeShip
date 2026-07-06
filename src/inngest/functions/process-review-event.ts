@@ -126,10 +126,38 @@ export const processReviewEvent = inngest.createFunction(
       const isMentor = reviewer.level > menteeLevel;
       if (isMentor) xp += XP_REWARDS.HELP_REVIEW_MENTOR_BONUS;
 
-      const responseMs =
-        new Date(payload.review.submitted_at).getTime() - new Date(helpReq.created_at).getTime();
-      const isFast = responseMs <= SPEED_BONUS_HOURS * 3600 * 1000;
+      let isFast = false;
+      if (payload.review.submitted_at) {
+        const submittedTime = new Date(payload.review.submitted_at).getTime();
+        const createdTime = new Date(helpReq.created_at).getTime();
+        if (!isNaN(submittedTime) && !isNaN(createdTime)) {
+          const responseMs = submittedTime - createdTime;
+          isFast = responseMs <= SPEED_BONUS_HOURS * 3600 * 1000;
+        }
+      }
       if (isFast) xp += XP_REWARDS.HELP_REVIEW_SPEED_BONUS;
+
+      // Optimistically resolve the help request first.
+      // This prevents concurrent reviews from claiming the same help request.
+      const { data: updateRes, error: updateErr } = await sb
+        .from('help_requests')
+        .update({
+          status: 'resolved',
+          resolved_by: reviewer.id,
+          resolved_at: new Date().toISOString(),
+        })
+        .eq('id', helpReq.id)
+        .eq('status', 'open')
+        .select('id');
+
+      if (updateErr) {
+        throw new Error(`Failed to resolve help request: ${updateErr.message}`);
+      }
+
+      // If the help request was already resolved/modified, abort.
+      if (!updateRes || updateRes.length === 0) {
+        return { xpAwarded: 0, reason: 'help_request_already_resolved' };
+      }
 
       let inserted = false;
       try {
@@ -147,21 +175,20 @@ export const processReviewEvent = inngest.createFunction(
           },
         });
       } catch (err: any) {
+        // Roll back the help request status if XP insertion failed
+        await sb
+          .from('help_requests')
+          .update({
+            status: 'open',
+            resolved_by: null,
+            resolved_at: null,
+          })
+          .eq('id', helpReq.id);
+
         if (err.message === 'daily_review_cap_reached') {
           return { skipped: true, reason: 'daily_review_cap_reached' };
         }
         throw err;
-      }
-
-      if (inserted) {
-        await sb
-          .from('help_requests')
-          .update({
-            status: 'resolved',
-            resolved_by: reviewer.id,
-            resolved_at: new Date().toISOString(),
-          })
-          .eq('id', helpReq.id);
       }
 
       return { xpAwarded: inserted ? xp : 0, isMentor, isFast };
