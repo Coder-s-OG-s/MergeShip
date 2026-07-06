@@ -100,7 +100,8 @@ export async function POST(req: Request) {
   // Verify the maintainer has access to the installation this event
   // belongs to. This prevents a maintainer from org A from retrying
   // events that belong to org B (cross-org privilege escalation).
-  const eventInstallId = (failedEvent.payload as Record<string, unknown>)?.installation?.id as
+  const payload = failedEvent.payload as Record<string, unknown> | undefined;
+  const eventInstallId = (payload?.installation as Record<string, unknown> | undefined)?.id as
     | number
     | undefined;
   if (eventInstallId) {
