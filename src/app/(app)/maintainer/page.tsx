@@ -14,6 +14,7 @@ import {
   getReviewerLoad,
   getNoiseBreakdown,
   getPromotionEligible,
+  getFailedWebhookEvents,
   type FlaggedAccountRow,
   type InstallationSettingsData,
   type RepoHealthRow,
@@ -22,6 +23,7 @@ import {
   type ReviewerLoadRow,
   type NoiseBreakdown,
   type PromotionEligibleRow,
+  type FailedWebhookEventRow,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import type { MaintainerPrRow } from '@/lib/maintainer/queue';
@@ -35,6 +37,7 @@ import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
 import QueueSettings from './queue-settings';
 import { ResolveFlagButton } from './resolve-flag-button';
+import { RetryEventButton } from './retry-event-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -152,6 +155,15 @@ export default async function MaintainerPage({
   const promotionEligible: PromotionEligibleRow[] = isOk(promotionEligibleRes)
     ? promotionEligibleRes.data
     : [];
+
+  const failedEventsRes = await getFailedWebhookEvents({
+    installationId: activeInstallId,
+    limit: 10,
+  });
+  const failedEvents: FailedWebhookEventRow[] = isOk(failedEventsRes)
+    ? failedEventsRes.data.rows
+    : [];
+  const failedEventsCount: number = isOk(failedEventsRes) ? failedEventsRes.data.count : 0;
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -449,6 +461,42 @@ export default async function MaintainerPage({
           <section className="mb-8 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">PR Noise Breakdown</h2>
             <NoiseDonut noise={noise} />
+          </section>
+        )}
+        {failedEventsCount > 0 && (
+          <section className="mb-8 rounded-2xl border border-red-900/60 bg-red-950/20 p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-red-100">Failed Webhook Events</h2>
+                <p className="mt-1 text-xs text-red-200/70">
+                  These events failed after exhausting all automatic retries.
+                </p>
+              </div>
+              <span className="rounded-full bg-red-900/50 px-2 py-1 text-xs text-red-100">
+                {failedEventsCount} event{failedEventsCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {failedEvents.map((evt) => (
+                <div key={evt.id} className="rounded-lg border border-red-900/50 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm text-red-50">
+                        {evt.eventType}
+                        <span className="ml-2 text-xs text-red-200/50">
+                          #{evt.deliveryId.slice(0, 8)}
+                        </span>
+                      </p>
+                      <p className="mt-1 truncate text-xs text-red-200/70">{evt.error}</p>
+                      <p className="mt-1 text-xs text-red-200/50">
+                        {relativeTime(evt.createdAt)} · {evt.retryCount} manual retries
+                      </p>
+                    </div>
+                    <RetryEventButton eventId={evt.id} installationId={activeInstallId} />
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
         )}
         {rows.length === 0 ? (

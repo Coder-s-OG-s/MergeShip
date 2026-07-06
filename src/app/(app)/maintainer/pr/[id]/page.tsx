@@ -3,7 +3,12 @@ import { PRBreadcrumb } from './breadcrumb';
 import { notFound, redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
-import { getPrDetails, getPrActivityTimeline, previewMergeXp } from '@/app/actions/maintainer';
+import {
+  getPrDetails,
+  getPrActivityTimeline,
+  previewMergeXp,
+  getPrDiff,
+} from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 import { VerifyButton } from '@/app/(app)/issues/verify-button';
 import { MergeDecisionPanel } from './merge-decision-panel';
@@ -85,6 +90,11 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
 
   const previewRes = await previewMergeXp(prId);
   const preview = isOk(previewRes) ? previewRes.data : null;
+
+  const diffRes = pr.installationId
+    ? await getPrDiff(pr.installationId, pr.repoFullName, pr.number)
+    : null;
+  const diffContent = diffRes && isOk(diffRes) ? diffRes.data : null;
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -338,6 +348,50 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
                   </div>
                 </div>
               )}
+            </section>
+
+            {/* Unified Diff Section */}
+            <section className="rounded-3xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-md">
+              <h2 className="mb-6 text-lg font-bold text-white">Unified Diff</h2>
+              <div className="overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/40">
+                <div className="overflow-x-auto p-4 font-mono text-sm leading-tight">
+                  {diffContent ? (
+                    <pre>
+                      {diffContent.split('\n').map((line, i) => {
+                        let colorClass = 'text-zinc-300';
+                        let bgClass = '';
+                        if (line.startsWith('+') && !line.startsWith('+++')) {
+                          colorClass = 'text-emerald-300';
+                          bgClass = 'block bg-emerald-900/20';
+                        } else if (line.startsWith('-') && !line.startsWith('---')) {
+                          colorClass = 'text-red-300';
+                          bgClass = 'block bg-red-900/20';
+                        } else if (line.startsWith('@@')) {
+                          colorClass = 'text-purple-400';
+                        }
+
+                        if (bgClass) {
+                          return (
+                            <div key={i} className={bgClass}>
+                              <span className={colorClass}>{line || ' '}</span>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={i}>
+                            <span className={colorClass}>{line || ' '}</span>
+                          </div>
+                        );
+                      })}
+                    </pre>
+                  ) : (
+                    <div className="py-8 text-center text-zinc-500">
+                      Could not fetch diff (perhaps no GitHub App credentials, or diff is too
+                      large).
+                    </div>
+                  )}
+                </div>
+              </div>
             </section>
           </div>
 

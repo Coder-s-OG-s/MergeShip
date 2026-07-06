@@ -16,6 +16,7 @@ export {
   refreshMaintainerBackfill,
   getPrCiStatus,
   closePullRequest,
+  getPrDiff,
   getPrActivityTimeline,
   getPrDetails,
   getMaintainerPrById,
@@ -43,4 +44,10 @@ export {
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';
+
+export {
+  getFailedWebhookEvents,
+  retryFailedWebhookEvent,
+  type FailedWebhookEventRow,
+} from './failed-events';
 export { previewMergeXp, type XpPreviewBreakdown } from './xp-preview';

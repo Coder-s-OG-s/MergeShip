@@ -147,8 +147,9 @@ export async function previewMergeXp(prId: number): Promise<Result<XpPreviewBrea
   // Fetch help requests for the PR
   const { data: helpReq } = await service
     .from('help_requests')
-    .select('id, created_at')
+    .select('id, created_at, status, resolved_by, resolved_at')
     .eq('pr_url', rawPr.url)
+    .in('status', ['open', 'resolved'])
     .maybeSingle();
 
   // Fetch pull request reviews
@@ -165,21 +166,63 @@ export async function previewMergeXp(prId: number): Promise<Result<XpPreviewBrea
   }> = [];
 
   if (helpReq) {
-    const seenReviewers = new Set<string>();
+    let matchingReviewerId: string | null = null;
+    let matchingReviewerLogin: string | null = null;
+    let isMentor = false;
+    let submittedAt: string | null = null;
 
-    for (const rev of reviews ?? []) {
-      const key = rev.reviewer_user_id ?? rev.reviewer_login;
-      if (seenReviewers.has(key)) continue;
-      seenReviewers.add(key);
+    if (helpReq.status === 'resolved' && helpReq.resolved_by) {
+      // Find the review by the resolver
+      const resolverReview = (reviews ?? []).find(
+        (r) => r.reviewer_user_id === helpReq.resolved_by,
+      );
 
+      if (resolverReview) {
+        matchingReviewerId = resolverReview.reviewer_user_id;
+        matchingReviewerLogin = resolverReview.reviewer_login;
+        isMentor = resolverReview.is_mentor;
+        submittedAt = resolverReview.submitted_at;
+      } else {
+        // Fallback if resolved by someone without a DB review row (e.g. manual verify profile check)
+        const { data: resolverProfile } = await service
+          .from('profiles')
+          .select('github_handle')
+          .eq('id', helpReq.resolved_by)
+          .maybeSingle();
+        if (resolverProfile) {
+          matchingReviewerId = helpReq.resolved_by;
+          matchingReviewerLogin = resolverProfile.github_handle;
+          isMentor = false; // default fallback
+          submittedAt = helpReq.resolved_at;
+        }
+      }
+    } else if (helpReq.status === 'open') {
+      // Find the earliest review submitted after helpReq.created_at
+      const validReviews = (reviews ?? [])
+        .filter(
+          (r) =>
+            r.submitted_at &&
+            new Date(r.submitted_at).getTime() >= new Date(helpReq.created_at).getTime(),
+        )
+        .sort((a, b) => new Date(a.submitted_at).getTime() - new Date(b.submitted_at).getTime());
+
+      const earliest = validReviews[0];
+      if (earliest) {
+        matchingReviewerId = earliest.reviewer_user_id;
+        matchingReviewerLogin = earliest.reviewer_login;
+        isMentor = earliest.is_mentor;
+        submittedAt = earliest.submitted_at;
+      }
+    }
+
+    if (matchingReviewerLogin) {
       let reviewerXp = XP_REWARDS.HELP_REVIEW_BASE; // 30
-      if (rev.is_mentor) {
+      if (isMentor) {
         reviewerXp += XP_REWARDS.HELP_REVIEW_MENTOR_BONUS; // 25
       }
 
-      if (rev.submitted_at) {
-        const responseMs =
-          new Date(rev.submitted_at).getTime() - new Date(helpReq.created_at).getTime();
+      if (submittedAt) {
+        const responseMs = new Date(submittedAt).getTime() - new Date(helpReq.created_at).getTime();
         const isFast = responseMs <= 2 * 3600 * 1000; // responded < 2h
         if (isFast) {
           reviewerXp += XP_REWARDS.HELP_REVIEW_SPEED_BONUS; // 10
@@ -187,10 +230,10 @@ export async function previewMergeXp(prId: number): Promise<Result<XpPreviewBrea
       }
 
       reviewers.push({
-        userId: rev.reviewer_user_id,
-        login: rev.reviewer_login,
+        userId: matchingReviewerId,
+        login: matchingReviewerLogin,
         xp: reviewerXp,
-        isMentor: rev.is_mentor,
+        isMentor,
       });
     }
   }
