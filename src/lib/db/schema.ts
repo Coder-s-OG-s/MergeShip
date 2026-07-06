@@ -602,3 +602,35 @@ export const userChallengeProgress = pgTable(
     pk: primaryKey({ columns: [t.userId, t.date] }),
   }),
 );
+
+// ---------- maintainer audit logs ----------
+
+export const maintainerAuditLogs = pgTable(
+  'maintainer_audit_logs',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    actorUserId: uuid('actor_user_id').references(() => profiles.id, { onDelete: 'set null' }),
+    actorSnapshot: jsonb('actor_snapshot'),
+    installationId: bigint('installation_id', { mode: 'number' }).references(
+      () => githubInstallations.id,
+      { onDelete: 'cascade' },
+    ),
+    action: text('action').notNull(),
+    targetType: text('target_type').notNull(),
+    targetId: text('target_id').notNull(),
+    status: text('status', { enum: ['success', 'failed'] })
+      .notNull()
+      .default('success'),
+    errorMessage: text('error_message'),
+    oldValues: jsonb('old_values'),
+    newValues: jsonb('new_values'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    installationIdx: index('maintainer_audit_logs_installation_idx').on(
+      t.installationId,
+      t.createdAt,
+    ),
+    actorIdx: index('maintainer_audit_logs_actor_idx').on(t.actorUserId, t.createdAt),
+  }),
+);

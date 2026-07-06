@@ -17,6 +17,7 @@ import { getInstallOctokit } from '@/lib/github/app';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { type MaintainerIssueRow, type TimelineEvent } from './types';
 import { MIN_CONTRIBUTOR_LEVELS } from './constants';
+import { logMaintainerAction } from './audit';
 
 const PAGE_SIZE = 25;
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
@@ -470,6 +471,15 @@ export async function closePullRequest(prId: number): Promise<Result<{ ok: true 
       state: 'closed',
     });
   } catch (error: any) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'close_pull_request',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'failed',
+      errorMessage: error.message || 'Failed to close PR via GitHub API',
+    });
     return err('github_error', error.message || 'Failed to close PR via GitHub API');
   }
 
@@ -480,8 +490,26 @@ export async function closePullRequest(prId: number): Promise<Result<{ ok: true 
     .eq('id', prId);
 
   if (updateErr) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'close_pull_request',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'failed',
+      errorMessage: updateErr.message,
+    });
     return err('persist_failed', updateErr.message);
   }
+
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId,
+    action: 'close_pull_request',
+    targetType: 'pull_request',
+    targetId: prId.toString(),
+    status: 'success',
+  });
 
   return ok({ ok: true });
 }
@@ -627,8 +655,26 @@ export async function requestChanges(prId: number, comment: string): Promise<Res
       body: comment,
     });
   } catch (error: any) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'request_changes_pr',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'failed',
+      errorMessage: error.message || 'Failed to request changes via GitHub API',
+    });
     return err('github_error', error.message || 'Failed to request changes via GitHub API');
   }
+
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId,
+    action: 'request_changes_pr',
+    targetType: 'pull_request',
+    targetId: prId.toString(),
+    status: 'success',
+  });
 
   return ok({ ok: true });
 }
@@ -678,10 +724,28 @@ export async function mergePullRequest(prId: number): Promise<Result<{ ok: true 
       merge_method: 'squash',
     });
   } catch (error: any) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'merge_pull_request',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'failed',
+      errorMessage: error.message || 'Failed to merge PR via GitHub API',
+    });
     return err('github_error', error.message || 'Failed to merge PR via GitHub API');
   }
 
   await service.from('pull_requests').update({ state: 'merged' }).eq('id', prId);
+
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId,
+    action: 'merge_pull_request',
+    targetType: 'pull_request',
+    targetId: prId.toString(),
+    status: 'success',
+  });
 
   return ok({ ok: true });
 }
