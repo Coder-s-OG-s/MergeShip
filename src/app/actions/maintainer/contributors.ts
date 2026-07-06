@@ -16,6 +16,7 @@ export type ContributorListRow = {
   inReview: number;
   issuesSolved: number;
   lastActiveAt: string | null;
+  firstActiveAt: string | null;
   repoFullNames: string[];
   trustScore: number;
   aiFlaggedPrCount: number;
@@ -116,6 +117,17 @@ export async function getContributorsList(
     if (row.last_active) lastActiveByUser.set(row.user_id, row.last_active);
   }
 
+  // First active: DB-side MIN(created_at) grouped by user_id.
+  type FirstActiveRow = { user_id: string; first_active: string | null };
+  const { data: firstActiveRaw } = await service
+    .from('xp_events')
+    .select('user_id, first_active:created_at.min()')
+    .in('user_id', userIds);
+  const firstActiveByUser = new Map<string, string>();
+  for (const row of (firstActiveRaw ?? []) as unknown as FirstActiveRow[]) {
+    if (row.first_active) firstActiveByUser.set(row.user_id, row.first_active);
+  }
+
   // Issues solved: DB-side count grouped by user_id.
   type SolvedRow = { user_id: string; count: number };
   const { data: solvedRaw } = await service
@@ -151,6 +163,7 @@ export async function getContributorsList(
       inReview: inReviewCount.get(p.id) ?? 0,
       issuesSolved,
       lastActiveAt: lastActiveByUser.get(p.id) ?? null,
+      firstActiveAt: firstActiveByUser.get(p.id) ?? null,
       repoFullNames: Array.from(reposByUser.get(p.id) ?? []),
       trustScore,
       aiFlaggedPrCount,
@@ -199,4 +212,55 @@ export async function removeContributorFromOrg(
   }
 
   return ok(undefined);
+}
+
+export type ContributorStats = {
+  total: number;
+  active: number;
+  l2Plus: number;
+  joinedLast7d: number;
+  avgTrust: number;
+  pendingInvites: number;
+};
+
+export async function getContributorStats(
+  installationId: number,
+): Promise<Result<ContributorStats>> {
+  const contributorsRes = await getContributorsList(installationId);
+  if (!contributorsRes.ok) return contributorsRes;
+  const contributors = contributorsRes.data;
+
+  const total = contributors.length;
+  const now = Date.now();
+  const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+  let active = 0;
+  let l2Plus = 0;
+  let joinedLast7d = 0;
+  let trustSum = 0;
+
+  for (const c of contributors) {
+    if (c.lastActiveAt && new Date(c.lastActiveAt).getTime() >= thirtyDaysAgo) {
+      active++;
+    }
+    if (c.level >= 2) {
+      l2Plus++;
+    }
+    if (c.firstActiveAt && new Date(c.firstActiveAt).getTime() >= sevenDaysAgo) {
+      joinedLast7d++;
+    }
+    trustSum += c.trustScore;
+  }
+
+  const avgTrust = total > 0 ? Math.round(trustSum / total) : 0;
+
+  return ok({
+    total,
+    active,
+    l2Plus,
+    joinedLast7d,
+    avgTrust,
+    pendingInvites: 0,
+  });
 }

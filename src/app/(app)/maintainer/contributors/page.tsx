@@ -4,6 +4,7 @@ import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
   getContributorsList,
+  getContributorStats,
   type ContributorListRow,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
@@ -11,6 +12,7 @@ import { isOk } from '@/lib/result';
 import { ContributorsTable } from './contributors-table';
 
 import { LevelDistributionPanel } from './level-distribution-panel';
+import { StatsBar } from './stats-bar';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +44,11 @@ export default async function ContributorsPage({
   const contributors: ContributorListRow[] = isOk(contributorsRes) ? contributorsRes.data : [];
   const install = installs.find((i) => i.installationId === installId)!;
 
+  const statsRes = await getContributorStats(installId);
+  const stats = isOk(statsRes)
+    ? statsRes.data
+    : { total: 0, active: 0, l2Plus: 0, joinedLast7d: 0, avgTrust: 0, pendingInvites: 0 };
+
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-6xl">
@@ -50,6 +57,7 @@ export default async function ContributorsPage({
           Contributors active across <span className="text-zinc-300">{install.accountLogin}</span>{' '}
           repos.
         </p>
+        <StatsBar stats={stats} />
         <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-4">
           <div className="lg:col-span-3">
             <ContributorsTable
