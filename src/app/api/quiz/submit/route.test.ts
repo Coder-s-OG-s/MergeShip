@@ -93,7 +93,7 @@ describe('/api/quiz/submit', () => {
   });
 
   it('should prevent score tampering by ignoring client-sent score', async () => {
-    const allWrongAnswers = [1, 1, 1, 1, 1, 1, 1];
+    const allWrongAnswers = [3, 0, 0, 0, 0, 1, 3];
     const tamperedRequest = {
       answers: allWrongAnswers,
       score: 100,
