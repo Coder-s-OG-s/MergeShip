@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
-import { isUserMaintainer } from '@/lib/maintainer/detect';
+import { isUserMaintainer, listMaintainerRepos } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
   getContributorsList,
@@ -44,6 +44,8 @@ export default async function ContributorsPage({
   const contributors: ContributorListRow[] = isOk(contributorsRes) ? contributorsRes.data : [];
   const install = installs.find((i) => i.installationId === installId)!;
 
+  const repos = await listMaintainerRepos(user.id, installId);
+
   const statsRes = await getContributorStats(installId);
   const stats = isOk(statsRes)
     ? statsRes.data
@@ -64,6 +66,7 @@ export default async function ContributorsPage({
               installationId={installId}
               isOrganization={install.accountType === 'Organization'}
               initialContributors={contributors}
+              repos={repos}
             />
           </div>
           <div className="lg:col-span-1">
