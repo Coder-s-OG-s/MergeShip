@@ -477,6 +477,7 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
                   installationId={pr.installationId!}
                   repoFullName={pr.repoFullName}
                   prNumber={pr.number}
+                  headSha={pr.headSha}
                 />
               ) : (
                 <p className="text-sm text-zinc-500">

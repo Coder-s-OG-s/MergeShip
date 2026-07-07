@@ -37,6 +37,9 @@ import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
 import QueueSettings from './queue-settings';
 import { ResolveFlagButton } from './resolve-flag-button';
+import { getContributorFunnel } from '@/app/actions/maintainer/analytics';
+import type { ContributorFunnelData } from '@/app/actions/maintainer/types';
+import { ContributorFunnel } from './contributor-funnel';
 import { RetryEventButton } from './retry-event-button';
 
 export const dynamic = 'force-dynamic';
@@ -155,6 +158,10 @@ export default async function MaintainerPage({
   const promotionEligible: PromotionEligibleRow[] = isOk(promotionEligibleRes)
     ? promotionEligibleRes.data
     : [];
+  const funnelRes = await getContributorFunnel({ installationId: activeInstallId });
+  const funnelData: ContributorFunnelData = isOk(funnelRes)
+    ? funnelRes.data
+    : { registered: 0, firstPr: 0, l2Promoted: 0 };
 
   const failedEventsRes = await getFailedWebhookEvents({
     installationId: activeInstallId,
@@ -358,6 +365,9 @@ export default async function MaintainerPage({
                 Average duration from PR open to mentor verification for this installation.
               </p>
             </div>
+          </section>
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+            <ContributorFunnel data={funnelData} />
           </section>
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>

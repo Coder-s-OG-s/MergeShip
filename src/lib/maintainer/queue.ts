@@ -31,6 +31,7 @@ export type MaintainerPrRow = {
   installationId?: number;
   bodyExcerpt?: string | null;
   mentorReviewAt?: string | null;
+  headSha?: string;
 };
 
 export type QueueFilters = {

@@ -16,13 +16,14 @@ import {
   type QueueFilters,
 } from '@/lib/maintainer/queue';
 import { xpForLevel, MAX_LEVEL } from '@/lib/xp/curve';
-import {
-  type RepoHealthRow,
-  type StaleIssueRow,
-  type ContributorRow,
-  type ReviewerLoadRow,
-  type NoiseBreakdown,
-  type PromotionEligibleRow,
+import type {
+  RepoHealthRow,
+  StaleIssueRow,
+  ContributorRow,
+  ReviewerLoadRow,
+  NoiseBreakdown,
+  PromotionEligibleRow,
+  ContributorFunnelData,
 } from './types';
 
 export async function getRepoHealthOverview(args: {
@@ -563,4 +564,53 @@ export async function getNoiseBreakdown(args: {
   } catch (error: any) {
     return err('query_failed', error.message || 'Drizzle query failed');
   }
+}
+
+export async function getContributorFunnel(args: {
+  installationId: number;
+}): Promise<Result<ContributorFunnelData>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) {
+    return ok({ registered: 0, firstPr: 0, l2Promoted: 0 });
+  }
+
+  // registered: distinct profiles with any PR row for these repos
+  const { data: regRows, error: regError } = await service
+    .from('pull_requests')
+    .select('author_user_id')
+    .in('repo_full_name', repos)
+    .not('author_user_id', 'is', null);
+  if (regError) return err('query_failed', regError.message);
+  const registered = new Set((regRows ?? []).map((r) => r.author_user_id)).size;
+
+  // firstPr: distinct profiles with >= 1 merged PR
+  const { data: mergedRows, error: mergedError } = await service
+    .from('pull_requests')
+    .select('author_user_id')
+    .in('repo_full_name', repos)
+    .eq('state', 'merged')
+    .not('author_user_id', 'is', null);
+  if (mergedError) return err('query_failed', mergedError.message);
+  const firstPr = new Set((mergedRows ?? []).map((r) => r.author_user_id)).size;
+
+  // l2Promoted: distinct profiles at level >= 2
+  const userIds = Array.from(new Set((regRows ?? []).map((r) => r.author_user_id).filter(Boolean)));
+  if (userIds.length === 0) return ok({ registered, firstPr, l2Promoted: 0 });
+
+  const { data: profileRows, error: profileError } = await service
+    .from('profiles')
+    .select('id, level')
+    .in('id', userIds)
+    .gte('level', 2);
+  if (profileError) return err('query_failed', profileError.message);
+  const l2Promoted = (profileRows ?? []).length;
+
+  return ok({ registered, firstPr, l2Promoted });
 }
