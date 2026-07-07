@@ -272,6 +272,38 @@ describe('POST /api/webhooks/github/retry', () => {
       expect(res.status).toBe(200);
       expect(mockSend).toHaveBeenCalled();
     });
+
+    it('rejects requests without Origin in production (NODE_ENV=production)', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      const onError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest({ id: 'evt-1' }));
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: 'forbidden' });
+      expect(mockSend).not.toHaveBeenCalled();
+
+      onError.mockRestore();
+      vi.unstubAllEnvs();
+    });
+
+    it('allows matching-origin requests in production when NEXT_PUBLIC_APP_URL is set', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://mergeship.example.com');
+
+      mockMaybeSingle.mockResolvedValue({
+        data: { id: 'evt-11', event_type: 'github/push', payload: {}, retry_count: 0 },
+      });
+
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest({ id: 'evt-11' }, 'https://mergeship.example.com'));
+
+      expect(res.status).toBe(200);
+      expect(mockSend).toHaveBeenCalled();
+
+      vi.unstubAllEnvs();
+    });
   });
 
   describe('installation access control', () => {

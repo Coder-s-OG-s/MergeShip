@@ -24,8 +24,17 @@ function isValidOrigin(req: Request): boolean {
 
   try {
     const parsed = new URL(url);
-    const allowed = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001';
-    return parsed.origin === new URL(allowed).origin;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!appUrl) {
+      if (process.env.NODE_ENV === 'production') {
+        console.error(
+          'isValidOrigin: NEXT_PUBLIC_APP_URL is not set — rejecting request to prevent misconfiguration',
+        );
+        return false;
+      }
+      return parsed.origin === new URL('http://localhost:3001').origin;
+    }
+    return parsed.origin === new URL(appUrl).origin;
   } catch {
     return false;
   }
