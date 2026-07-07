@@ -19,12 +19,15 @@ async function assertMaintainerInstall(
 ): Promise<boolean> {
   const { data: junction } = await service
     .from('github_installation_users')
-    .select('installation_id')
+    .select('permission_level')
     .eq('user_id', userId)
     .eq('installation_id', installationId)
     .maybeSingle();
 
-  return !!junction;
+  return (
+    !!junction &&
+    (junction.permission_level === 'org_admin' || junction.permission_level === 'repo_admin')
+  );
 }
 
 async function readInstallationSettings(
