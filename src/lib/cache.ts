@@ -25,7 +25,7 @@ function rateLimitResetAt(ttlSeconds: number, windowSec: number, now: number): n
   return now + Math.max(1, ttlSeconds > 0 ? ttlSeconds : windowSec) * 1000;
 }
 
-function blockedRateLimitBucket(windowSec: number, now: number): RateLimitBucket {
+export function blockedRateLimitBucket(windowSec: number, now: number): RateLimitBucket {
   return { count: Number.MAX_SAFE_INTEGER, resetAt: now + windowSec * 1000 };
 }
 
@@ -233,11 +233,11 @@ function pickDefaultBackend(): CacheBackend {
 }
 
 /** True when a distributed cache backend (Upstash or Redis) is configured. */
-export const isSharedCacheAvailable: boolean = (() => {
+export function isSharedCacheAvailable(): boolean {
   const hasUpstash = Boolean(process.env.KV_REST_API_URL) && Boolean(process.env.KV_REST_API_TOKEN);
   const hasRedis = Boolean(process.env.REDIS_URL);
   return hasUpstash || hasRedis;
-})();
+}
 
 // Test-only hook. Resets to a fresh memory map between tests.
 export function __setMemoryCache(): void {
