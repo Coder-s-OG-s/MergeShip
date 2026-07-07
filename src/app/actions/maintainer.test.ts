@@ -55,7 +55,7 @@ const mockDbInnerJoin = vi.fn(() => ({ where: mockDbWhere }));
 const mockDbFrom = vi.fn(() => ({ innerJoin: mockDbInnerJoin }));
 const mockDbSelect = vi.fn(() => ({ from: mockDbFrom }));
 
-const mockDb = { select: mockDbSelect };
+const mockDb = { select: mockDbSelect, execute: vi.fn() };
 
 vi.mock('@/lib/db/client', () => ({
   tryGetDb: () => mockDb,
@@ -68,6 +68,7 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn(),
   and: vi.fn(),
   count: vi.fn(),
+  sql: vi.fn(),
 }));
 
 vi.mock('@/lib/maintainer/detect', () => ({
