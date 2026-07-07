@@ -199,3 +199,40 @@ export async function removeContributorFromOrg(
 
   return ok(undefined);
 }
+
+export async function exportContributorsCsv(installationId: number): Promise<Result<string>> {
+  const listRes = await getContributorsList(installationId);
+  if (!listRes.ok) return listRes;
+  const rows = listRes.data;
+
+  const escapeCsv = (str: string) => `"${str.replace(/"/g, '""')}"`;
+  const header = [
+    'handle',
+    'level',
+    'xp',
+    'trust_score',
+    'prs_merged',
+    'in_review',
+    'issues_solved',
+    'last_active_at',
+    'repos',
+  ];
+  const csvLines = [header.join(',')];
+
+  for (const r of rows) {
+    const line = [
+      escapeCsv(r.handle),
+      r.level.toString(),
+      r.xp.toString(),
+      r.trustScore.toString(),
+      r.mergedPrs.toString(),
+      r.inReview.toString(),
+      r.issuesSolved.toString(),
+      r.lastActiveAt ?? '',
+      escapeCsv(r.repoFullNames.join('; ')),
+    ];
+    csvLines.push(line.join(','));
+  }
+
+  return ok(csvLines.join('\n'));
+}
