@@ -36,6 +36,7 @@ export type MaintainerPrRow = {
     status: string;
     reviewerLevelSnapshot?: number | null;
   }>;
+  headSha?: string;
 };
 
 export type QueueFilters = {

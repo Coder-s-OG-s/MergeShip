@@ -236,7 +236,7 @@ async function upsertReviewRow(payload: ReviewPayload): Promise<void> {
     await sb
       .from('pull_requests')
       .update({
-        mentor_verified: true,
+        mentor_verified: payload.review.state === 'approved',
         mentor_reviewer_id: reviewer.id,
         mentor_review_at: payload.review.submitted_at,
       })

@@ -34,7 +34,10 @@ import * as rateLimitLib from '@/lib/rate-limit';
 
 //   Supabase mocks
 
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+  revalidateTag: vi.fn(),
+}));
 
 const mockGetUser = vi.fn();
 vi.mock('@/lib/supabase/server', () => ({

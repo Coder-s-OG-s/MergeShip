@@ -30,6 +30,7 @@ CREATE UNIQUE INDEX "pull_request_pipeline_stages_pr_stage_idx" ON "pull_request
 CREATE INDEX "pull_request_pipeline_stages_pr_status_idx" ON "pull_request_pipeline_stages" USING btree ("pr_id","status");
 
 ALTER TABLE "pull_request_pipeline_stages" ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read-only for pull_request_pipeline_stages" ON "pull_request_pipeline_stages" FOR SELECT USING (true);
 
 GRANT ALL ON TABLE public.pull_request_pipeline_stages TO postgres, service_role;
 GRANT SELECT ON TABLE public.pull_request_pipeline_stages TO authenticated, anon;
