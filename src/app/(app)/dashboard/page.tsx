@@ -75,7 +75,6 @@ export default async function DashboardPage() {
   const mergeCount = profile?.github_total_merges ?? 0;
   const isNewUser = xp === 0 && mergeCount === 0;
 
-  
   return (
     <div className="min-h-screen bg-[#0d1117] p-6 font-mono text-white md:p-10">
       <div className="mx-auto max-w-[1400px]">
@@ -129,10 +128,9 @@ export default async function DashboardPage() {
 
         {/* Main Grid Layout */}
         <main className="space-y-6">
-          
-        {/* Getting started prompt for new users */}
-        {isNewUser && <GettingStarted />}
-  
+          {/* Getting started prompt for new users */}
+          {isNewUser && <GettingStarted />}
+
           {/* Row 1 (Formerly Row 2) */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2">
