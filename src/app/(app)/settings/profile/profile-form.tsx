@@ -222,18 +222,28 @@ export function ProfileForm({ initialData }: ProfileFormProps) {
         )}
       </div>
 
-      {/* Weekly Digest Toggle */}
-      <div className="flex items-center space-x-3">
-        <input
-          id="weekly_digest"
-          type="checkbox"
-          checked={weeklyDigest}
-          onChange={(e) => setWeeklyDigest(e.target.checked)}
-          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-        />
-        <label htmlFor="weekly_digest" className="text-sm font-medium text-gray-700">
-          Receive Weekly Progress Digest
-        </label>
+      {/* Notifications */}
+      <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-5">
+        <h3 className="mb-4 font-mono text-lg font-semibold text-white">Notifications</h3>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <label htmlFor="weekly_digest" className="block text-sm font-medium text-white">
+              Weekly Progress Digest
+            </label>
+            <p className="text-sm text-gray-400">
+              Receive a weekly summary of your MergeShip activity.
+            </p>
+          </div>
+
+          <input
+            id="weekly_digest"
+            type="checkbox"
+            checked={weeklyDigest}
+            onChange={(e) => setWeeklyDigest(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+        </div>
       </div>
 
       {/* Submit Button */}
