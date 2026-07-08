@@ -183,3 +183,30 @@ export async function pingReviewers(prId: number): Promise<Result<{ commented: b
     return err('github_error', msg);
   }
 }
+
+export {
+  closePullRequest,
+  getPrDiff,
+  getPrActivityTimeline,
+  getPrDetails,
+  getMaintainerPrById,
+  requestChanges,
+  mergePullRequest,
+} from './queue';
+
+export {
+  getContributorsList,
+  removeContributorFromOrg,
+  type ContributorListRow,
+  getContributorStats,
+  type ContributorStats,
+} from './contributors';
+
+export { getNoiseBreakdown, getPromotionEligible } from './analytics';
+
+export {
+  getFailedWebhookEvents,
+  retryFailedWebhookEvent,
+  type FailedWebhookEventRow,
+} from './failed-events';
+export { previewMergeXp, type XpPreviewBreakdown } from './xp-preview';

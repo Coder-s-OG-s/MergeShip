@@ -11,6 +11,7 @@ import {
   MENTOR_MIN_LEVEL,
   type SeniorMaintainer,
 } from '@/lib/maintainer/mentor-assign';
+import { classifyPrAsAi } from '@/lib/maintainer/pr-classify';
 
 /**
  * Webhook handler for GitHub `pull_request` events.
@@ -120,23 +121,10 @@ export const processPrEvent = inngest.createFunction(
       }
       return { skipped: true, action };
     } catch (err) {
-      const sb = getServiceSupabase();
-
-      if (sb) {
-        const { error: insertError } = await sb.from('failed_webhook_events').insert({
-          delivery_id: event.data.deliveryId,
-          event_type: 'github/pull_request',
-          source: 'inngest',
-          payload: event.data,
-          error: (err as Error).message,
-          retry_count: attempt,
-        });
-        if (insertError) {
-          console.error('failed to record dead-letter event:', insertError.message);
-        }
-      }
-
-      throw err; // IMPORTANT → keeps Inngest retry working
+      // Re-throw so Inngest retries automatically. After all retries are
+      // exhausted, the centralised dead-letter handler persists the event
+      // to `failed_webhook_events` — no manual logging needed here.
+      throw err;
     }
   },
 );
@@ -153,7 +141,7 @@ async function upsertPrRow(
   // polluting the table if a misconfigured webhook ever reaches us.
   const { data: knownRepo } = await sb
     .from('installation_repositories')
-    .select('repo_full_name')
+    .select('repo_full_name, installation_id')
     .eq('repo_full_name', repo)
     .limit(1)
     .maybeSingle();
@@ -166,9 +154,20 @@ async function upsertPrRow(
     .eq('github_handle', pr.user.login)
     .maybeSingle();
 
+  // Run classification only when the maintainer has enabled aiPrDetection.
+  let aiFlagged = false;
+  const { data: settings } = await sb
+    .from('installation_settings')
+    .select('ai_pr_detection')
+    .eq('installation_id', knownRepo.installation_id)
+    .maybeSingle();
+  if (settings?.ai_pr_detection) {
+    aiFlagged = classifyPrAsAi({ title: pr.title, body: pr.body });
+  }
+
   await sb
     .from('pull_requests')
-    .upsert(buildPrRow(pr as IngestiblePr, authorProfile?.id ?? null, action), {
+    .upsert(buildPrRow(pr as IngestiblePr, authorProfile?.id ?? null, action, aiFlagged), {
       onConflict: 'repo_full_name,number',
     });
 }

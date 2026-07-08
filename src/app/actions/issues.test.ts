@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   mockGetUser: vi.fn(),
   mockGetSession: vi.fn(),
   mockServiceFrom: vi.fn(),
+  mockGetInstallOctokit: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -30,10 +31,20 @@ vi.mock('@/lib/supabase/server', () => ({
   })),
 }));
 
+vi.mock('@/lib/github/app', () => ({
+  getInstallOctokit: mocks.mockGetInstallOctokit,
+}));
+
 vi.mock('@/lib/supabase/service', () => ({
   getServiceSupabase: vi.fn(() => ({
     from: mocks.mockServiceFrom,
   })),
+}));
+
+vi.mock('@/lib/cache', () => ({
+  cacheGet: vi.fn().mockResolvedValue(null),
+  cacheSet: vi.fn().mockResolvedValue(undefined),
+  cacheDel: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { getIssuesPage, getRepoOptions } from './issues';
@@ -54,11 +65,15 @@ const createMockChain = (result: unknown) => {
 describe('getRepoOptions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
     mocks.mockGetUser.mockResolvedValue({
       data: { user: { id: 'user-1' } },
     });
     mocks.mockGetSession.mockResolvedValue({
       data: { session: null },
+    });
+    mocks.mockGetInstallOctokit.mockResolvedValue({
+      repos: { get: vi.fn().mockResolvedValue({ data: {} }) },
     });
   });
 
@@ -72,16 +87,78 @@ describe('getRepoOptions', () => {
       expect(result.data).toEqual([]);
     }
   });
+
+  it('resolves forks using getInstallOctokit', async () => {
+    mocks.mockServiceFrom.mockImplementation((table: string) => {
+      if (table === 'github_installations') {
+        return createMockChain({ data: [{ id: 10 }] });
+      }
+      if (table === 'installation_repositories') {
+        return createMockChain({
+          data: [{ repo_full_name: 'owner/fork-repo', installation_id: 10 }],
+        });
+      }
+      return createMockChain({ data: [] });
+    });
+
+    const mockReposGet = vi.fn().mockResolvedValue({
+      data: { fork: true, parent: { full_name: 'owner/parent-repo' } },
+    });
+    mocks.mockGetInstallOctokit.mockResolvedValue({
+      repos: { get: mockReposGet },
+    });
+
+    const result = await getRepoOptions();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toEqual([{ label: 'owner/fork-repo', value: 'owner/parent-repo' }]);
+    }
+    expect(mocks.mockGetInstallOctokit).toHaveBeenCalledWith(10);
+    expect(mockReposGet).toHaveBeenCalledWith({ owner: 'owner', repo: 'fork-repo' });
+  });
+
+  it('keeps original repo label if octokit throws an error during fork resolution (error-fallback)', async () => {
+    mocks.mockServiceFrom.mockImplementation((table: string) => {
+      if (table === 'github_installations') {
+        return createMockChain({ data: [{ id: 10 }] });
+      }
+      if (table === 'installation_repositories') {
+        return createMockChain({
+          data: [{ repo_full_name: 'owner/error-repo', installation_id: 10 }],
+        });
+      }
+      return createMockChain({ data: [] });
+    });
+
+    const mockReposGet = vi.fn().mockRejectedValue(new Error('GitHub API Error'));
+    mocks.mockGetInstallOctokit.mockResolvedValue({
+      repos: { get: mockReposGet },
+    });
+
+    const result = await getRepoOptions();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toEqual([{ label: 'owner/error-repo', value: 'owner/error-repo' }]);
+    }
+    expect(mocks.mockGetInstallOctokit).toHaveBeenCalledWith(10);
+    expect(mockReposGet).toHaveBeenCalledWith({ owner: 'owner', repo: 'error-repo' });
+  });
 });
 
 describe('getIssuesPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
     mocks.mockGetUser.mockResolvedValue({
       data: { user: { id: 'user-1' } },
     });
     mocks.mockGetSession.mockResolvedValue({
       data: { session: null },
+    });
+    mocks.mockGetInstallOctokit.mockResolvedValue({
+      repos: { get: vi.fn().mockResolvedValue({ data: {} }) },
     });
   });
 
@@ -130,7 +207,9 @@ describe('getIssuesPage', () => {
         return createMockChain({ data: [{ id: 10 }] });
       }
       if (table === 'installation_repositories') {
-        return createMockChain({ data: [{ repo_full_name: 'owner/allowed-repo' }] });
+        return createMockChain({
+          data: [{ repo_full_name: 'owner/allowed-repo', installation_id: 10 }],
+        });
       }
       if (table === 'issues') {
         return mockChain;
@@ -146,5 +225,65 @@ describe('getIssuesPage', () => {
       expect(result.data.issues[0]?.title).toBe('Scoped Issue');
       expect(mockChain.in).toHaveBeenCalledWith('repo_full_name', ['owner/allowed-repo']);
     }
+  });
+
+  it('applies Highest XP sorting correctly', async () => {
+    const mockChain = createMockChain({
+      data: [],
+      count: 0,
+      error: null,
+    });
+
+    mocks.mockServiceFrom.mockImplementation((table: string) => {
+      if (table === 'github_installations') {
+        return createMockChain({ data: [{ id: 10 }] });
+      }
+      if (table === 'installation_repositories') {
+        return createMockChain({
+          data: [{ repo_full_name: 'owner/allowed-repo', installation_id: 10 }],
+        });
+      }
+      if (table === 'issues') {
+        return mockChain;
+      }
+      return createMockChain({ data: [] });
+    });
+
+    await getIssuesPage({ sort: 'xp_desc' });
+
+    expect(mockChain.order).toHaveBeenCalledWith('xp_reward', {
+      ascending: false,
+      nullsFirst: false,
+    });
+  });
+
+  it('applies Lowest XP sorting correctly', async () => {
+    const mockChain = createMockChain({
+      data: [],
+      count: 0,
+      error: null,
+    });
+
+    mocks.mockServiceFrom.mockImplementation((table: string) => {
+      if (table === 'github_installations') {
+        return createMockChain({ data: [{ id: 10 }] });
+      }
+      if (table === 'installation_repositories') {
+        return createMockChain({
+          data: [{ repo_full_name: 'owner/allowed-repo', installation_id: 10 }],
+        });
+      }
+      if (table === 'issues') {
+        return mockChain;
+      }
+      return createMockChain({ data: [] });
+    });
+
+    await getIssuesPage({ sort: 'xp_asc' });
+
+    expect(mockChain.order).toHaveBeenCalledWith('xp_reward', {
+      ascending: true,
+      nullsFirst: false,
+    });
   });
 });

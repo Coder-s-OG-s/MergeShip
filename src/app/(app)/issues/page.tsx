@@ -14,6 +14,7 @@ type SearchParams = {
   repo?: string;
   claimed?: string;
   page?: string;
+  sort?: string;
 };
 
 export default async function IssuesPage({
@@ -42,6 +43,9 @@ export default async function IssuesPage({
     repo: resolvedSearchParams.repo,
     showClaimed: resolvedSearchParams.claimed === 'true',
     page: Math.max(1, parseInt(resolvedSearchParams.page ?? '1') || 1),
+    sort: (['newest', 'xp_desc', 'xp_asc'].includes(resolvedSearchParams.sort ?? '')
+      ? resolvedSearchParams.sort
+      : undefined) as 'newest' | 'xp_desc' | 'xp_asc' | undefined,
   };
 
   const service = getServiceSupabase();
