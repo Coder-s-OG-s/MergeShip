@@ -3,6 +3,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_SOURCE, xpForMerge, refIds, XP_REWARDS } from '@/lib/xp/sources';
 import { cacheDelByPrefix } from '@/lib/cache';
+import { appendEvent } from '@/lib/event-sourcing/event-store';
 import { buildPrRow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
 import { unwrapJoin } from '@/lib/supabase/inner-join';
 import {
@@ -342,11 +343,32 @@ async function handleMerge(
     .eq('github_handle', pr.user.login)
     .maybeSingle();
   if (!profile) return { xpAwarded: false };
+
+  const refId = refIds.pr(repo, pr.number);
+  const idempotencyKey = `unrecommended-merge:${pr.id}:${profile.id}`;
+
+  try {
+    await appendEvent({
+      aggregateType: 'pr',
+      aggregateId: String(pr.id),
+      eventType: 'unrecommended_merge_xp_awarded',
+      payload: {
+        userId: profile.id,
+        repo,
+        prNumber: pr.number,
+        xpDelta: 5,
+      },
+      idempotencyKey,
+    });
+  } catch {
+    // Event already recorded — idempotent.
+  }
+
   await insertXpEvent({
     userId: profile.id,
     source: XP_SOURCE.UNRECOMMENDED_MERGE,
     refType: 'pr',
-    refId: refIds.pr(repo, pr.number),
+    refId,
     repo,
     xpDelta: 5,
   });
@@ -360,34 +382,58 @@ async function awardRecommendedMerge(
   pr: PrPayload['pull_request'],
 ): Promise<{ xpAwarded: boolean; recId: number }> {
   const difficulty = rec.difficulty as 'E' | 'M' | 'H';
-  const existing = await sb
-    .from('xp_events')
-    .select('id')
-    .eq('user_id', rec.user_id)
-    .eq('ref_id', refIds.pr(repo, pr.number))
-    .maybeSingle();
-  if (existing?.data) {
-    return { xpAwarded: false, recId: rec.id };
-  }
   const tierCap =
     XP_REWARDS.RECOMMENDED_MERGE[difficulty as keyof typeof XP_REWARDS.RECOMMENDED_MERGE] ??
     xpForMerge(difficulty);
   const xpDelta = Math.min(rec.xp_reward ?? tierCap, tierCap);
+  const refId = refIds.pr(repo, pr.number);
+  const idempotencyKey = `recommended-merge:${rec.id}:${pr.id}`;
+
+  try {
+    await appendEvent({
+      aggregateType: 'pr',
+      aggregateId: String(pr.id),
+      eventType: 'recommended_merge_xp_awarded',
+      payload: {
+        userId: rec.user_id,
+        recId: rec.id,
+        repo,
+        prNumber: pr.number,
+        difficulty,
+        xpDelta,
+      },
+      idempotencyKey,
+    });
+  } catch {
+    // Event already recorded — continue with idempotent side-effects.
+  }
 
   const inserted = await insertXpEvent({
     userId: rec.user_id,
     source: XP_SOURCE.RECOMMENDED_MERGE,
     refType: 'pr',
-    refId: refIds.pr(repo, pr.number),
+    refId,
     repo,
     difficulty,
     xpDelta,
   });
 
-  await sb
+  // Always attempt to mark the recommendation as completed, even if XP
+  // was already awarded on a previous attempt. This fixes the case where
+  // the function crashed after insertXpEvent but before the rec update
+  // on a prior retry.
+  const { data: existingRec } = await sb
     .from('recommendations')
-    .update({ status: 'completed', completed_at: new Date().toISOString() })
-    .eq('id', rec.id);
+    .select('status')
+    .eq('id', rec.id)
+    .maybeSingle();
+
+  if (existingRec && existingRec.status !== 'completed') {
+    await sb
+      .from('recommendations')
+      .update({ status: 'completed', completed_at: new Date().toISOString() })
+      .eq('id', rec.id);
+  }
 
   await cacheDelByPrefix(`recs:${rec.user_id}`);
   await cacheDelByPrefix(`profile:public:`);

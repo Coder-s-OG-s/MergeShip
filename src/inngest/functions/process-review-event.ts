@@ -2,6 +2,7 @@ import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_REWARDS, DAILY_CAPS, XP_SOURCE, refIds } from '@/lib/xp/sources';
+import { appendEvent } from '@/lib/event-sourcing/event-store';
 
 /**
  * Webhook handler for GitHub `pull_request_review` events.
@@ -108,7 +109,7 @@ export const processReviewEvent = inngest.createFunction(
 
       const { data: helpReq } = await sb
         .from('help_requests')
-        .select('id, user_id, created_at')
+        .select('id, user_id, created_at, status')
         .eq('pr_url', payload.pull_request.html_url)
         .eq('status', 'open')
         .maybeSingle();
@@ -131,13 +132,36 @@ export const processReviewEvent = inngest.createFunction(
       const isFast = responseMs <= SPEED_BONUS_HOURS * 3600 * 1000;
       if (isFast) xp += XP_REWARDS.HELP_REVIEW_SPEED_BONUS;
 
+      const refId = refIds.helpReview(helpReq.id, payload.review.user.login);
+      const idempotencyKey = `help-review:${payload.review.id}:${reviewer.id}`;
+
+      try {
+        await appendEvent({
+          aggregateType: 'help_review',
+          aggregateId: String(helpReq.id),
+          eventType: 'help_review_xp_awarded',
+          payload: {
+            reviewerId: reviewer.id,
+            helpReqId: helpReq.id,
+            prUrl: payload.pull_request.html_url,
+            xpDelta: xp,
+            isMentor,
+            isFast,
+            menteeLevel,
+          },
+          idempotencyKey,
+        });
+      } catch {
+        // Event already recorded (idempotency_key unique) — skip.
+      }
+
       let inserted = false;
       try {
         inserted = await insertXpEvent({
           userId: reviewer.id,
           source: XP_SOURCE.HELP_REVIEW,
           refType: 'review',
-          refId: refIds.helpReview(helpReq.id, payload.review.user.login),
+          refId,
           repo: payload.pull_request.base.repo.full_name,
           xpDelta: xp,
           metadata: { isMentor, isFast, menteeLevel },
@@ -153,16 +177,14 @@ export const processReviewEvent = inngest.createFunction(
         throw err;
       }
 
-      if (inserted) {
-        await sb
-          .from('help_requests')
-          .update({
-            status: 'resolved',
-            resolved_by: reviewer.id,
-            resolved_at: new Date().toISOString(),
-          })
-          .eq('id', helpReq.id);
-      }
+      await sb
+        .from('help_requests')
+        .update({
+          status: 'resolved',
+          resolved_by: reviewer.id,
+          resolved_at: new Date().toISOString(),
+        })
+        .eq('id', helpReq.id);
 
       return { xpAwarded: inserted ? xp : 0, isMentor, isFast };
     });
