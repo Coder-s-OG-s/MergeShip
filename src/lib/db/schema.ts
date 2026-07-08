@@ -643,3 +643,14 @@ export const userChallengeProgress = pgTable(
     pk: primaryKey({ columns: [t.userId, t.date] }),
   }),
 );
+
+export const organizationInvites = pgTable('organization_invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  installationId: bigint('installation_id', { mode: 'number' })
+    .notNull()
+    .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+});
