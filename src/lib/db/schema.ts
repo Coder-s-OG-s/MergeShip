@@ -602,3 +602,34 @@ export const userChallengeProgress = pgTable(
     pk: primaryKey({ columns: [t.userId, t.date] }),
   }),
 );
+// ---------- invites (structured invite system) ----------
+
+export const invites = pgTable(
+  'invites',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    installationId: bigint('installation_id', { mode: 'number' })
+      .notNull()
+      .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+    invitedByUserId: uuid('invited_by_user_id')
+      .notNull()
+      .references(() => profiles.id),
+    email: text('email').notNull(),
+    token: text('token').notNull().unique(),
+    status: text('status', { enum: ['pending', 'accepted', 'expired'] })
+      .notNull()
+      .default('pending'),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    // Ensures a unique pending invite per email per organization/installation
+    uniqInstallEmail: uniqueIndex('invites_installation_email_unique').on(
+      t.installationId,
+      t.email,
+    ),
+    installationIdx: index('invites_installation_idx').on(t.installationId),
+    tokenIdx: index('invites_token_idx').on(t.token),
+  }),
+);

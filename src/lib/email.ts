@@ -132,3 +132,23 @@ export async function sendWeeklyDigestEmail({
     text: `Your Weekly Progress Digest\n\nHello ${githubHandle}, here's what you achieved this week on MergeShip!\n\nProgress:\n- XP Gained: ${xpGained} XP\n- Current Level: Level ${currentLevel}\n- Progress to Next Level: ${xpToNextLevel} XP needed\n\nActivity:\n- Issues Completed: ${issuesCompleted}\n- PRs Merged: ${prsMerged}\n- Reviews Performed: ${reviewsPerformed}\n\n${recommendations.length > 0 ? `Recommended for you:\n${recommendations.map((r) => `- ${r.title} (+${r.xpReward} XP): ${r.url}`).join('\n')}\n\n` : ''}View your dashboard: ${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com'}\n\nYou can unsubscribe from these emails by updating your Profile Settings.\n`,
   });
 }
+export async function sendInviteEmail({ to, inviteUrl }: { to: string; inviteUrl: string }) {
+  if (!resend) {
+    console.warn('Resend email client not configured. Invite URL:', inviteUrl);
+    return;
+  }
+
+  await resend.emails.send({
+    from: 'MergeShip <noreply@mergeship.com>',
+    to,
+    subject: 'You have been invited to join MergeShip!',
+    html: `
+      <h2>You have been invited as a contributor!</h2>
+      <p>Click the link below to accept the invitation and link your account:</p>
+      <p><a href="${inviteUrl}">${inviteUrl}</a></p>
+      <br />
+      <p style="font-size: 12px; color: #666;">This invitation link will expire in 7 days.</p>
+    `,
+    text: `You have been invited as a contributor!\n\nJoin the project by opening this link: ${inviteUrl}\n\nThis invitation link will expire in 7 days.`,
+  });
+}
