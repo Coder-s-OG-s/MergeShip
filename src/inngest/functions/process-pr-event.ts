@@ -384,6 +384,11 @@ async function awardRecommendedMerge(
     xpDelta,
   });
 
+  // 🛡️ Guard against duplicate webhook retry delivery races
+  if (!inserted) {
+    return { xpAwarded: false, recId: rec.id };
+  }
+
   await sb
     .from('recommendations')
     .update({ status: 'completed', completed_at: new Date().toISOString() })
@@ -393,15 +398,13 @@ async function awardRecommendedMerge(
   await cacheDelByPrefix(`profile:public:`);
   await cacheDelByPrefix(`leaderboard:`);
 
-  if (inserted) {
-    await sb.from('activity_log').insert({
-      user_id: rec.user_id,
-      kind: 'pr_merged',
-      detail: { recId: rec.id, repo, prNumber: pr.number, xpAwarded: xpDelta } as never,
-    });
-  }
+  await sb.from('activity_log').insert({
+    user_id: rec.user_id,
+    kind: 'pr_merged',
+    detail: { recId: rec.id, repo, prNumber: pr.number, xpAwarded: xpDelta } as never,
+  });
 
-  return { xpAwarded: inserted, recId: rec.id };
+  return { xpAwarded: true, recId: rec.id };
 }
 
 async function tryLinkByIssueRef(
