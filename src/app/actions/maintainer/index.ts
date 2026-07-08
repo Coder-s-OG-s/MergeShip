@@ -16,6 +16,7 @@ export {
   refreshMaintainerBackfill,
   getPrCiStatus,
   closePullRequest,
+  getPrDiff,
   getPrActivityTimeline,
   getPrDetails,
   getMaintainerPrById,
@@ -27,9 +28,11 @@ export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './c
 export {
   getContributorsList,
   exportContributorsCsv,
+  removeContributorFromOrg,
   type ContributorListRow,
+  getContributorStats,
+  type ContributorStats,
 } from './contributors';
-
 export {
   getRepoHealthOverview,
   getStaleIssues,
@@ -42,4 +45,10 @@ export {
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';
+
+export {
+  getFailedWebhookEvents,
+  retryFailedWebhookEvent,
+  type FailedWebhookEventRow,
+} from './failed-events';
 export { previewMergeXp, type XpPreviewBreakdown } from './xp-preview';

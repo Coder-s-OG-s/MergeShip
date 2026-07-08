@@ -18,6 +18,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mocks
 // ---------------------------------------------------------------------------
 
+const { mockRateLimit } = vi.hoisted(() => ({
+  mockRateLimit: vi.fn(),
+}));
+
+vi.mock('@/lib/rate-limit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/rate-limit')>();
+  return {
+    ...actual,
+    rateLimit: mockRateLimit,
+  };
+});
+
 const mockSend = vi.fn().mockResolvedValue(undefined);
 vi.mock('@/inngest/client', () => ({ inngest: { send: mockSend } }));
 
@@ -42,18 +54,22 @@ vi.mock('@/lib/supabase/service', () => ({
   }),
 }));
 
+const mockListInstalls = vi.fn();
 vi.mock('@/lib/maintainer/detect', () => ({
   isUserMaintainer: () => true,
+  listMaintainerInstalls: (...args: unknown[]) => mockListInstalls(...args),
 }));
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function buildRequest(body: Record<string, unknown>): Request {
+function buildRequest(body: Record<string, unknown>, origin?: string): Request {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (origin) headers['origin'] = origin;
   return new Request('http://localhost/api/webhooks/github/retry', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
 }
@@ -68,6 +84,15 @@ describe('POST /api/webhooks/github/retry', () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
     mockUpdate.mockReturnValue({ eq: vi.fn().mockResolvedValue({}) });
     mockDelete.mockReturnValue({ eq: vi.fn().mockResolvedValue({}) });
+    mockRateLimit.mockResolvedValue({ ok: true, remaining: 9, resetAt: Date.now() + 60000 });
+    mockListInstalls.mockResolvedValue([
+      {
+        installationId: 42,
+        accountLogin: 'org-a',
+        accountType: 'Organization',
+        permissionLevel: 'org_admin',
+      },
+    ]);
   });
 
   it('dispatches with the stored event_type, not a hardcoded value', async () => {
@@ -112,6 +137,19 @@ describe('POST /api/webhooks/github/retry', () => {
       name: 'github/pull_request',
       data: { pull_request: { number: 7 } },
     });
+  });
+
+  it('returns 429 when rate limited', async () => {
+    mockRateLimit.mockResolvedValue({ ok: false, remaining: 0, resetAt: Date.now() + 60000 });
+
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ id: 'evt-1' }));
+    const json = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(json.error).toBe('too many requests');
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it('rejects events with an invalid event_type (422)', async () => {
@@ -197,5 +235,128 @@ describe('POST /api/webhooks/github/retry', () => {
 
     expect(res.status).toBe(200);
     expect(mockDelete).toHaveBeenCalled();
+  });
+
+  describe('CSRF protection', () => {
+    it('rejects requests from foreign origins (Origin mismatch)', async () => {
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest({ id: 'evt-1' }, 'https://evil.com'));
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: 'forbidden' });
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it('rejects requests with malformed Origin header', async () => {
+      const { POST } = await import('./route');
+      const res = await POST(
+        new Request('http://localhost/api/webhooks/github/retry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', origin: ':::' },
+          body: JSON.stringify({ id: 'evt-1' }),
+        }),
+      );
+
+      expect(res.status).toBe(403);
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it('allows same-origin requests from the configured app URL', async () => {
+      mockMaybeSingle.mockResolvedValue({
+        data: { id: 'evt-7', event_type: 'github/push', payload: {}, retry_count: 0 },
+      });
+
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest({ id: 'evt-7' }, 'http://localhost:3001'));
+
+      expect(res.status).toBe(200);
+      expect(mockSend).toHaveBeenCalled();
+    });
+
+    it('rejects requests without Origin in production (NODE_ENV=production)', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      const onError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest({ id: 'evt-1' }));
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: 'forbidden' });
+      expect(mockSend).not.toHaveBeenCalled();
+
+      onError.mockRestore();
+      vi.unstubAllEnvs();
+    });
+
+    it('allows matching-origin requests in production when NEXT_PUBLIC_APP_URL is set', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://mergeship.example.com');
+
+      mockMaybeSingle.mockResolvedValue({
+        data: { id: 'evt-11', event_type: 'github/push', payload: {}, retry_count: 0 },
+      });
+
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest({ id: 'evt-11' }, 'https://mergeship.example.com'));
+
+      expect(res.status).toBe(200);
+      expect(mockSend).toHaveBeenCalled();
+
+      vi.unstubAllEnvs();
+    });
+  });
+
+  describe('installation access control', () => {
+    it('rejects retry when maintainer lacks access to the event installation', async () => {
+      mockMaybeSingle.mockResolvedValue({
+        data: {
+          id: 'evt-8',
+          event_type: 'github/push',
+          payload: { installation: { id: 999 } },
+          retry_count: 0,
+        },
+      });
+
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest({ id: 'evt-8' }));
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: 'forbidden' });
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it('allows retry when maintainer has access to the event installation', async () => {
+      mockMaybeSingle.mockResolvedValue({
+        data: {
+          id: 'evt-9',
+          event_type: 'github/push',
+          payload: { installation: { id: 42 } },
+          retry_count: 0,
+        },
+      });
+
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest({ id: 'evt-9' }));
+
+      expect(res.status).toBe(200);
+      expect(mockSend).toHaveBeenCalled();
+    });
+
+    it('allows retry for events without an installation id (global events)', async () => {
+      mockMaybeSingle.mockResolvedValue({
+        data: {
+          id: 'evt-10',
+          event_type: 'github/meta',
+          payload: {},
+          retry_count: 0,
+        },
+      });
+
+      const { POST } = await import('./route');
+      const res = await POST(buildRequest({ id: 'evt-10' }));
+
+      expect(res.status).toBe(200);
+      expect(mockSend).toHaveBeenCalled();
+    });
   });
 });

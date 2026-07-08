@@ -3,6 +3,7 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import LevelUpBanner from './level-up-banner';
 import { redirect } from 'next/navigation';
+import { GettingStarted } from '@/components/contributor-dashboard/getting-started';
 import Link from 'next/link';
 import { Bell } from 'lucide-react';
 
@@ -71,6 +72,9 @@ export default async function DashboardPage() {
   const xp = profile?.xp ?? 0;
   const level = profile?.level ?? 0;
   const githubHandle = profile?.github_handle ?? 'Contributor';
+  const mergeCount = profile?.github_total_merges ?? 0;
+  const isNewUser = xp === 0 && mergeCount === 0;
+
   return (
     <div className="min-h-screen bg-[#0d1117] p-6 font-mono text-white md:p-10">
       <div className="mx-auto max-w-[1400px]">
@@ -124,6 +128,9 @@ export default async function DashboardPage() {
 
         {/* Main Grid Layout */}
         <main className="space-y-6">
+          {/* Getting started prompt for new users */}
+          {isNewUser && <GettingStarted />}
+
           {/* Row 1 (Formerly Row 2) */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2">

@@ -31,6 +31,7 @@ export type MaintainerPrRow = {
   installationId?: number;
   bodyExcerpt?: string | null;
   mentorReviewAt?: string | null;
+  headSha?: string;
 };
 
 export type QueueFilters = {
@@ -38,6 +39,7 @@ export type QueueFilters = {
   state?: PrState[];
   authorLevel?: number[];
   mentorVerified?: MentorVerifiedFilter;
+  authorLogin?: string;
   aiFlagged?: 'yes' | 'no';
 };
 
@@ -79,6 +81,7 @@ export function validateFilters(input: Partial<QueueFilters>): {
   state: PrState[];
   authorLevel: number[];
   mentorVerified: MentorVerifiedFilter;
+  authorLogin?: string;
   aiFlagged: 'yes' | 'no' | undefined;
 } {
   const repos = Array.isArray(input.repos)
@@ -100,9 +103,10 @@ export function validateFilters(input: Partial<QueueFilters>): {
     input.mentorVerified === 'yes' || input.mentorVerified === 'no'
       ? input.mentorVerified
       : 'either';
+  const authorLogin = typeof input.authorLogin === 'string' ? input.authorLogin : undefined;
 
   const aiFlagged: 'yes' | 'no' | undefined =
     input.aiFlagged === 'yes' || input.aiFlagged === 'no' ? input.aiFlagged : undefined;
 
-  return { repos, state, authorLevel, mentorVerified, aiFlagged };
+  return { repos, state, authorLevel, mentorVerified, authorLogin, aiFlagged };
 }

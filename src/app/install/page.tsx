@@ -3,7 +3,6 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { redirect } from 'next/navigation';
 import { bootstrapProfile } from '@/app/actions/profile';
-import { getRepoPicker } from '@/app/actions/maintainer';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,19 +11,7 @@ export const dynamic = 'force-dynamic';
  * GitHub App on their account yet. One click sends them to GitHub's install flow;
  * the App's installation.created webhook records the install and unblocks them.
  */
-export default async function InstallPage(props: {
-  searchParams: Promise<{ step?: string | string[] }>;
-}) {
-  const searchParams = await props.searchParams;
-  const stepParam = searchParams?.step;
-  let initialStep = stepParam
-    ? parseInt(Array.isArray(stepParam) ? (stepParam[0] ?? '') : stepParam, 10)
-    : 1;
-
-  if (isNaN(initialStep) || initialStep < 1 || initialStep > 3) {
-    initialStep = 1;
-  }
-
+export default async function InstallPage() {
   const sb = await getServerSupabase();
   if (!sb) {
     return <NotConfiguredNotice />;
@@ -114,35 +101,18 @@ export default async function InstallPage(props: {
       installationId = byHandle.id;
     }
 
+    // Repos default to managed=true the moment the installation webhook
+    // records them (migration 0018), so there's nothing to wait on or pick
+    // here — an installed account can go straight to the dashboard.
     if (installationId) {
-      const res = await getRepoPicker(installationId);
-      if (res.ok) {
-        const initialRepos = res.data;
-        if (initialRepos.some((r) => r.managed)) {
-          redirect('/onboarding/analyze');
-        }
-        if (initialStep === 1) initialStep = 2;
-
-        const slug = process.env.GITHUB_APP_SLUG ?? 'mergeship';
-        const installUrl = `https://github.com/apps/${slug}/installations/new`;
-
-        return (
-          <InstallWizard
-            initialStep={initialStep}
-            installUrl={installUrl}
-            installationId={installationId}
-            initialRepos={initialRepos}
-            isDevUser={isDevUser}
-          />
-        );
-      }
+      redirect('/onboarding/analyze');
     }
   }
 
   const slug = process.env.GITHUB_APP_SLUG ?? 'mergeship';
   const installUrl = `https://github.com/apps/${slug}/installations/new`;
 
-  return <InstallWizard initialStep={initialStep} installUrl={installUrl} isDevUser={isDevUser} />;
+  return <InstallWizard installUrl={installUrl} isDevUser={isDevUser} />;
 }
 
 function NotConfiguredNotice() {

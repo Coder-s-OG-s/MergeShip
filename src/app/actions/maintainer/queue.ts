@@ -1,5 +1,6 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
 import { requireMaintainer } from '@/lib/action-auth';
@@ -96,6 +97,7 @@ export async function getMaintainerPrQueue(args: {
   if (filters.state.length > 0) q = q.in('state', filters.state);
   if (filters.mentorVerified === 'yes') q = q.eq('mentor_verified', true);
   else if (filters.mentorVerified === 'no') q = q.eq('mentor_verified', false);
+  if (filters.authorLogin) q = q.eq('author_login', filters.authorLogin);
 
   // Pull a generous slice; we re-sort by tier client-side.
   type RawPr = {
@@ -573,6 +575,7 @@ export async function getMaintainerPrById(args: {
     aiFlagged: pr.ai_flagged,
     bodyExcerpt: pr.body_excerpt,
     mentorReviewAt: pr.mentor_review_at,
+    installationId: args.installationId,
   };
   return ok(row);
 }
@@ -631,7 +634,10 @@ export async function requestChanges(prId: number, comment: string): Promise<Res
   return ok({ ok: true });
 }
 
-export async function mergePullRequest(prId: number): Promise<Result<{ ok: true }>> {
+export async function mergePullRequest(
+  prId: number,
+  options?: { mergeMethod?: 'merge' | 'squash' | 'rebase'; expectedHeadSha?: string },
+): Promise<Result<{ ok: true }>> {
   const authRes = await requireMaintainer({
     rateLimit: { namespace: 'maint:merge-pr', ...RATE_LIMIT_TIERS.STANDARD },
     requireService: true,
@@ -673,13 +679,26 @@ export async function mergePullRequest(prId: number): Promise<Result<{ ok: true 
       owner,
       repo,
       pull_number: pr.number,
-      merge_method: 'squash',
+      merge_method: options?.mergeMethod || 'squash',
+      sha: options?.expectedHeadSha,
     });
   } catch (error: any) {
+    if (error.status === 403) return err('github_error', 'Permission denied on GitHub (403)');
+    if (error.status === 404) return err('not_found', 'PR or Repository not found on GitHub');
+    if (error.status === 405)
+      return err('github_error', 'Merge rejected (e.g. branch protection or not mergeable)');
+    if (error.status === 409)
+      return err('github_error', 'Merge conflict or stale PR (head SHA changed)');
+    if (error.status === 422)
+      return err('invalid_input', 'PR is already merged or cannot be merged');
+
     return err('github_error', error.message || 'Failed to merge PR via GitHub API');
   }
 
   await service.from('pull_requests').update({ state: 'merged' }).eq('id', prId);
+
+  revalidatePath(`/maintainer/pr/${prId}`);
+  revalidatePath('/maintainer');
 
   return ok({ ok: true });
 }
@@ -977,6 +996,23 @@ export async function getPrDetails(prId: number): Promise<Result<MaintainerPrRow
     }
   }
 
+  let headSha: string | undefined = undefined;
+  if (rawPr.state === 'open') {
+    try {
+      const octokit = await getInstallOctokit(installationId);
+      const [owner, repo] = rawPr.repo_full_name.split('/');
+      if (owner && repo) {
+        const githubPr = await octokit.pulls.get({
+          owner,
+          repo,
+          pull_number: rawPr.number,
+        });
+        headSha = githubPr.data.head.sha;
+      }
+    } catch (e) {
+      // Ignore GitHub API errors when just viewing PR details
+    }
+  }
   const row: MaintainerPrRow = {
     id: rawPr.id,
     repoFullName: rawPr.repo_full_name,
@@ -996,7 +1032,72 @@ export async function getPrDetails(prId: number): Promise<Result<MaintainerPrRow
     githubUpdatedAt: rawPr.github_updated_at,
     aiFlagged: rawPr.ai_flagged,
     installationId,
+    headSha,
   };
 
   return ok(row);
+}
+
+export async function getPrDiff(
+  installationId: number,
+  repoFullName: string,
+  prNumber: number,
+): Promise<Result<string | null>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:pr-diff', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(repoFullName)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  const cacheKey = `pr:diff:${repoFullName}:${prNumber}`;
+  const cached = await cacheGet<string | null>(cacheKey);
+  if (cached !== undefined && cached !== null) {
+    if (cached === '__EMPTY__') return ok(null);
+    return ok(cached);
+  }
+
+  if (repoFullName.startsWith('demo/') || !process.env.GITHUB_APP_ID) {
+    const mockDiff = `diff --git a/demo.ts b/demo.ts
+index e69de29..d95f3ad 100644
+--- a/demo.ts
++++ b/demo.ts
+@@ -1,3 +1,4 @@
+ function demo() {
+-  console.log('old');
++  console.log('new');
+ }`;
+    await cacheSet(cacheKey, mockDiff, 300);
+    return ok(mockDiff);
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    const [owner, repo] = repoFullName.split('/');
+    if (!owner || !repo) {
+      return ok(null);
+    }
+
+    const diffRes = await octokit.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
+      mediaType: { format: 'diff' },
+    });
+
+    const diff = typeof diffRes.data === 'string' ? diffRes.data : null;
+    if (diff) {
+      await cacheSet(cacheKey, diff, 300);
+    } else {
+      await cacheSet(cacheKey, '__EMPTY__', 300);
+    }
+    return ok(diff);
+  } catch (error) {
+    return ok(null);
+  }
 }

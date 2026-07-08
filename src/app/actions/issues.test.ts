@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   mockGetUser: vi.fn(),
   mockGetSession: vi.fn(),
   mockServiceFrom: vi.fn(),
-  mockGetInstallationToken: vi.fn(),
+  mockGetInstallOctokit: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -32,7 +32,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }));
 
 vi.mock('@/lib/github/app', () => ({
-  getInstallationToken: mocks.mockGetInstallationToken,
+  getInstallOctokit: mocks.mockGetInstallOctokit,
 }));
 
 vi.mock('@/lib/supabase/service', () => ({
@@ -72,7 +72,9 @@ describe('getRepoOptions', () => {
     mocks.mockGetSession.mockResolvedValue({
       data: { session: null },
     });
-    mocks.mockGetInstallationToken.mockResolvedValue('fake-install-token');
+    mocks.mockGetInstallOctokit.mockResolvedValue({
+      repos: { get: vi.fn().mockResolvedValue({ data: {} }) },
+    });
   });
 
   it('returns empty array when user has no installations', async () => {
@@ -86,7 +88,7 @@ describe('getRepoOptions', () => {
     }
   });
 
-  it('resolves forks using installation token and falls back to session provider token', async () => {
+  it('resolves forks using getInstallOctokit', async () => {
     mocks.mockServiceFrom.mockImplementation((table: string) => {
       if (table === 'github_installations') {
         return createMockChain({ data: [{ id: 10 }] });
@@ -99,11 +101,12 @@ describe('getRepoOptions', () => {
       return createMockChain({ data: [] });
     });
 
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ fork: true, parent: { full_name: 'owner/parent-repo' } }),
+    const mockReposGet = vi.fn().mockResolvedValue({
+      data: { fork: true, parent: { full_name: 'owner/parent-repo' } },
     });
-    vi.stubGlobal('fetch', mockFetch);
+    mocks.mockGetInstallOctokit.mockResolvedValue({
+      repos: { get: mockReposGet },
+    });
 
     const result = await getRepoOptions();
 
@@ -111,56 +114,36 @@ describe('getRepoOptions', () => {
     if (result.ok) {
       expect(result.data).toEqual([{ label: 'owner/fork-repo', value: 'owner/parent-repo' }]);
     }
-    expect(mocks.mockGetInstallationToken).toHaveBeenCalledWith(10);
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://api.github.com/repos/owner/fork-repo',
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer fake-install-token',
-        }),
-      }),
-    );
+    expect(mocks.mockGetInstallOctokit).toHaveBeenCalledWith(10);
+    expect(mockReposGet).toHaveBeenCalledWith({ owner: 'owner', repo: 'fork-repo' });
   });
 
-  it('falls back to provider_token if getInstallationToken fails', async () => {
+  it('keeps original repo label if octokit throws an error during fork resolution (error-fallback)', async () => {
     mocks.mockServiceFrom.mockImplementation((table: string) => {
       if (table === 'github_installations') {
         return createMockChain({ data: [{ id: 10 }] });
       }
       if (table === 'installation_repositories') {
         return createMockChain({
-          data: [{ repo_full_name: 'owner/fork-repo', installation_id: 10 }],
+          data: [{ repo_full_name: 'owner/error-repo', installation_id: 10 }],
         });
       }
       return createMockChain({ data: [] });
     });
 
-    mocks.mockGetInstallationToken.mockRejectedValueOnce(new Error('Auth failed'));
-    mocks.mockGetSession.mockResolvedValueOnce({
-      data: { session: { provider_token: 'session-provider-token' } },
+    const mockReposGet = vi.fn().mockRejectedValue(new Error('GitHub API Error'));
+    mocks.mockGetInstallOctokit.mockResolvedValue({
+      repos: { get: mockReposGet },
     });
-
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ fork: true, parent: { full_name: 'owner/parent-repo' } }),
-    });
-    vi.stubGlobal('fetch', mockFetch);
 
     const result = await getRepoOptions();
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data).toEqual([{ label: 'owner/fork-repo', value: 'owner/parent-repo' }]);
+      expect(result.data).toEqual([{ label: 'owner/error-repo', value: 'owner/error-repo' }]);
     }
-    expect(mocks.mockGetInstallationToken).toHaveBeenCalledWith(10);
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://api.github.com/repos/owner/fork-repo',
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer session-provider-token',
-        }),
-      }),
-    );
+    expect(mocks.mockGetInstallOctokit).toHaveBeenCalledWith(10);
+    expect(mockReposGet).toHaveBeenCalledWith({ owner: 'owner', repo: 'error-repo' });
   });
 });
 
@@ -174,7 +157,9 @@ describe('getIssuesPage', () => {
     mocks.mockGetSession.mockResolvedValue({
       data: { session: null },
     });
-    mocks.mockGetInstallationToken.mockResolvedValue('fake-install-token');
+    mocks.mockGetInstallOctokit.mockResolvedValue({
+      repos: { get: vi.fn().mockResolvedValue({ data: {} }) },
+    });
   });
 
   it('returns empty result set when user has no installations', async () => {
