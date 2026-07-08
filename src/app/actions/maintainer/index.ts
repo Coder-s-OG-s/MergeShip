@@ -1,4 +1,5 @@
 'use server';
+
 import { requireMaintainerAuth } from '@/lib/action-auth';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
@@ -8,9 +9,15 @@ import * as queueActions from './queue';
 import * as communityActions from './community';
 import * as analyticsActions from './analytics';
 import * as flaggedAccountsActions from './flagged-accounts';
+import * as contributorsActions from './contributors';
+import * as failedEventsActions from './failed-events';
+import * as xpPreviewActions from './xp-preview';
 
 export type * from './types';
 export type { StalePrRow } from './analytics';
+export type { ContributorListRow, ContributorStats } from './contributors';
+export type { FailedWebhookEventRow } from './failed-events';
+export type { XpPreviewBreakdown } from './xp-preview';
 
 export async function getMaintainerInstalls(
   ...args: Parameters<typeof settingsActions.getMaintainerInstalls>
@@ -78,6 +85,48 @@ export async function getPrCiStatus(
   return queueActions.getPrCiStatus(...args);
 }
 
+export async function closePullRequest(
+  ...args: Parameters<typeof queueActions.closePullRequest>
+): ReturnType<typeof queueActions.closePullRequest> {
+  return queueActions.closePullRequest(...args);
+}
+
+export async function getPrDiff(
+  ...args: Parameters<typeof queueActions.getPrDiff>
+): ReturnType<typeof queueActions.getPrDiff> {
+  return queueActions.getPrDiff(...args);
+}
+
+export async function getPrActivityTimeline(
+  ...args: Parameters<typeof queueActions.getPrActivityTimeline>
+): ReturnType<typeof queueActions.getPrActivityTimeline> {
+  return queueActions.getPrActivityTimeline(...args);
+}
+
+export async function getPrDetails(
+  ...args: Parameters<typeof queueActions.getPrDetails>
+): ReturnType<typeof queueActions.getPrDetails> {
+  return queueActions.getPrDetails(...args);
+}
+
+export async function getMaintainerPrById(
+  ...args: Parameters<typeof queueActions.getMaintainerPrById>
+): ReturnType<typeof queueActions.getMaintainerPrById> {
+  return queueActions.getMaintainerPrById(...args);
+}
+
+export async function requestChanges(
+  ...args: Parameters<typeof queueActions.requestChanges>
+): ReturnType<typeof queueActions.requestChanges> {
+  return queueActions.requestChanges(...args);
+}
+
+export async function mergePullRequest(
+  ...args: Parameters<typeof queueActions.mergePullRequest>
+): ReturnType<typeof queueActions.mergePullRequest> {
+  return queueActions.mergePullRequest(...args);
+}
+
 export async function getCommunityLinks(
   ...args: Parameters<typeof communityActions.getCommunityLinks>
 ): ReturnType<typeof communityActions.getCommunityLinks> {
@@ -138,6 +187,18 @@ export async function getReviewerLoad(
   return analyticsActions.getReviewerLoad(...args);
 }
 
+export async function getNoiseBreakdown(
+  ...args: Parameters<typeof analyticsActions.getNoiseBreakdown>
+): ReturnType<typeof analyticsActions.getNoiseBreakdown> {
+  return analyticsActions.getNoiseBreakdown(...args);
+}
+
+export async function getPromotionEligible(
+  ...args: Parameters<typeof analyticsActions.getPromotionEligible>
+): ReturnType<typeof analyticsActions.getPromotionEligible> {
+  return analyticsActions.getPromotionEligible(...args);
+}
+
 export async function getFlaggedAccounts(
   ...args: Parameters<typeof flaggedAccountsActions.getFlaggedAccounts>
 ): ReturnType<typeof flaggedAccountsActions.getFlaggedAccounts> {
@@ -150,6 +211,42 @@ export async function resolveFlaggedAccount(
   return flaggedAccountsActions.resolveFlaggedAccount(...args);
 }
 
+export async function getContributorsList(
+  ...args: Parameters<typeof contributorsActions.getContributorsList>
+): ReturnType<typeof contributorsActions.getContributorsList> {
+  return contributorsActions.getContributorsList(...args);
+}
+
+export async function removeContributorFromOrg(
+  ...args: Parameters<typeof contributorsActions.removeContributorFromOrg>
+): ReturnType<typeof contributorsActions.removeContributorFromOrg> {
+  return contributorsActions.removeContributorFromOrg(...args);
+}
+
+export async function getContributorStats(
+  ...args: Parameters<typeof contributorsActions.getContributorStats>
+): ReturnType<typeof contributorsActions.getContributorStats> {
+  return contributorsActions.getContributorStats(...args);
+}
+
+export async function getFailedWebhookEvents(
+  ...args: Parameters<typeof failedEventsActions.getFailedWebhookEvents>
+): ReturnType<typeof failedEventsActions.getFailedWebhookEvents> {
+  return failedEventsActions.getFailedWebhookEvents(...args);
+}
+
+export async function retryFailedWebhookEvent(
+  ...args: Parameters<typeof failedEventsActions.retryFailedWebhookEvent>
+): ReturnType<typeof failedEventsActions.retryFailedWebhookEvent> {
+  return failedEventsActions.retryFailedWebhookEvent(...args);
+}
+
+export async function previewMergeXp(
+  ...args: Parameters<typeof xpPreviewActions.previewMergeXp>
+): ReturnType<typeof xpPreviewActions.previewMergeXp> {
+  return xpPreviewActions.previewMergeXp(...args);
+}
+
 export async function pingReviewers(prId: number): Promise<Result<{ commented: boolean }>> {
   const auth = await requireMaintainerAuth();
   if (!auth.ok) return auth;
@@ -157,7 +254,6 @@ export async function pingReviewers(prId: number): Promise<Result<{ commented: b
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'Service role not configured');
 
-  // Fetch the PR row to get installation and metadata
   const { data: pr, error: prErr } = await service
     .from('pull_requests')
     .select('number, repo_full_name, installation_id, url')
@@ -183,30 +279,3 @@ export async function pingReviewers(prId: number): Promise<Result<{ commented: b
     return err('github_error', msg);
   }
 }
-
-export {
-  closePullRequest,
-  getPrDiff,
-  getPrActivityTimeline,
-  getPrDetails,
-  getMaintainerPrById,
-  requestChanges,
-  mergePullRequest,
-} from './queue';
-
-export {
-  getContributorsList,
-  removeContributorFromOrg,
-  type ContributorListRow,
-  getContributorStats,
-  type ContributorStats,
-} from './contributors';
-
-export { getNoiseBreakdown, getPromotionEligible } from './analytics';
-
-export {
-  getFailedWebhookEvents,
-  retryFailedWebhookEvent,
-  type FailedWebhookEventRow,
-} from './failed-events';
-export { previewMergeXp, type XpPreviewBreakdown } from './xp-preview';
