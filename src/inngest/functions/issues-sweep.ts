@@ -134,6 +134,26 @@ export const issuesSweep = inngest.createFunction(
             continue;
           }
 
+          // Pre-fetch existing issues for this repository to avoid redundant LLM scoring
+          const issueNumbers = issues.filter((i) => !i.pull_request).map((i) => i.number);
+          const existingIssuesMap = new Map<
+            number,
+            { difficulty: string; difficulty_source: string; xp_reward: number }
+          >();
+          if (issueNumbers.length > 0) {
+            const { data: existingIssues } = await sb
+              .from('issues')
+              .select('github_issue_number, difficulty, difficulty_source, xp_reward')
+              .eq('repo_full_name', t.target)
+              .in('github_issue_number', issueNumbers);
+
+            if (existingIssues) {
+              for (const ex of existingIssues) {
+                existingIssuesMap.set(ex.github_issue_number, ex);
+              }
+            }
+          }
+
           for (const issue of issues) {
             if (issue.pull_request) continue;
             issuesSeen += 1;
@@ -142,21 +162,31 @@ export const issuesSweep = inngest.createFunction(
               typeof l === 'string' ? l : (l.name ?? ''),
             );
 
-            const scored = await scoreDifficulty(
-              {
-                title: issue.title,
-                body: issue.body ?? undefined,
-                labels,
-                commentCount: issue.comments,
-              },
-              {
-                llmFallback: async (i) =>
-                  llmCall({
-                    prompt: `Rate this OSS issue's difficulty as E/M/H.\nTitle: ${i.title}\nLabels: ${i.labels.join(', ')}\nBody: ${(i.body ?? '').slice(0, 800)}\n\nReturn JSON: {"difficulty":"E"|"M"|"H","confidence":0..1,"reason":"..."}`,
-                    schema: DifficultySchema,
-                  }),
-              },
-            );
+            let scored;
+            const existing = existingIssuesMap.get(issue.number);
+            if (existing?.difficulty && existing?.difficulty_source) {
+              scored = {
+                difficulty: existing.difficulty as 'E' | 'M' | 'H',
+                source: existing.difficulty_source as 'label' | 'heuristic' | 'llm' | 'maintainer',
+                xpReward: existing.xp_reward,
+              };
+            } else {
+              scored = await scoreDifficulty(
+                {
+                  title: issue.title,
+                  body: issue.body ?? undefined,
+                  labels,
+                  commentCount: issue.comments,
+                },
+                {
+                  llmFallback: async (i) =>
+                    llmCall({
+                      prompt: `Rate this OSS issue's difficulty as E/M/H.\nTitle: ${i.title}\nLabels: ${i.labels.join(', ')}\nBody: ${(i.body ?? '').slice(0, 800)}\n\nReturn JSON: {"difficulty":"E"|"M"|"H","confidence":0..1,"reason":"..."}`,
+                      schema: DifficultySchema,
+                    }),
+                },
+              );
+            }
 
             const { error } = await sb.from('issues').upsert(
               {

@@ -59,7 +59,7 @@ export const prBackfill = inngest.createFunction(
         backfillSingleRepo(installationId, repo),
       );
       reports.push(report);
-      await sleep(PER_REPO_SLEEP_MS);
+      await step.sleep(`sleep-${repo.replace('/', '-')}`, '2s');
     }
 
     return {
