@@ -223,7 +223,7 @@ export function ProfileForm({ initialData }: ProfileFormProps) {
       </div>
 
       {/* Notifications */}
-      <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-5">
+      <div className="rounded-lg bg-[#0d0f14] p-6">
         <h3 className="mb-4 font-mono text-lg font-semibold text-white">Notifications</h3>
 
         <div className="flex items-center justify-between">
