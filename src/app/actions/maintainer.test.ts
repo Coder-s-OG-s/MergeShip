@@ -213,6 +213,29 @@ describe('maintainer actions', () => {
       }
     });
 
+    it('reloads cache and retries when a schema cache error occurs during query', async () => {
+      mockFrom
+        .mockReturnValueOnce(chain({ installation_id: 1 }))
+        .mockReturnValueOnce(
+          chain(
+            null,
+            new Error(
+              "Could not find the table 'public.installation_settings' in the schema cache",
+            ),
+          ),
+        )
+        .mockReturnValueOnce(chain({ min_contributor_level: 2, auto_assign_mentor_chain: true }));
+
+      const res = await getInstallationSettings(1);
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.minContributorLevel).toBe(2);
+        expect(res.data.autoAssignMentorChain).toBe(true);
+      }
+      expect(mockDb.execute).toHaveBeenCalled();
+    });
+
     it('rejects invalid min contributor level', async () => {
       const res = await setMinContributorLevel({ installationId: 1, minContributorLevel: 4 });
 
