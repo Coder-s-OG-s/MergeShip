@@ -1,4 +1,4 @@
-import { cacheRateLimitHit } from './cache';
+import { cacheRateLimitHit, isSharedCacheAvailable, blockedRateLimitBucket } from './cache';
 
 export const RATE_LIMIT_TIERS = {
   STANDARD: { limit: 30, windowSec: 60 },
@@ -28,6 +28,15 @@ export type RateLimitResult = {
 export async function rateLimit(opts: RateLimitOptions): Promise<RateLimitResult> {
   const bucketKey = `rl:v2:${opts.namespace}:${opts.key}`;
   const now = Date.now();
+
+  if (process.env.NODE_ENV === 'production' && !isSharedCacheAvailable()) {
+    console.error(
+      '[rate-limit] no shared cache configured in production — blocking request. Set KV_REST_API_URL/KV_REST_API_TOKEN or REDIS_URL.',
+    );
+    const blocked = blockedRateLimitBucket(opts.windowSec, now);
+    return { ok: false, remaining: 0, resetAt: blocked.resetAt };
+  }
+
   const next = await cacheRateLimitHit(bucketKey, opts.windowSec, now);
 
   return {

@@ -33,9 +33,9 @@ export function RequestChangesButton({ prId }: { prId: number }) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
+        className="rounded-sm border border-rose-900/50 px-4 py-2.5 font-mono text-xs text-rose-400 hover:bg-rose-950/30"
       >
-        Request Changes
+        Request changes
       </button>
     );
   }

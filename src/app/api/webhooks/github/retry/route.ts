@@ -2,13 +2,49 @@ import { NextResponse } from 'next/server';
 import { inngest } from '@/inngest/client';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
-import { isUserMaintainer } from '@/lib/maintainer/detect';
+import { isUserMaintainer, listMaintainerInstalls } from '@/lib/maintainer/detect';
 import { rateLimit } from '@/lib/rate-limit';
 
 /** Maximum number of times a dead-lettered event may be retried. */
 const MAX_RETRIES = 5;
 
+/**
+ * Validate that the request originated from the application's own origin
+ * to prevent CSRF attacks. Accepts requests without Origin/Referer in
+ * non-production environments for local development and testing.
+ */
+function isValidOrigin(req: Request): boolean {
+  const origin = req.headers.get('origin');
+  const referer = req.headers.get('referer');
+  const url = origin || referer;
+
+  if (!url) {
+    return process.env.NODE_ENV !== 'production';
+  }
+
+  try {
+    const parsed = new URL(url);
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!appUrl) {
+      if (process.env.NODE_ENV === 'production') {
+        console.error(
+          'isValidOrigin: NEXT_PUBLIC_APP_URL is not set — rejecting request to prevent misconfiguration',
+        );
+        return false;
+      }
+      return parsed.origin === new URL('http://localhost:3001').origin;
+    }
+    return parsed.origin === new URL(appUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(req: Request) {
+  if (!isValidOrigin(req)) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+
   const sb = await getServerSupabase();
 
   if (!sb) {
@@ -68,6 +104,21 @@ export async function POST(req: Request) {
       { error: 'invalid event_type', event_type: eventType ?? null },
       { status: 422 },
     );
+  }
+
+  // Verify the maintainer has access to the installation this event
+  // belongs to. This prevents a maintainer from org A from retrying
+  // events that belong to org B (cross-org privilege escalation).
+  const payload = failedEvent.payload as Record<string, unknown> | undefined;
+  const eventInstallId = (payload?.installation as Record<string, unknown> | undefined)?.id as
+    | number
+    | undefined;
+  if (eventInstallId) {
+    const installs = await listMaintainerInstalls(user.id);
+    const hasAccess = installs.some((i) => i.installationId === eventInstallId);
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    }
   }
 
   // Enforce a retry ceiling so the same event cannot be re-fired

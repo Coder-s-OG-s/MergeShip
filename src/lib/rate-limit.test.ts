@@ -65,6 +65,43 @@ describe('rateLimit', () => {
   });
 });
 
+describe('rateLimit production guard', () => {
+  const OLD_ENV = process.env;
+
+  beforeEach(() => {
+    vi.resetModules();
+    process.env = { ...OLD_ENV };
+  });
+
+  afterEach(() => {
+    process.env = OLD_ENV;
+    vi.unstubAllEnvs();
+  });
+
+  it('blocks all requests when NODE_ENV=production and no shared cache configured', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    delete process.env.KV_REST_API_URL;
+    delete process.env.KV_REST_API_TOKEN;
+    delete process.env.REDIS_URL;
+
+    const { rateLimit: rl } = await import('./rate-limit');
+
+    const result = await rl({ namespace: 'test', key: 'u1', limit: 5, windowSec: 60 });
+    expect(result.ok).toBe(false);
+    expect(result.remaining).toBe(0);
+  });
+
+  it('allows requests when NODE_ENV is not production even without shared cache', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+
+    const { rateLimit: rl } = await import('./rate-limit');
+
+    const result = await rl({ namespace: 'test', key: 'u1', limit: 5, windowSec: 60 });
+    expect(result.ok).toBe(true);
+    expect(result.remaining).toBe(4);
+  });
+});
+
 describe('RATE_LIMIT_TIERS', () => {
   it('defines standard, generous, medium, strict, and hourly tiers', () => {
     expect(RATE_LIMIT_TIERS.STANDARD).toEqual({ limit: 30, windowSec: 60 });
