@@ -6,6 +6,7 @@ import { requireMaintainer } from '@/lib/action-auth';
 import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerInstalls, listMaintainerRepos } from '@/lib/maintainer/detect';
 import { type FlaggedAccountRow } from './types';
+import { logMaintainerAction } from './audit';
 
 export async function getFlaggedAccounts(args?: {
   installationId?: number;
@@ -210,8 +211,28 @@ export async function resolveFlaggedAccount(
     .eq('id', flagId);
 
   if (updateError) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'resolve_flagged_account',
+      targetType: 'flagged_account',
+      targetId: flagId.toString(),
+      status: 'failed',
+      errorMessage: updateError.message,
+      newValues: { status },
+    });
     return err('persist_failed', updateError.message);
   }
+
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId,
+    action: 'resolve_flagged_account',
+    targetType: 'flagged_account',
+    targetId: flagId.toString(),
+    status: 'success',
+    newValues: { status },
+  });
 
   return ok({ ok: true });
 }

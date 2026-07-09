@@ -31,6 +31,12 @@ export type MaintainerPrRow = {
   installationId?: number;
   bodyExcerpt?: string | null;
   mentorReviewAt?: string | null;
+  pipelineStages?: Array<{
+    stageType: string;
+    status: string;
+    reviewerLevelSnapshot?: number | null;
+  }>;
+  headSha?: string;
 };
 
 export type QueueFilters = {

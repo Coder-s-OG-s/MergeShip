@@ -37,6 +37,11 @@ function shouldBypassGate(pathname: string): boolean {
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next({ request: req });
+  const pathname = req.nextUrl.pathname;
+
+  if (shouldBypassGate(pathname)) {
+    return res;
+  }
 
   const env = readSupabaseEnv();
   if (!env) {
@@ -61,16 +66,11 @@ export async function middleware(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const pathname = req.nextUrl.pathname;
-
   if (!user) {
-    if (shouldBypassGate(pathname)) return res;
     const url = req.nextUrl.clone();
     url.pathname = '/';
     return NextResponse.redirect(url);
   }
-
-  if (shouldBypassGate(pathname)) return res;
 
   // Read via service role, not the user-scoped client above. The RLS-scoped
   // client can miss a perfectly good install row during the brief window

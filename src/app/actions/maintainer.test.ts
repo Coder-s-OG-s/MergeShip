@@ -13,6 +13,7 @@ import {
   getInstallationSettings,
   setMinContributorLevel,
   setAutoAssignMentorChain,
+  setAiPrDetection,
   getRepoPicker,
   setRepoManaged,
   resolveFlaggedAccount,
@@ -33,6 +34,11 @@ import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
 
 //   Supabase mocks
+
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+  revalidateTag: vi.fn(),
+}));
 
 const mockGetUser = vi.fn();
 vi.mock('@/lib/supabase/server', () => ({
@@ -190,7 +196,9 @@ describe('maintainer actions', () => {
 
   describe('installation settings', () => {
     it('returns default min contributor level when no row exists', async () => {
-      mockFrom.mockReturnValueOnce(chain({ installation_id: 1 })).mockReturnValueOnce(chain(null));
+      mockFrom
+        .mockReturnValueOnce(chain({ installation_id: 1, permission_level: 'org_admin' }))
+        .mockReturnValueOnce(chain(null));
 
       const res = await getInstallationSettings(1);
 
@@ -200,7 +208,7 @@ describe('maintainer actions', () => {
 
     it('returns saved min contributor level', async () => {
       mockFrom
-        .mockReturnValueOnce(chain({ installation_id: 1 }))
+        .mockReturnValueOnce(chain({ installation_id: 1, permission_level: 'org_admin' }))
         .mockReturnValueOnce(chain({ min_contributor_level: 2, auto_assign_mentor_chain: true }));
 
       const res = await getInstallationSettings(1);
@@ -222,7 +230,7 @@ describe('maintainer actions', () => {
     it('upserts min contributor level for maintainer install', async () => {
       const upsert = chain();
       mockFrom
-        .mockReturnValueOnce(chain({ installation_id: 1 }))
+        .mockReturnValueOnce(chain({ installation_id: 1, permission_level: 'org_admin' }))
         .mockReturnValueOnce(chain({ auto_assign_mentor_chain: true }))
         .mockReturnValueOnce(upsert);
 
@@ -242,7 +250,7 @@ describe('maintainer actions', () => {
     it('upserts auto-assign mentor chain while preserving min contributor level', async () => {
       const upsert = chain();
       mockFrom
-        .mockReturnValueOnce(chain({ installation_id: 1 }))
+        .mockReturnValueOnce(chain({ installation_id: 1, permission_level: 'org_admin' }))
         .mockReturnValueOnce(chain({ min_contributor_level: 2 }))
         .mockReturnValueOnce(upsert);
 
@@ -255,6 +263,33 @@ describe('maintainer actions', () => {
           min_contributor_level: 2,
           auto_assign_mentor_chain: true,
         }),
+        { onConflict: 'installation_id' },
+      );
+    });
+
+    it('rejects repo_maintain from modifying settings', async () => {
+      mockFrom.mockReturnValueOnce(
+        chain({ installation_id: 1, permission_level: 'repo_maintain' }),
+      );
+
+      const res = await setMinContributorLevel({ installationId: 1, minContributorLevel: 2 });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+
+    it('upserts AI PR detection for admin maintainer', async () => {
+      const upsert = chain();
+      mockFrom
+        .mockReturnValueOnce(chain({ installation_id: 1, permission_level: 'org_admin' }))
+        .mockReturnValueOnce(chain({ min_contributor_level: 2 }))
+        .mockReturnValueOnce(upsert);
+
+      const res = await setAiPrDetection({ installationId: 1, enabled: true });
+
+      expect(res.ok).toBe(true);
+      expect(upsert.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ ai_pr_detection: true }),
         { onConflict: 'installation_id' },
       );
     });
@@ -1542,7 +1577,8 @@ describe('maintainer actions', () => {
         .mockReturnValueOnce(chain(mockRepo)) // installation_repositories
         .mockReturnValueOnce(chain(mockAuthorProfile)) // profiles author
         .mockReturnValueOnce(chain(mockMergedEvents)) // xp_events author
-        .mockReturnValueOnce(chain(mockMentorProfile)); // profiles mentor
+        .mockReturnValueOnce(chain(mockMentorProfile)) // profiles mentor
+        .mockReturnValueOnce(chain([])); // pull_request_pipeline_stages
 
       vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
 
