@@ -215,7 +215,7 @@ export default function DocsPage() {
 
         <div className="docs-body">
           <p>
-            There is a silent tax levied on every engineering team as they scale. It isn't paid in dollars, but in cycles. It is the insidious creeping slowness of the integration pipeline. What begins as a snappy, instantaneous feedback loop degenerates into a sluggish, fragile monster that demands constant feeding and watering by dedicated DevOps engineers.
+            There is a silent tax levied on every engineering team as they scale. It isn&apos;t paid in dollars, but in cycles. It is the insidious creeping slowness of the integration pipeline. What begins as a snappy, instantaneous feedback loop degenerates into a sluggish, fragile monster that demands constant feeding and watering by dedicated DevOps engineers.
           </p>
 
           <p>
