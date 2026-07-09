@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const isDev = process.env.NODE_ENV === 'development';
+const isProd = process.env.NODE_ENV === 'production';
 
 const nextConfig = {
   // Compress responses for faster transfer
@@ -37,7 +38,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' https://api.github.com https://github.com https://*.supabase.co https://vitals.vercel-insights.com http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
+              `connect-src 'self' https://api.github.com https://github.com https://*.supabase.co https://vitals.vercel-insights.com${isProd ? '' : " http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*"}`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

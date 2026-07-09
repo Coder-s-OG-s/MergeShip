@@ -1,5 +1,16 @@
 import { Resend } from 'resend';
 
+// Escape HTML special characters to prevent injection of raw HTML into emails.
+function escapeHtml(input: unknown): string {
+  if (input == null) return '';
+  return String(input)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 type SendHelpDispatchEmailArgs = {
   to: string;
   mentorHandle: string;
@@ -31,13 +42,13 @@ export async function sendHelpDispatchEmail({
     html: `
       <h2>Someone needs your help on a PR</h2>
 
-      <p>Hello ${mentorHandle},</p>
+      <p>Hello ${escapeHtml(mentorHandle)},</p>
 
-      <p>${menteeHandle} has requested help on a pull request.</p>
+      <p>${escapeHtml(menteeHandle)} has requested help on a pull request.</p>
 
       <p>
         <strong>Pull Request:</strong><br />
-        <a href="${prUrl}">${prUrl}</a>
+        <a href="${escapeHtml(prUrl)}">${escapeHtml(prUrl)}</a>
       </p>
 
       ${
@@ -45,7 +56,7 @@ export async function sendHelpDispatchEmail({
           ? `
         <p>
           <strong>Help Request:</strong><br />
-          ${helpReason}
+          ${escapeHtml(helpReason)}
         </p>
       `
           : ''
@@ -91,10 +102,12 @@ export async function sendWeeklyDigestEmail({
       ? `
       <h3>Recommended for you:</h3>
       <ul>
-        ${recommendations.map((r) => `<li><a href="${r.url}">${r.title}</a> (+${r.xpReward} XP)</li>`).join('')}
+        ${recommendations.map((r) => `<li><a href="${escapeHtml(r.url)}">${escapeHtml(r.title)}</a> (+${r.xpReward} XP)</li>`).join('')}
       </ul>
     `
       : '';
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com';
 
   return resend.emails.send({
     from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
@@ -103,7 +116,7 @@ export async function sendWeeklyDigestEmail({
     html: `
       <h2>Your Weekly Progress Digest</h2>
 
-      <p>Hello ${githubHandle}, here's what you achieved this week on MergeShip!</p>
+      <p>Hello ${escapeHtml(githubHandle)}, here's what you achieved this week on MergeShip!</p>
 
       <h3>Progress</h3>
       <ul>
@@ -122,14 +135,14 @@ export async function sendWeeklyDigestEmail({
       ${recommendationsHtml}
 
       <p>
-        View your dashboard: <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com'}">${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com'}</a>
+        View your dashboard: <a href="${escapeHtml(appUrl)}">${escapeHtml(appUrl)}</a>
       </p>
       <br />
       <p style="font-size: 12px; color: #666;">
-        You can unsubscribe from these emails by updating your <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com'}/settings/profile">Profile Settings</a>.
+        You can unsubscribe from these emails by updating your <a href="${escapeHtml(appUrl)}/settings/profile">Profile Settings</a>.
       </p>
     `,
-    text: `Your Weekly Progress Digest\n\nHello ${githubHandle}, here's what you achieved this week on MergeShip!\n\nProgress:\n- XP Gained: ${xpGained} XP\n- Current Level: Level ${currentLevel}\n- Progress to Next Level: ${xpToNextLevel} XP needed\n\nActivity:\n- Issues Completed: ${issuesCompleted}\n- PRs Merged: ${prsMerged}\n- Reviews Performed: ${reviewsPerformed}\n\n${recommendations.length > 0 ? `Recommended for you:\n${recommendations.map((r) => `- ${r.title} (+${r.xpReward} XP): ${r.url}`).join('\n')}\n\n` : ''}View your dashboard: ${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com'}\n\nYou can unsubscribe from these emails by updating your Profile Settings.\n`,
+    text: `Your Weekly Progress Digest\n\nHello ${githubHandle}, here's what you achieved this week on MergeShip!\n\nProgress:\n- XP Gained: ${xpGained} XP\n- Current Level: Level ${currentLevel}\n- Progress to Next Level: ${xpToNextLevel} XP needed\n\nActivity:\n- Issues Completed: ${issuesCompleted}\n- PRs Merged: ${prsMerged}\n- Reviews Performed: ${reviewsPerformed}\n\n${recommendations.length > 0 ? `Recommended for you:\n${recommendations.map((r) => `- ${r.title} (+${r.xpReward} XP): ${r.url}`).join('\n')}\n\n` : ''}View your dashboard: ${appUrl}\n\nYou can unsubscribe from these emails by updating your Profile Settings.\n`,
   });
 }
 

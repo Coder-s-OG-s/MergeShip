@@ -275,7 +275,8 @@ create policy profiles_read_all on profiles for select using (true);
 
 drop policy if exists profiles_update_self on profiles;
 create policy profiles_update_self on profiles for update
-  using (auth.uid() = id);
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
 
 alter table recommendations enable row level security;
 drop policy if exists recs_read_own on recommendations;
