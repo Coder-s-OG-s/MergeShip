@@ -342,7 +342,8 @@ async function handleMerge(
     .eq('github_handle', pr.user.login)
     .maybeSingle();
   if (!profile) return { xpAwarded: false };
-  await insertXpEvent({
+
+  const insertedUnrecommended = await insertXpEvent({
     userId: profile.id,
     source: XP_SOURCE.UNRECOMMENDED_MERGE,
     refType: 'pr',
@@ -350,94 +351,93 @@ async function handleMerge(
     repo,
     xpDelta: 5,
   });
-  return { xpAwarded: true };
-}
 
-async function awardRecommendedMerge(
-  sb: NonNullable<ReturnType<typeof getServiceSupabase>>,
-  rec: { id: number; user_id: string; difficulty: string; xp_reward: number | null },
-  repo: string,
-  pr: PrPayload['pull_request'],
-): Promise<{ xpAwarded: boolean; recId: number }> {
-  const difficulty = rec.difficulty as 'E' | 'M' | 'H';
-  const existing = await sb
-    .from('xp_events')
-    .select('id')
-    .eq('user_id', rec.user_id)
-    .eq('ref_id', refIds.pr(repo, pr.number))
-    .maybeSingle();
-  if (existing?.data) {
-    return { xpAwarded: false, recId: rec.id };
-  }
-  const tierCap =
-    XP_REWARDS.RECOMMENDED_MERGE[difficulty as keyof typeof XP_REWARDS.RECOMMENDED_MERGE] ??
-    xpForMerge(difficulty);
-  const xpDelta = Math.min(rec.xp_reward ?? tierCap, tierCap);
+  return { xpAwarded: insertedUnrecommended };
 
-  const inserted = await insertXpEvent({
-    userId: rec.user_id,
-    source: XP_SOURCE.RECOMMENDED_MERGE,
-    refType: 'pr',
-    refId: refIds.pr(repo, pr.number),
-    repo,
-    difficulty,
-    xpDelta,
-  });
-
-  // 🛡️ Guard against duplicate webhook retry delivery races
-  if (!inserted) {
-    return { xpAwarded: false, recId: rec.id };
-  }
-
-  await sb
-    .from('recommendations')
-    .update({ status: 'completed', completed_at: new Date().toISOString() })
-    .eq('id', rec.id);
-
-  await cacheDelByPrefix(`recs:${rec.user_id}`);
-  await cacheDelByPrefix(`profile:public:`);
-  await cacheDelByPrefix(`leaderboard:`);
-
-  await sb.from('activity_log').insert({
-    user_id: rec.user_id,
-    kind: 'pr_merged',
-    detail: { recId: rec.id, repo, prNumber: pr.number, xpAwarded: xpDelta } as never,
-  });
-
-  return { xpAwarded: true, recId: rec.id };
-}
-
-async function tryLinkByIssueRef(
-  sb: NonNullable<ReturnType<typeof getServiceSupabase>>,
-  repo: string,
-  pr: PrPayload['pull_request'],
-): Promise<number | null> {
-  const issueRefs = [...extractIssueNumbers(pr.body), ...extractIssueNumbers(pr.title)];
-  if (issueRefs.length === 0) return null;
-
-  const { data: profile } = await sb
-    .from('profiles')
-    .select('id')
-    .eq('github_handle', pr.user.login)
-    .maybeSingle();
-  if (!profile) return null;
-
-  const { data: claims } = await sb
-    .from('recommendations')
-    .select('id, issues!inner(repo_full_name, github_issue_number)')
-    .eq('user_id', profile.id)
-    .in('status', ['open', 'claimed']);
-
-  for (const claim of claims ?? []) {
-    // Supabase types the joined `issues` field as an array even for a
-    // single-row !inner join. Normalise.
-    const issue = unwrapJoin<{ repo_full_name?: string; github_issue_number?: number }>(
-      (claim as unknown as { issues: unknown }).issues,
-    );
-    if (!issue?.repo_full_name || typeof issue.github_issue_number !== 'number') continue;
-    if (issue.repo_full_name === repo && issueRefs.includes(issue.github_issue_number)) {
-      return (claim as { id: number }).id;
+  async function awardRecommendedMerge(
+    sb: NonNullable<ReturnType<typeof getServiceSupabase>>,
+    rec: { id: number; user_id: string; difficulty: string; xp_reward: number | null },
+    repo: string,
+    pr: PrPayload['pull_request'],
+  ): Promise<{ xpAwarded: boolean; recId: number }> {
+    const difficulty = rec.difficulty as 'E' | 'M' | 'H';
+    const existing = await sb
+      .from('xp_events')
+      .select('id')
+      .eq('user_id', rec.user_id)
+      .eq('ref_id', refIds.pr(repo, pr.number))
+      .maybeSingle();
+    if (existing?.data) {
+      return { xpAwarded: false, recId: rec.id };
     }
+    const tierCap =
+      XP_REWARDS.RECOMMENDED_MERGE[difficulty as keyof typeof XP_REWARDS.RECOMMENDED_MERGE] ??
+      xpForMerge(difficulty);
+    const xpDelta = Math.min(rec.xp_reward ?? tierCap, tierCap);
+
+    const inserted = await insertXpEvent({
+      userId: rec.user_id,
+      source: XP_SOURCE.RECOMMENDED_MERGE,
+      refType: 'pr',
+      refId: refIds.pr(repo, pr.number),
+      repo,
+      difficulty,
+      xpDelta,
+    });
+
+    await sb
+      .from('recommendations')
+      .update({ status: 'completed', completed_at: new Date().toISOString() })
+      .eq('id', rec.id);
+
+    await cacheDelByPrefix(`recs:${rec.user_id}`);
+    await cacheDelByPrefix(`profile:public:`);
+    await cacheDelByPrefix(`leaderboard:`);
+
+    // Only run side-effects that cannot repeat if this is the first successful insertion
+    if (inserted) {
+      await sb.from('activity_log').insert({
+        user_id: rec.user_id,
+        kind: 'pr_merged',
+        detail: { recId: rec.id, repo, prNumber: pr.number, xpAwarded: xpDelta } as never,
+      });
+    }
+
+    return { xpAwarded: inserted, recId: rec.id };
   }
-  return null;
+
+  async function tryLinkByIssueRef(
+    sb: NonNullable<ReturnType<typeof getServiceSupabase>>,
+    repo: string,
+    pr: PrPayload['pull_request'],
+  ): Promise<number | null> {
+    const issueRefs = [...extractIssueNumbers(pr.body), ...extractIssueNumbers(pr.title)];
+    if (issueRefs.length === 0) return null;
+
+    const { data: profile } = await sb
+      .from('profiles')
+      .select('id')
+      .eq('github_handle', pr.user.login)
+      .maybeSingle();
+    if (!profile) return null;
+
+    const { data: claims } = await sb
+      .from('recommendations')
+      .select('id, issues!inner(repo_full_name, github_issue_number)')
+      .eq('user_id', profile.id)
+      .in('status', ['open', 'claimed']);
+
+    for (const claim of claims ?? []) {
+      // Supabase types the joined `issues` field as an array even for a
+      // single-row !inner join. Normalise.
+      const issue = unwrapJoin<{ repo_full_name?: string; github_issue_number?: number }>(
+        (claim as unknown as { issues: unknown }).issues,
+      );
+      if (!issue?.repo_full_name || typeof issue.github_issue_number !== 'number') continue;
+      if (issue.repo_full_name === repo && issueRefs.includes(issue.github_issue_number)) {
+        return (claim as { id: number }).id;
+      }
+    }
+    return null;
+  }
 }
