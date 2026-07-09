@@ -249,35 +249,6 @@ export const levelUps = pgTable(
   }),
 );
 
-// ---------- event sourcing / CQRS ----------
-
-export const events = pgTable(
-  'events',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    aggregateType: text('aggregate_type').notNull(),
-    aggregateId: text('aggregate_id').notNull(),
-    eventType: text('event_type').notNull(),
-    version: integer('version').notNull(),
-    payload: jsonb('payload').notNull(),
-    metadata: jsonb('metadata'),
-    idempotencyKey: text('idempotency_key').unique(),
-    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
-    processedAt: timestamp('processed_at', { withTimezone: true }),
-  },
-  (t) => ({
-    aggregateIdx: index('idx_events_aggregate').on(t.aggregateType, t.aggregateId),
-    occurredAtIdx: index('idx_events_occurred_at').on(t.occurredAt),
-    idempotencyKeyIdx: index('idx_events_idempotency_key').on(t.idempotencyKey),
-  }),
-);
-
-export const idempotencyKeys = pgTable('idempotency_keys', {
-  key: text('key').primaryKey(),
-  response: jsonb('response').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
 // ---------- help requests ----------
 
 export const helpRequests = pgTable(

@@ -3,7 +3,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_SOURCE, xpForMerge, refIds, XP_REWARDS } from '@/lib/xp/sources';
 import { cacheDelByPrefix } from '@/lib/cache';
-import { appendEvent } from '@/lib/event-sourcing/event-store';
+
 import { buildPrRow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
 import { unwrapJoin } from '@/lib/supabase/inner-join';
 import {
@@ -345,24 +345,6 @@ async function handleMerge(
   if (!profile) return { xpAwarded: false };
 
   const refId = refIds.pr(repo, pr.number);
-  const idempotencyKey = `unrecommended-merge:${pr.id}:${profile.id}`;
-
-  try {
-    await appendEvent({
-      aggregateType: 'pr',
-      aggregateId: String(pr.id),
-      eventType: 'unrecommended_merge_xp_awarded',
-      payload: {
-        userId: profile.id,
-        repo,
-        prNumber: pr.number,
-        xpDelta: 5,
-      },
-      idempotencyKey,
-    });
-  } catch {
-    // Event already recorded — idempotent.
-  }
 
   await insertXpEvent({
     userId: profile.id,
@@ -387,26 +369,6 @@ async function awardRecommendedMerge(
     xpForMerge(difficulty);
   const xpDelta = Math.min(rec.xp_reward ?? tierCap, tierCap);
   const refId = refIds.pr(repo, pr.number);
-  const idempotencyKey = `recommended-merge:${rec.id}:${pr.id}`;
-
-  try {
-    await appendEvent({
-      aggregateType: 'pr',
-      aggregateId: String(pr.id),
-      eventType: 'recommended_merge_xp_awarded',
-      payload: {
-        userId: rec.user_id,
-        recId: rec.id,
-        repo,
-        prNumber: pr.number,
-        difficulty,
-        xpDelta,
-      },
-      idempotencyKey,
-    });
-  } catch {
-    // Event already recorded — continue with idempotent side-effects.
-  }
 
   const inserted = await insertXpEvent({
     userId: rec.user_id,

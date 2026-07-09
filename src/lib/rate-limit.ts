@@ -1,4 +1,4 @@
-import { cacheRateLimitHit, blockedRateLimitBucket } from './cache';
+import { cacheRateLimitHit, isSharedCacheAvailable, blockedRateLimitBucket } from './cache';
 
 export const RATE_LIMIT_TIERS = {
   STANDARD: { limit: 30, windowSec: 60 },
@@ -29,10 +29,14 @@ export async function rateLimit(opts: RateLimitOptions): Promise<RateLimitResult
   const bucketKey = `rl:v2:${opts.namespace}:${opts.key}`;
   const now = Date.now();
 
-  // Rate limiting uses the configured cache backend. In production serverless
-  // deployments without a shared cache (Upstash/Redis), the MemoryBackend is
-  // per-invocation and counters aren't shared — rate limiting degrades to
-  // per-request (always passes). A warning is already logged by pickDefaultBackend.
+  if (process.env.NODE_ENV === 'production' && !isSharedCacheAvailable()) {
+    console.error(
+      '[rate-limit] no shared cache configured in production — blocking request. Set KV_REST_API_URL/KV_REST_API_TOKEN or REDIS_URL.',
+    );
+    const blocked = blockedRateLimitBucket(opts.windowSec, now);
+    return { ok: false, remaining: 0, resetAt: blocked.resetAt };
+  }
+
   const next = await cacheRateLimitHit(bucketKey, opts.windowSec, now);
 
   return {

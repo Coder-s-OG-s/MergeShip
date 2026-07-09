@@ -2,7 +2,6 @@ import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_REWARDS, DAILY_CAPS, XP_SOURCE, refIds } from '@/lib/xp/sources';
-import { appendEvent } from '@/lib/event-sourcing/event-store';
 
 /**
  * Webhook handler for GitHub `pull_request_review` events.
@@ -133,27 +132,6 @@ export const processReviewEvent = inngest.createFunction(
       if (isFast) xp += XP_REWARDS.HELP_REVIEW_SPEED_BONUS;
 
       const refId = refIds.helpReview(helpReq.id, payload.review.user.login);
-      const idempotencyKey = `help-review:${payload.review.id}:${reviewer.id}`;
-
-      try {
-        await appendEvent({
-          aggregateType: 'help_review',
-          aggregateId: String(helpReq.id),
-          eventType: 'help_review_xp_awarded',
-          payload: {
-            reviewerId: reviewer.id,
-            helpReqId: helpReq.id,
-            prUrl: payload.pull_request.html_url,
-            xpDelta: xp,
-            isMentor,
-            isFast,
-            menteeLevel,
-          },
-          idempotencyKey,
-        });
-      } catch {
-        // Event already recorded (idempotency_key unique) — skip.
-      }
 
       let inserted = false;
       try {
