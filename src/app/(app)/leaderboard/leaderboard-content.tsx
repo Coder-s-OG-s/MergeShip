@@ -199,7 +199,7 @@ export function LeaderboardContent({
                     </p>
                   ) : (
                     <p className="max-w-md text-sm text-zinc-500">
-                      Sign in to view your friends' activity and rank on the leaderboard.
+                      Sign in to view your friends&apos; activity and rank on the leaderboard.
                     </p>
                   )}
                 </>
