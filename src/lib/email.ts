@@ -132,6 +132,7 @@ export async function sendWeeklyDigestEmail({
     text: `Your Weekly Progress Digest\n\nHello ${githubHandle}, here's what you achieved this week on MergeShip!\n\nProgress:\n- XP Gained: ${xpGained} XP\n- Current Level: Level ${currentLevel}\n- Progress to Next Level: ${xpToNextLevel} XP needed\n\nActivity:\n- Issues Completed: ${issuesCompleted}\n- PRs Merged: ${prsMerged}\n- Reviews Performed: ${reviewsPerformed}\n\n${recommendations.length > 0 ? `Recommended for you:\n${recommendations.map((r) => `- ${r.title} (+${r.xpReward} XP): ${r.url}`).join('\n')}\n\n` : ''}View your dashboard: ${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com'}\n\nYou can unsubscribe from these emails by updating your Profile Settings.\n`,
   });
 }
+
 export async function sendInviteEmail({ to, inviteUrl }: { to: string; inviteUrl: string }) {
   if (!resend) {
     console.warn('Resend email client not configured. Invite URL:', inviteUrl);
@@ -150,5 +151,34 @@ export async function sendInviteEmail({ to, inviteUrl }: { to: string; inviteUrl
       <p style="font-size: 12px; color: #666;">This invitation link will expire in 7 days.</p>
     `,
     text: `You have been invited as a contributor!\n\nJoin the project by opening this link: ${inviteUrl}\n\nThis invitation link will expire in 7 days.`,
+
+
+export async function sendOrganizationInviteEmail({
+  to,
+  inviteLink,
+  inviterHandle,
+  organizationName,
+}: {
+  to: string;
+  inviteLink: string;
+  inviterHandle: string;
+  organizationName: string;
+}) {
+  if (!resend) {
+    console.warn('RESEND_API_KEY missing, skipping email send');
+    return { skipped: true };
+  }
+
+  return resend.emails.send({
+    from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+    to,
+    subject: `[MergeShip] ${inviterHandle} invited you to join ${organizationName}`,
+    html: `
+      <h2>You've been invited!</h2>
+      <p>${inviterHandle} invited you to join <strong>${organizationName}</strong> on MergeShip.</p>
+      <p>Click the link below to accept the invitation:</p>
+      <p><a href="${inviteLink}">${inviteLink}</a></p>
+    `,
+
   });
 }

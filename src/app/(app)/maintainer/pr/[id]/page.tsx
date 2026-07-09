@@ -12,6 +12,7 @@ import {
 import { isOk } from '@/lib/result';
 import { VerifyButton } from '@/app/(app)/issues/verify-button';
 import { MergeDecisionPanel } from './merge-decision-panel';
+import { PipelineStepper, StepperNode } from './pipeline-stepper';
 import {
   GitPullRequest,
   MessageSquare,
@@ -118,6 +119,49 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           {/* Main timeline + Header (2 cols) */}
           <div className="space-y-6 lg:col-span-2">
+            {(() => {
+              const stepperNodes: StepperNode[] = [];
+              stepperNodes.push({
+                label: 'Submitted',
+                subLabel: pr.authorLogin,
+                status: 'completed',
+              });
+
+              if (pr.pipelineStages) {
+                pr.pipelineStages.forEach((stage) => {
+                  let label = stage.stageType.replace('_', ' ');
+                  if (stage.stageType === 'mentor_approval') {
+                    label = stage.reviewerLevelSnapshot
+                      ? `L${stage.reviewerLevelSnapshot} Review`
+                      : 'Mentor Review';
+                  }
+                  stepperNodes.push({
+                    label,
+                    subLabel: stage.status === 'approved' ? 'Approved' : 'Pending',
+                    status: stage.status === 'approved' ? 'completed' : 'current',
+                  });
+                });
+              }
+
+              const isMerged = pr.state === 'merged';
+              const isClosed = pr.state === 'closed';
+
+              stepperNodes.push({
+                label: 'Maintainer',
+                subLabel: isMerged ? 'Approved' : isClosed ? 'Closed' : 'Awaiting you',
+                status: isMerged ? 'completed' : isClosed ? 'completed' : 'current',
+                iconType: isMerged ? 'check' : isClosed ? 'check' : 'hourglass',
+              });
+
+              stepperNodes.push({
+                label: 'Merge',
+                status: isMerged ? 'completed' : 'pending',
+                iconType: 'merge',
+              });
+
+              return <PipelineStepper nodes={stepperNodes} />;
+            })()}
+
             {/* Header Section */}
             <header className="rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6 backdrop-blur-md">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -465,10 +509,9 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
               </div>
             )}
 
-            <div className="sticky top-6 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-400">
-                Merge Decision
-              </h2>
+            {/* Merge Decision Card */}
+            <div className="sticky top-6 rounded-sm border border-emerald-500 bg-[#0c0c0e] p-6 shadow-[0_0_20px_rgba(16,185,129,0.05)]">
+              <h2 className="mb-6 text-sm font-medium text-zinc-200">Merge Decision</h2>
               {pr.state === 'open' ? (
                 <MergeDecisionPanel
                   prId={prId}
@@ -477,6 +520,7 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
                   installationId={pr.installationId!}
                   repoFullName={pr.repoFullName}
                   prNumber={pr.number}
+                  pipelineStages={pr.pipelineStages}
                   headSha={pr.headSha}
                 />
               ) : (
