@@ -176,7 +176,7 @@ export const processReviewEvent = inngest.createFunction(
         });
       } catch (err: any) {
         // Roll back the help request status if XP insertion failed
-        await sb
+        const { error: rollbackErr } = await sb
           .from('help_requests')
           .update({
             status: 'open',
@@ -184,6 +184,10 @@ export const processReviewEvent = inngest.createFunction(
             resolved_at: null,
           })
           .eq('id', helpReq.id);
+
+        if (rollbackErr) {
+          console.error(`Failed to rollback help request status: ${rollbackErr.message}`);
+        }
 
         if (err.message === 'daily_review_cap_reached') {
           return { skipped: true, reason: 'daily_review_cap_reached' };
