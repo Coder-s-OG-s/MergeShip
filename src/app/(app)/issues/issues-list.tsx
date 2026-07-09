@@ -466,7 +466,7 @@ export function IssuesList({
     if (!selectedIssue) return;
     const updated = initialData.issues.find((i) => i.id === selectedIssue.id);
     if (updated) setSelectedIssue(updated);
-  }, [initialData.issues]);
+  }, [initialData.issues, selectedIssue]);
 
   useEffect(() => {
     setSearch(initialFilters.search ?? '');
