@@ -100,7 +100,7 @@ describe('weeklyDigest', () => {
     );
   });
 
-  it('each user gets a step keyed by their own id', async () => {
+  it('processes users in batches, using batch-named step keys', async () => {
     const users = [makeUser('abc', 'abc@example.com'), makeUser('xyz', 'xyz@example.com')];
 
     wire({
@@ -120,17 +120,16 @@ describe('weeklyDigest', () => {
 
     vi.mocked(sendWeeklyDigestEmail).mockResolvedValue(emailSent);
 
-    // Spy on step.run to capture step names
     const stepRunSpy = vi.spyOn(step, 'run');
 
     await run({ step });
 
     const stepNames = stepRunSpy.mock.calls.map(([name]) => name);
-    expect(stepNames).toContain('send-email-abc');
-    expect(stepNames).toContain('send-email-xyz');
+    expect(stepNames).toContain('fetch-eligible-users');
+    expect(stepNames).toContain('send-digest-batch-0');
   });
 
-  it("one user's step throwing does not affect other users' steps", async () => {
+  it("one user's failure does not affect other users in the batch", async () => {
     const users = [makeUser('u1', 'u1@example.com'), makeUser('u2', 'u2@example.com')];
 
     wire({
@@ -148,32 +147,13 @@ describe('weeklyDigest', () => {
       }),
     });
 
-    // u1 fails, u2 succeeds
     vi.mocked(sendWeeklyDigestEmail)
       .mockRejectedValueOnce(new Error('email provider timeout'))
       .mockResolvedValueOnce(emailSent);
 
-    // The step for u1 will throw — simulate by catching it at the step level
-    // (in production Inngest catches this per-step; in tests step.run re-throws,
-    // so we use a custom step harness here that mirrors the isolation guarantee)
-    const isolatedStep = {
-      run: async <T>(name: string, fn: () => Promise<T>): Promise<T | null> => {
-        try {
-          return await fn();
-        } catch {
-          return null;
-        }
-      },
-    } as unknown as typeof step;
+    const result = await run({ step });
 
-    const result = await (
-      weeklyDigest as unknown as (ctx: { step: typeof step }) => Promise<{
-        processed: number;
-        skipped: number;
-      }>
-    )({ step: isolatedStep });
-
-    // u1 failed (null result → skipped), u2 succeeded
+    // u1 failed (caught → skipped), u2 succeeded
     expect(result).toEqual({ processed: 1, skipped: 1 });
     expect(sendWeeklyDigestEmail).toHaveBeenCalledTimes(2);
     expect(sendWeeklyDigestEmail).toHaveBeenCalledWith(
@@ -181,7 +161,7 @@ describe('weeklyDigest', () => {
     );
   });
 
-  it('throws on xp_events DB error so Inngest can retry the step', async () => {
+  it('handles xp_events DB error gracefully by skipping that user', async () => {
     const users = [makeUser('u1', 'u1@example.com')];
 
     wire({
@@ -201,7 +181,9 @@ describe('weeklyDigest', () => {
       }),
     });
 
-    await expect(run({ step })).rejects.toThrow('Failed to fetch xp_events for u1');
+    // Should not throw — the error is caught and the user is skipped.
+    const result = await run({ step });
+    expect(result).toEqual({ processed: 0, skipped: 1 });
     expect(sendWeeklyDigestEmail).not.toHaveBeenCalled();
   });
 

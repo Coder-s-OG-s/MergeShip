@@ -11,7 +11,35 @@ import {
 } from '@/lib/maintainer/detect';
 import { type InstallationSettingsData, type RepoPickerRow } from './types';
 import { MIN_CONTRIBUTOR_LEVELS } from './constants';
+import { tryGetDb } from '@/lib/db/client';
+import { sql } from 'drizzle-orm';
 import { logMaintainerAction } from './audit';
+
+async function reloadPostgrestCache() {
+  const db = tryGetDb();
+  if (db) {
+    try {
+      await db.execute(sql`NOTIFY pgrst, 'reload schema'`);
+    } catch (e) {
+      console.warn('Failed to notify PostgREST schema cache reload:', e);
+    }
+  }
+}
+
+async function withSchemaCacheRetry<T>(operation: () => PromiseLike<T>): Promise<T> {
+  const res = await operation();
+  const err = (res as any)?.error;
+  if (
+    err &&
+    String(err.message || '')
+      .toLowerCase()
+      .includes('schema cache')
+  ) {
+    await reloadPostgrestCache();
+    return (await operation()) as T;
+  }
+  return res;
+}
 
 async function assertMaintainerInstall(
   service: NonNullable<ReturnType<typeof getServiceSupabase>>,
@@ -35,11 +63,13 @@ async function readInstallationSettings(
   service: NonNullable<ReturnType<typeof getServiceSupabase>>,
   installationId: number,
 ): Promise<Omit<InstallationSettingsData, 'installationId'>> {
-  const { data } = await service
-    .from('installation_settings')
-    .select('min_contributor_level, auto_assign_mentor_chain, ai_pr_detection')
-    .eq('installation_id', installationId)
-    .maybeSingle();
+  const { data } = await withSchemaCacheRetry(() =>
+    service
+      .from('installation_settings')
+      .select('min_contributor_level, auto_assign_mentor_chain, ai_pr_detection')
+      .eq('installation_id', installationId)
+      .maybeSingle(),
+  );
 
   const level = data?.min_contributor_level;
   return {
@@ -100,15 +130,17 @@ export async function setMinContributorLevel(opts: {
 
   const minContributorLevel = opts.minContributorLevel as 0 | 1 | 2 | 3;
   const current = await readInstallationSettings(service, opts.installationId);
-  const { error } = await service.from('installation_settings').upsert(
-    {
-      installation_id: opts.installationId,
-      min_contributor_level: minContributorLevel,
-      auto_assign_mentor_chain: current.autoAssignMentorChain,
-      ai_pr_detection: current.aiPrDetection,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'installation_id' },
+  const { error } = await withSchemaCacheRetry(() =>
+    service.from('installation_settings').upsert(
+      {
+        installation_id: opts.installationId,
+        min_contributor_level: minContributorLevel,
+        auto_assign_mentor_chain: current.autoAssignMentorChain,
+        ai_pr_detection: current.aiPrDetection,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'installation_id' },
+    ),
   );
   if (error) {
     await logMaintainerAction({
@@ -160,15 +192,17 @@ export async function setAutoAssignMentorChain(opts: {
   }
 
   const current = await readInstallationSettings(service, opts.installationId);
-  const { error } = await service.from('installation_settings').upsert(
-    {
-      installation_id: opts.installationId,
-      min_contributor_level: current.minContributorLevel,
-      auto_assign_mentor_chain: opts.enabled,
-      ai_pr_detection: current.aiPrDetection,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'installation_id' },
+  const { error } = await withSchemaCacheRetry(() =>
+    service.from('installation_settings').upsert(
+      {
+        installation_id: opts.installationId,
+        min_contributor_level: current.minContributorLevel,
+        auto_assign_mentor_chain: opts.enabled,
+        ai_pr_detection: current.aiPrDetection,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'installation_id' },
+    ),
   );
   if (error) {
     await logMaintainerAction({
@@ -220,15 +254,17 @@ export async function setAiPrDetection(opts: {
   }
 
   const current = await readInstallationSettings(service, opts.installationId);
-  const { error } = await service.from('installation_settings').upsert(
-    {
-      installation_id: opts.installationId,
-      min_contributor_level: current.minContributorLevel,
-      auto_assign_mentor_chain: current.autoAssignMentorChain,
-      ai_pr_detection: opts.enabled,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'installation_id' },
+  const { error } = await withSchemaCacheRetry(() =>
+    service.from('installation_settings').upsert(
+      {
+        installation_id: opts.installationId,
+        min_contributor_level: current.minContributorLevel,
+        auto_assign_mentor_chain: current.autoAssignMentorChain,
+        ai_pr_detection: opts.enabled,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'installation_id' },
+    ),
   );
   if (error) {
     await logMaintainerAction({

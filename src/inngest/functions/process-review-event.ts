@@ -108,7 +108,7 @@ export const processReviewEvent = inngest.createFunction(
 
       const { data: helpReq } = await sb
         .from('help_requests')
-        .select('id, user_id, created_at')
+        .select('id, user_id, created_at, status')
         .eq('pr_url', payload.pull_request.html_url)
         .eq('status', 'open')
         .maybeSingle();
@@ -136,6 +136,8 @@ export const processReviewEvent = inngest.createFunction(
         }
       }
       if (isFast) xp += XP_REWARDS.HELP_REVIEW_SPEED_BONUS;
+
+      const refId = refIds.helpReview(helpReq.id, payload.review.user.login);
 
       // Optimistically resolve the help request first.
       // This prevents concurrent reviews from claiming the same help request.
@@ -165,7 +167,7 @@ export const processReviewEvent = inngest.createFunction(
           userId: reviewer.id,
           source: XP_SOURCE.HELP_REVIEW,
           refType: 'review',
-          refId: refIds.helpReview(helpReq.id, payload.review.user.login),
+          refId,
           repo: payload.pull_request.base.repo.full_name,
           xpDelta: xp,
           metadata: { isMentor, isFast, menteeLevel },

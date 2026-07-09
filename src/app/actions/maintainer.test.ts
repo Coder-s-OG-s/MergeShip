@@ -61,7 +61,7 @@ const mockDbInnerJoin = vi.fn(() => ({ where: mockDbWhere }));
 const mockDbFrom = vi.fn(() => ({ innerJoin: mockDbInnerJoin }));
 const mockDbSelect = vi.fn(() => ({ from: mockDbFrom }));
 
-const mockDb = { select: mockDbSelect };
+const mockDb = { select: mockDbSelect, execute: vi.fn() };
 
 vi.mock('@/lib/db/client', () => ({
   tryGetDb: () => mockDb,
@@ -74,6 +74,7 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn(),
   and: vi.fn(),
   count: vi.fn(),
+  sql: vi.fn(),
 }));
 
 vi.mock('@/lib/maintainer/detect', () => ({
@@ -142,6 +143,7 @@ const USER = { id: 'user-1' };
 
 describe('maintainer actions', () => {
   beforeEach(() => {
+    mockFrom.mockReset();
     vi.clearAllMocks();
     mockGetUser.mockResolvedValue({ data: { user: USER } });
     vi.mocked(detect.isUserMaintainer).mockResolvedValue(true);
@@ -218,6 +220,29 @@ describe('maintainer actions', () => {
         expect(res.data.minContributorLevel).toBe(2);
         expect(res.data.autoAssignMentorChain).toBe(true);
       }
+    });
+
+    it('reloads cache and retries when a schema cache error occurs during query', async () => {
+      mockFrom
+        .mockReturnValueOnce(chain({ installation_id: 1, permission_level: 'org_admin' }))
+        .mockReturnValueOnce(
+          chain(
+            null,
+            new Error(
+              "Could not find the table 'public.installation_settings' in the schema cache",
+            ),
+          ),
+        )
+        .mockReturnValueOnce(chain({ min_contributor_level: 2, auto_assign_mentor_chain: true }));
+
+      const res = await getInstallationSettings(1);
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.minContributorLevel).toBe(2);
+        expect(res.data.autoAssignMentorChain).toBe(true);
+      }
+      expect(mockDb.execute).toHaveBeenCalled();
     });
 
     it('rejects invalid min contributor level', async () => {
