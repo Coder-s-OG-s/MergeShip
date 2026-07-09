@@ -3,6 +3,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_SOURCE, xpForMerge, refIds, XP_REWARDS } from '@/lib/xp/sources';
 import { cacheDelByPrefix } from '@/lib/cache';
+
 import { buildPrRow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
 import { unwrapJoin } from '@/lib/supabase/inner-join';
 import {
@@ -343,11 +344,15 @@ async function handleMerge(
     .maybeSingle();
   if (!profile) return { xpAwarded: false };
 
+
   const insertedUnrecommended = await insertXpEvent({
+  const refId = refIds.pr(repo, pr.number);
+
+  await insertXpEvent({
     userId: profile.id,
     source: XP_SOURCE.UNRECOMMENDED_MERGE,
     refType: 'pr',
-    refId: refIds.pr(repo, pr.number),
+    refId,
     repo,
     xpDelta: 5,
   });
@@ -383,6 +388,58 @@ async function handleMerge(
       repo,
       difficulty,
       xpDelta,
+  return { xpAwarded: true };
+}
+
+async function awardRecommendedMerge(
+  sb: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  rec: { id: number; user_id: string; difficulty: string; xp_reward: number | null },
+  repo: string,
+  pr: PrPayload['pull_request'],
+): Promise<{ xpAwarded: boolean; recId: number }> {
+  const difficulty = rec.difficulty as 'E' | 'M' | 'H';
+  const tierCap =
+    XP_REWARDS.RECOMMENDED_MERGE[difficulty as keyof typeof XP_REWARDS.RECOMMENDED_MERGE] ??
+    xpForMerge(difficulty);
+  const xpDelta = Math.min(rec.xp_reward ?? tierCap, tierCap);
+  const refId = refIds.pr(repo, pr.number);
+
+  const inserted = await insertXpEvent({
+    userId: rec.user_id,
+    source: XP_SOURCE.RECOMMENDED_MERGE,
+    refType: 'pr',
+    refId,
+    repo,
+    difficulty,
+    xpDelta,
+  });
+
+  // Always attempt to mark the recommendation as completed, even if XP
+  // was already awarded on a previous attempt. This fixes the case where
+  // the function crashed after insertXpEvent but before the rec update
+  // on a prior retry.
+  const { data: existingRec } = await sb
+    .from('recommendations')
+    .select('status')
+    .eq('id', rec.id)
+    .maybeSingle();
+
+  if (existingRec && existingRec.status !== 'completed') {
+    await sb
+      .from('recommendations')
+      .update({ status: 'completed', completed_at: new Date().toISOString() })
+      .eq('id', rec.id);
+  }
+
+  await cacheDelByPrefix(`recs:${rec.user_id}`);
+  await cacheDelByPrefix(`profile:public:`);
+  await cacheDelByPrefix(`leaderboard:`);
+
+  if (inserted) {
+    await sb.from('activity_log').insert({
+      user_id: rec.user_id,
+      kind: 'pr_merged',
+      detail: { recId: rec.id, repo, prNumber: pr.number, xpAwarded: xpDelta } as never,
     });
 
     await sb

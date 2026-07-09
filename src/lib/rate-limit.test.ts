@@ -78,7 +78,7 @@ describe('rateLimit production guard', () => {
     vi.unstubAllEnvs();
   });
 
-  it('blocks all requests when NODE_ENV=production and no shared cache configured', async () => {
+  it('blocks requests when NODE_ENV=production and no shared cache configured', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     delete process.env.KV_REST_API_URL;
     delete process.env.KV_REST_API_TOKEN;
@@ -87,6 +87,8 @@ describe('rateLimit production guard', () => {
     const { rateLimit: rl } = await import('./rate-limit');
 
     const result = await rl({ namespace: 'test', key: 'u1', limit: 5, windowSec: 60 });
+    // In production without a shared cache, requests are blocked to prevent
+    // silent rate-limiting bypass across serverless instances.
     expect(result.ok).toBe(false);
     expect(result.remaining).toBe(0);
   });
