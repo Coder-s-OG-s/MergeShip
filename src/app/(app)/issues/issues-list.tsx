@@ -208,7 +208,7 @@ export function IssuesList({
         router.push(`/issues${params.size > 0 ? `?${params.toString()}` : ''}`);
       });
     },
-    [router, search, state, difficulty, repo, showClaimed],
+    [router, search, state, difficulty, repo, showClaimed, searchParams],
   );
 
   const handleClaim = async (issueId: number) => {
