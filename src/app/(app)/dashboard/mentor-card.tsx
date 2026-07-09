@@ -24,7 +24,7 @@ export function MentorCard() {
               <span className="text-2xl text-zinc-500">+</span>
             </div>
             <p className="mb-4 text-sm text-zinc-400">
-              You haven't connected with any mentors yet.
+              You haven&apos;t connected with any mentors yet.
             </p>
             <button className="mt-2 rounded bg-[#00FF87] px-4 py-2 text-sm font-bold text-black transition-colors hover:bg-[#00FF87]/80">
               FIND A MENTOR
