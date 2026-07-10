@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { computeTrustScore } from './trust';
 
 describe('computeTrustScore', () => {
-  it('should return 0 for zero or negative values', () => {
+  it('should return 0 for zero, negative, or non-finite values', () => {
     expect(computeTrustScore(0, 0, 0, 0)).toBe(0);
     expect(computeTrustScore(-1, -100, -5, -10)).toBe(0);
+    expect(computeTrustScore(NaN, 0, 0, 0)).toBe(0);
   });
 
   it('should return 100 for maximum/saturated values', () => {
