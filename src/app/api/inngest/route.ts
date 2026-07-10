@@ -10,6 +10,7 @@ import {
 } from '@/inngest/functions/process-installation-event';
 import { issuesSweep } from '@/inngest/functions/issues-sweep';
 import { recommendationsBuild } from '@/inngest/functions/recommendations-build';
+import { recommendationsBuildWorker } from '@/inngest/functions/recommendations-worker';
 import { maintainerDiscover } from '@/inngest/functions/maintainer-discover';
 import {
   processMembershipEvent,
@@ -41,6 +42,7 @@ export const { GET, POST, PUT } = serve({
     processInstallationReposEvent,
     issuesSweep,
     recommendationsBuild,
+    recommendationsBuildWorker,
     maintainerDiscover,
     processMembershipEvent,
     processMemberEvent,
