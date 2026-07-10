@@ -1,5 +1,14 @@
 import { Resend } from 'resend';
 
+export function htmlEscape(raw: string): string {
+  return raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 type SendHelpDispatchEmailArgs = {
   to: string;
   mentorHandle: string;
@@ -31,13 +40,13 @@ export async function sendHelpDispatchEmail({
     html: `
       <h2>Someone needs your help on a PR</h2>
 
-      <p>Hello ${mentorHandle},</p>
+      <p>Hello ${htmlEscape(mentorHandle)},</p>
 
-      <p>${menteeHandle} has requested help on a pull request.</p>
+      <p>${htmlEscape(menteeHandle)} has requested help on a pull request.</p>
 
       <p>
         <strong>Pull Request:</strong><br />
-        <a href="${prUrl}">${prUrl}</a>
+        <a href="${htmlEscape(prUrl)}">${htmlEscape(prUrl)}</a>
       </p>
 
       ${
@@ -45,7 +54,7 @@ export async function sendHelpDispatchEmail({
           ? `
         <p>
           <strong>Help Request:</strong><br />
-          ${helpReason}
+          ${htmlEscape(helpReason)}
         </p>
       `
           : ''
