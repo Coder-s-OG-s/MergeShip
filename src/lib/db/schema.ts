@@ -180,7 +180,7 @@ export const recommendations = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
     issueId: bigint('issue_id', { mode: 'number' })
       .notNull()
-      .references(() => issues.id),
+      .references(() => issues.id, { onDelete: 'cascade' }),
     difficulty: text('difficulty', { enum: ['E', 'M', 'H'] }).notNull(),
     xpReward: integer('xp_reward').notNull(),
     linkedPrUrl: text('linked_pr_url'),
@@ -276,6 +276,7 @@ export const helpRequests = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
     recommendationId: bigint('recommendation_id', { mode: 'number' }).references(
       () => recommendations.id,
+      { onDelete: 'cascade' },
     ),
     prUrl: text('pr_url').notNull(),
     reason: text('reason'),
