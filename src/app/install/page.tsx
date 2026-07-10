@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { InstallWizard } from './install-wizard';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { redirect } from 'next/navigation';
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
  * the App's installation.created webhook records the install and unblocks them.
  */
 export default async function InstallPage() {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) {
     return <NotConfiguredNotice />;
   }
@@ -22,6 +22,8 @@ export default async function InstallPage() {
   } = await sb.auth.getUser();
 
   if (!user) redirect('/');
+
+  const isDevUser = process.env.NODE_ENV !== 'production' && !!user.email?.endsWith('@test.local');
 
   // Idempotent — makes sure a profile row exists so the install webhook can
   // resolve account_login → user_id. Quietly no-ops if already bootstrapped.
@@ -39,7 +41,9 @@ export default async function InstallPage() {
     // the previous one (reinstalls after the old row was force-reactivated).
     // maybeSingle() would error and fall through, leaving the user stuck.
 
-    // 1. Already linked to this user → straight to dashboard.
+    let installationId: number | undefined;
+
+    // 1. Already linked to this user → determine next step
     const { data: linkedRows } = await service
       .from('github_installations')
       .select('id')
@@ -47,7 +51,9 @@ export default async function InstallPage() {
       .is('uninstalled_at', null)
       .order('installed_at', { ascending: false })
       .limit(1);
-    if (linkedRows && linkedRows.length > 0) redirect('/dashboard');
+    if (linkedRows && linkedRows[0]) {
+      installationId = linkedRows[0].id;
+    }
 
     // 2. Row exists by account_login but user_id is null or stale → link it
     //    to the current user. Covers orphans from pre-bootstrap webhooks and
@@ -60,7 +66,7 @@ export default async function InstallPage() {
       .order('installed_at', { ascending: false })
       .limit(1);
     const byHandle = byHandleRows?.[0];
-    if (byHandle) {
+    if (byHandle && !installationId) {
       if (byHandle.user_id !== user.id) {
         await service
           .from('github_installations')
@@ -92,37 +98,21 @@ export default async function InstallPage() {
           },
         });
       }
-      redirect('/dashboard');
+      installationId = byHandle.id;
+    }
+
+    // Repos default to managed=true the moment the installation webhook
+    // records them (migration 0018), so there's nothing to wait on or pick
+    // here — an installed account can go straight to the dashboard.
+    if (installationId) {
+      redirect('/onboarding/analyze');
     }
   }
 
   const slug = process.env.GITHUB_APP_SLUG ?? 'mergeship';
   const installUrl = `https://github.com/apps/${slug}/installations/new`;
 
-  return (
-    <div className="hero-bg grid-bg min-h-screen px-6 py-20 text-white">
-      <div className="mx-auto max-w-xl">
-        <h1 className="mb-4 font-display text-4xl font-bold">One more step</h1>
-        <p className="mb-6 text-gray-300">
-          MergeShip needs the GitHub App installed on your account so it can track your
-          contributions and award XP in real time. Two clicks, no permissions you don&apos;t already
-          have on GitHub.
-        </p>
-
-        <Link
-          href={installUrl}
-          className="btn-primary inline-flex items-center gap-2 rounded-xl px-6 py-3 font-semibold"
-        >
-          Install MergeShip on GitHub
-        </Link>
-
-        <p className="mt-8 text-sm text-gray-500">
-          We only ask for read access to your repos and write access on issues you&apos;re working
-          on. You can revoke it any time in GitHub settings.
-        </p>
-      </div>
-    </div>
-  );
+  return <InstallWizard installUrl={installUrl} isDevUser={isDevUser} />;
 }
 
 function NotConfiguredNotice() {

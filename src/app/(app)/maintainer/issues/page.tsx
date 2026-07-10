@@ -5,9 +5,9 @@ import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
   getMaintainerIssueQueue,
-  type MaintainerInstall,
   type MaintainerIssueRow,
 } from '@/app/actions/maintainer';
+import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { isOk } from '@/lib/result';
 import type { IssueTriageBucket } from '@/lib/maintainer/issue-triage';
 
@@ -32,9 +32,10 @@ const BUCKET_COLOR: Record<IssueTriageBucket, string> = {
 export default async function MaintainerIssuesPage({
   searchParams,
 }: {
-  searchParams: { install?: string; bucket?: string };
+  searchParams: Promise<{ install?: string; bucket?: string }>;
 }) {
-  const sb = getServerSupabase();
+  const resolvedSearchParams = await searchParams;
+  const sb = await getServerSupabase();
   if (!sb) return <NotConfigured />;
   const {
     data: { user },
@@ -52,13 +53,14 @@ export default async function MaintainerIssuesPage({
   }
 
   const activeInstallId =
-    searchParams.install && installs.find((i) => i.installationId === Number(searchParams.install))
-      ? Number(searchParams.install)
+    resolvedSearchParams.install &&
+    installs.find((i) => i.installationId === Number(resolvedSearchParams.install))
+      ? Number(resolvedSearchParams.install)
       : installs[0]!.installationId;
 
   const activeInstall = installs.find((i) => i.installationId === activeInstallId)!;
 
-  const requestedBuckets = (searchParams.bucket ?? '')
+  const requestedBuckets = (resolvedSearchParams.bucket ?? '')
     .split(',')
     .filter((b): b is IssueTriageBucket => ALL_BUCKETS.includes(b as IssueTriageBucket));
   const buckets: IssueTriageBucket[] =
@@ -82,25 +84,6 @@ export default async function MaintainerIssuesPage({
             ← PR queue
           </Link>
         </header>
-
-        {installs.length > 1 && (
-          <nav className="mb-6 flex flex-wrap gap-2 text-sm">
-            {installs.map((i) => (
-              <Link
-                key={i.installationId}
-                href={`/maintainer/issues?install=${i.installationId}`}
-                className={`rounded-lg px-3 py-1 ${
-                  i.installationId === activeInstallId
-                    ? 'bg-zinc-800 text-white'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                {i.accountLogin}
-                <span className="ml-1.5 text-xs text-zinc-500">{i.accountType[0]}</span>
-              </Link>
-            ))}
-          </nav>
-        )}
 
         <div className="mb-4 flex flex-wrap gap-2 text-xs">
           {ALL_BUCKETS.map((b) => (

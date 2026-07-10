@@ -1,6 +1,8 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
-import { filterAndRank, type ScoredIssue } from '@/lib/pipeline/recommend';
+import { filterAndRank, type ScoredIssue, type SkipCounts } from '@/lib/pipeline/recommend';
+import { unwrapJoin } from '@/lib/supabase/inner-join';
+import { SKIP_HISTORY_WINDOW_DAYS } from '@/lib/pipeline/constants';
 
 /**
  * For every active user, derive a fresh set of recommendation rows from the
@@ -26,7 +28,7 @@ type IssueRow = {
 
 export const recommendationsBuild = inngest.createFunction(
   { id: 'recommendations-build', concurrency: { limit: 1 } },
-  [{ event: 'recommendations/build' }, { cron: '*/45 * * * *' }],
+  [{ event: 'recommendations/build' }],
   async ({ step }) => {
     const built = await step.run('build-all', async () => {
       const sb = getServiceSupabase();
@@ -61,6 +63,62 @@ export const recommendationsBuild = inngest.createFunction(
       };
       const userList = (users ?? []) as unknown as UserRow[];
 
+      // Fetch skip history in bulk to avoid N+1 queries inside the user loop.
+      const cutoffDate = new Date(
+        Date.now() - SKIP_HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const { data: skipsData } = await sb
+        .from('recommendations')
+        .select('user_id, issues!inner(repo_full_name, repo_language)')
+        .eq('status', 'reassigned')
+        .gte('recommended_at', cutoffDate);
+
+      const skipHistoryMap: Record<string, SkipCounts> = {};
+      for (const row of skipsData ?? []) {
+        const userId = row.user_id;
+        const issue = unwrapJoin<{
+          repo_full_name: string;
+          repo_language: string | null;
+        }>((row as unknown as { issues: unknown }).issues);
+
+        if (!issue?.repo_full_name) continue;
+
+        if (!skipHistoryMap[userId]) {
+          skipHistoryMap[userId] = { byRepo: {}, byLanguage: {} };
+        }
+
+        const counts = skipHistoryMap[userId];
+        counts.byRepo[issue.repo_full_name] = (counts.byRepo[issue.repo_full_name] ?? 0) + 1;
+
+        if (issue.repo_language) {
+          counts.byLanguage[issue.repo_language] =
+            (counts.byLanguage[issue.repo_language] ?? 0) + 1;
+        }
+      }
+
+      // Bulk-fetch all seen recommendation issue_ids to avoid N+1 per-user queries.
+      const allUserIds = userList.map((u) => u.user_id);
+      const seenByUser = new Map<string, Set<number>>();
+      for (let i = 0; i < allUserIds.length; i += 100) {
+        const chunk = allUserIds.slice(i, i + 100);
+        for (let from = 0; ; from += 1000) {
+          const { data: seenPage } = await sb
+            .from('recommendations')
+            .select('user_id, issue_id')
+            .in('user_id', chunk)
+            .order('user_id')
+            .order('issue_id')
+            .range(from, from + 999);
+          for (const row of seenPage ?? []) {
+            if (!seenByUser.has(row.user_id)) {
+              seenByUser.set(row.user_id, new Set());
+            }
+            seenByUser.get(row.user_id)!.add(row.issue_id);
+          }
+          if (!seenPage || seenPage.length < 1000) break;
+        }
+      }
+
       let totalInserted = 0;
       for (const u of userList) {
         const level = u.profiles?.level ?? 0;
@@ -69,6 +127,7 @@ export const recommendationsBuild = inngest.createFunction(
         // Build per-user candidates so languageMatch reflects this user's
         // primary_language. Pool is shared; only the language flag varies.
         const candidates: ScoredIssue[] = rawPool.map((i) => ({
+          repoLanguage: i.repo_language,
           id: i.id,
           repoFullName: i.repo_full_name,
           number: i.github_issue_number,
@@ -81,18 +140,15 @@ export const recommendationsBuild = inngest.createFunction(
             userLang !== null && i.repo_language !== null && i.repo_language === userLang,
         }));
 
-        // Skip issues this user has already seen — any prior rec, regardless
-        // of status. Reassigned / expired ones aren't worth re-offering.
-        const { data: seen } = await sb
-          .from('recommendations')
-          .select('issue_id')
-          .eq('user_id', u.user_id);
-        const excludeIds = new Set((seen ?? []).map((r) => r.issue_id));
+        // Use bulk-fetched seen set instead of per-user query.
+        const excludeIds = seenByUser.get(u.user_id) ?? new Set<number>();
+        const skipCounts = skipHistoryMap[u.user_id];
 
         const picks = filterAndRank(candidates, {
           level,
           excludeIssueIds: excludeIds,
           allowFallback: true,
+          skipCounts,
         });
 
         if (picks.length === 0) continue;

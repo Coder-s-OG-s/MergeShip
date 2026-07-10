@@ -2,6 +2,7 @@ import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
 import { buildPrRow, isWithinBackfillWindow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
+import { classifyPrAsAi } from '@/lib/maintainer/pr-classify';
 
 /**
  * Backfill historic PRs for a newly-installed App or for a newly-added repo
@@ -58,7 +59,7 @@ export const prBackfill = inngest.createFunction(
         backfillSingleRepo(installationId, repo),
       );
       reports.push(report);
-      await sleep(PER_REPO_SLEEP_MS);
+      await step.sleep(`sleep-${repo.replace('/', '-')}`, '2s');
     }
 
     return {
@@ -90,6 +91,15 @@ async function backfillSingleRepo(
 
   // Pre-load author handles -> profile id so we can resolve in batch.
   const authorHandleToId = new Map<string, string>();
+
+  // Check if AI PR detection is enabled for this installation
+  let aiDetectionEnabled = false;
+  const { data: settings } = await sb
+    .from('installation_settings')
+    .select('ai_pr_detection')
+    .eq('installation_id', installationId)
+    .maybeSingle();
+  aiDetectionEnabled = settings?.ai_pr_detection ?? false;
 
   const now = Date.now();
   let totalUpserts = 0;
@@ -145,7 +155,11 @@ async function backfillSingleRepo(
           base: { repo: { full_name: repoFullName } },
         };
 
-        const row = buildPrRow(ingestible, authorUserId, 'backfill');
+        const aiFlagged = aiDetectionEnabled
+          ? classifyPrAsAi({ title: ingestible.title, body: ingestible.body })
+          : false;
+
+        const row = buildPrRow(ingestible, authorUserId, 'backfill', aiFlagged);
         const { error: upsertErr } = await sb
           .from('pull_requests')
           .upsert(row, { onConflict: 'repo_full_name,number' });
@@ -202,7 +216,7 @@ async function upsertReviews(
   // Resolve author level once to compute is_mentor retroactively.
   const { data: authorPr } = await sb
     .from('pull_requests')
-    .select('author_user_id')
+    .select('author_user_id, author_login')
     .eq('id', prRow.id)
     .maybeSingle();
   let authorLevel = 0;
@@ -232,28 +246,32 @@ async function upsertReviews(
       reviewerCache.set(login, reviewer);
     }
 
-    const isSelf = login.toLowerCase() === (authorPr?.author_user_id ?? '').toLowerCase();
+    const isSelf = login.toLowerCase() === (authorPr?.author_login ?? '').toLowerCase();
     const substantive = isSubstantive(r);
     const isMentor = !isSelf && substantive && reviewer !== null && reviewer.level > authorLevel;
 
-    await sb.from('pull_request_reviews').upsert(
-      {
-        pr_id: prRow.id,
-        github_review_id: r.id,
-        reviewer_login: login,
-        reviewer_user_id: reviewer?.id ?? null,
-        state: r.state.toLowerCase() as
-          | 'approved'
-          | 'changes_requested'
-          | 'commented'
-          | 'dismissed'
-          | 'pending',
-        body_excerpt: (r.body ?? '').slice(0, 500) || null,
-        is_mentor: isMentor,
-        submitted_at: r.submitted_at,
-      },
-      { onConflict: 'github_review_id' },
-    );
+    const { data: reviewRow, error: reviewErr } = await sb
+      .from('pull_request_reviews')
+      .upsert(
+        {
+          pr_id: prRow.id,
+          github_review_id: r.id,
+          reviewer_login: login,
+          reviewer_user_id: reviewer?.id ?? null,
+          state: r.state.toLowerCase() as
+            | 'approved'
+            | 'changes_requested'
+            | 'commented'
+            | 'dismissed'
+            | 'pending',
+          body_excerpt: (r.body ?? '').slice(0, 500) || null,
+          is_mentor: isMentor,
+          submitted_at: r.submitted_at,
+        },
+        { onConflict: 'github_review_id' },
+      )
+      .select('id')
+      .single();
 
     // Retroactively flip mentor_verified for the highest-level mentor.
     if (isMentor && reviewer) {
@@ -275,6 +293,27 @@ async function upsertReviews(
             mentor_review_at: r.submitted_at,
           })
           .eq('id', prRow.id);
+
+        if (!reviewErr && reviewRow) {
+          let status: 'pending' | 'approved' | 'changes_requested' | 'dismissed' = 'pending';
+          const rState = r.state.toLowerCase();
+          if (rState === 'approved') status = 'approved';
+          else if (rState === 'changes_requested') status = 'changes_requested';
+          else if (rState === 'dismissed') status = 'dismissed';
+
+          await sb.from('pull_request_pipeline_stages').upsert(
+            {
+              pr_id: prRow.id,
+              stage_type: 'mentor_approval',
+              status,
+              reviewer_user_id: reviewer.id,
+              reviewer_level_snapshot: reviewer.level,
+              review_id: reviewRow.id,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'pr_id, stage_type' },
+          );
+        }
       }
     }
   }

@@ -1,0 +1,83 @@
+/* Scoped to .landing-root .docs-container */
+.landing-root .docs-container {
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 160px 24px 100px;
+  position: relative;
+  z-index: 1;
+}
+
+.landing-root .manifesto-badge {
+  color: var(--neon);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  display: inline-block;
+  font-family: var(--font-inter), 'Inter', sans-serif;
+}
+
+.landing-root .docs-h1 {
+  font-size: clamp(2.5rem, 6vw, 4.2rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  margin-bottom: 24px;
+  font-family: var(--font-outfit), 'Outfit', sans-serif;
+  color: #fff;
+}
+
+.landing-root .docs-sub {
+  font-size: clamp(1.05rem, 2vw, 1.2rem);
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin-bottom: 48px;
+}
+
+.landing-root .docs-body {
+  font-family: var(--font-inter), 'Inter', sans-serif;
+  font-size: 1.02rem;
+  line-height: 1.8;
+  color: #b3b3b6;
+}
+
+.landing-root .docs-body p {
+  margin-bottom: 28px;
+}
+
+/* Styled Drop-Cap T */
+.landing-root .docs-body p:first-of-type::first-letter {
+  float: left;
+  font-size: 4.2rem;
+  line-height: 0.85;
+  font-family: var(--font-outfit), 'Outfit', sans-serif;
+  font-weight: 800;
+  margin-right: 12px;
+  margin-top: 4px;
+  color: #fff;
+}
+
+/* Styled Quote Block with top/bottom neon green borders */
+.landing-root .docs-quote {
+  border-top: 1px solid rgba(0, 255, 135, 0.3);
+  border-bottom: 1px solid rgba(0, 255, 135, 0.3);
+  padding: 24px 0;
+  margin: 40px 0;
+  font-size: clamp(1.1rem, 2.2vw, 1.25rem);
+  line-height: 1.6;
+  font-style: italic;
+  color: var(--neon);
+  font-weight: 500;
+}
+
+.landing-root .docs-h2 {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-top: 48px;
+  margin-bottom: 20px;
+  font-family: var(--font-outfit), 'Outfit', sans-serif;
+  color: #fff;
+}

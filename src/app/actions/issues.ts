@@ -3,8 +3,10 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
-import { rateLimit } from '@/lib/rate-limit';
-import { cacheDel } from '@/lib/cache';
+import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
+import { cacheDel, cacheGet, cacheSet } from '@/lib/cache';
+import { repoFilterPattern } from './issues-helpers';
+import { getInstallOctokit } from '@/lib/github/app';
 
 const PAGE_SIZE = 10;
 
@@ -15,6 +17,7 @@ export type IssueFilter = {
   repo?: string;
   showClaimed?: boolean;
   page?: number;
+  sort?: 'newest' | 'xp_desc' | 'xp_asc';
 };
 
 export type IssueWithStatus = {
@@ -44,78 +47,99 @@ export type RepoOption = {
   value: string; // upstream repo name to filter issues by
 };
 
+const inFlightRepoOptions = new Map<string, Promise<Result<RepoOption[]>>>();
+
 export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
   } = await sb.auth.getUser();
   if (!user) return err('not_authenticated', 'sign in first');
 
-  const service = getServiceSupabase();
-  if (!service) return err('not_configured', 'service role missing');
+  const cacheKey = `repo-options:${user.id}`;
 
-  const { data: insts } = await service
-    .from('github_installations')
-    .select('id')
-    .eq('user_id', user.id);
+  // Return active in-flight request if there is one (deduplicates concurrent calls during page load)
+  const inFlight = inFlightRepoOptions.get(user.id);
+  if (inFlight) return inFlight;
 
-  const instIds = (insts ?? []).map((i: { id: number }) => i.id);
-  if (instIds.length === 0) return ok([]);
+  const fetchPromise = (async (): Promise<Result<RepoOption[]>> => {
+    try {
+      // Check cache first (deduplicates subsequent search/page/filter calls)
+      const cached = await cacheGet<RepoOption[]>(cacheKey);
+      if (cached) return ok(cached);
 
-  const { data: repoRows } = await service
-    .from('installation_repositories')
-    .select('repo_full_name')
-    .in('installation_id', instIds);
+      const service = getServiceSupabase();
+      if (!service) return err('not_configured', 'service role missing');
 
-  const userRepos = [
-    ...new Set((repoRows ?? []).map((r: { repo_full_name: string }) => r.repo_full_name)),
-  ];
-  if (userRepos.length === 0) return ok([]);
+      const { data: insts } = await service
+        .from('github_installations')
+        .select('id')
+        .eq('user_id', user.id);
 
-  // Get provider token so we can call GitHub API to detect forks
-  const sessionRes = await sb.auth.getSession();
-  const token = sessionRes.data.session?.provider_token;
+      const instIds = (insts ?? []).map((i: { id: number }) => i.id);
+      if (instIds.length === 0) return ok([]);
 
-  // Resolve each repo: if it's a fork, use the upstream (parent) as the issues source
-  const options = await Promise.all(
-    userRepos.map(async (repo): Promise<RepoOption> => {
-      if (!token) return { label: repo, value: repo };
-      try {
-        const res = await fetch(`https://api.github.com/repos/${repo}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
-          },
-        });
-        if (!res.ok) return { label: repo, value: repo };
-        const data = (await res.json()) as { fork?: boolean; parent?: { full_name: string } };
-        if (data.fork && data.parent?.full_name) {
-          return { label: repo, value: data.parent.full_name };
-        }
-        return { label: repo, value: repo };
-      } catch {
-        return { label: repo, value: repo };
+      const { data: repoRows } = await service
+        .from('installation_repositories')
+        .select('repo_full_name, installation_id')
+        .in('installation_id', instIds);
+
+      if (!repoRows || repoRows.length === 0) return ok([]);
+
+      // Map repo name to its installation ID
+      const repoToInstId = new Map<string, number>();
+      for (const row of repoRows as { repo_full_name: string; installation_id: number }[]) {
+        repoToInstId.set(row.repo_full_name, row.installation_id);
       }
-    }),
-  );
 
-  // Deduplicate by value (multiple forks of same upstream → one entry)
-  const seen = new Set<string>();
-  const deduped = options
-    .filter((opt) => {
-      if (seen.has(opt.value)) return false;
-      seen.add(opt.value);
-      return true;
-    })
-    .sort((a, b) => a.label.localeCompare(b.label));
+      const userRepos = [...repoToInstId.keys()];
 
-  return ok(deduped);
+      // Resolve each repo: if it's a fork, use the upstream (parent) as the issues source
+      const options = await Promise.all(
+        userRepos.map(async (repo): Promise<RepoOption> => {
+          const instId = repoToInstId.get(repo);
+          if (!instId) return { label: repo, value: repo };
+          try {
+            const octokit = await getInstallOctokit(instId);
+            const [owner, name] = repo.split('/');
+            if (!owner || !name) return { label: repo, value: repo };
+            const { data } = await octokit.repos.get({ owner, repo: name });
+            if (data.fork && data.parent?.full_name) {
+              return { label: repo, value: data.parent.full_name };
+            }
+            return { label: repo, value: repo };
+          } catch {
+            return { label: repo, value: repo };
+          }
+        }),
+      );
+
+      // Deduplicate by value (multiple forks of same upstream → one entry)
+      const seen = new Set<string>();
+      const deduped = options
+        .filter((opt) => {
+          if (seen.has(opt.value)) return false;
+          seen.add(opt.value);
+          return true;
+        })
+        .sort((a, b) => a.label.localeCompare(b.label));
+
+      // Cache the result for 5 minutes (300 seconds)
+      await cacheSet(cacheKey, deduped, 300);
+
+      return ok(deduped);
+    } finally {
+      inFlightRepoOptions.delete(user.id);
+    }
+  })();
+
+  inFlightRepoOptions.set(user.id, fetchPromise);
+  return fetchPromise;
 }
 
 export async function getIssuesPage(filters: IssueFilter): Promise<Result<IssuesPageResult>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const {
     data: { user },
@@ -129,24 +153,53 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  let query = service
-    .from('issues')
+  const isSearch = !!filters.search?.trim();
+
+  // Resolve user's allowed repositories
+  const repoOptionsRes = await getRepoOptions();
+  if (!repoOptionsRes.ok) {
+    return err(repoOptionsRes.error.code, repoOptionsRes.error.message);
+  }
+  const allowedRepos = repoOptionsRes.data.map((opt) => opt.value);
+  if (allowedRepos.length === 0) {
+    return ok({
+      issues: [],
+      total: 0,
+      page,
+      pageSize: PAGE_SIZE,
+    });
+  }
+
+  // Cast to any to avoid complex union type builder errors between rpc and from
+  let query: any = isSearch
+    ? service.rpc('search_issues', { search_query: filters.search!.trim() })
+    : service.from('issues');
+
+  query = query
     .select(
       'id, repo_full_name, github_issue_number, title, difficulty, xp_reward, labels, state, url, fetched_at',
       { count: 'exact' },
     )
     .eq('state', filters.state ?? 'open')
-    .order('fetched_at', { ascending: false })
+    .in('repo_full_name', allowedRepos)
     .range(from, to);
 
-  if (filters.search?.trim()) {
-    query = query.ilike('title', `%${filters.search.trim()}%`);
+  if (filters.sort === 'xp_desc') {
+    query = query.order('xp_reward', { ascending: false, nullsFirst: false });
+  } else if (filters.sort === 'xp_asc') {
+    query = query.order('xp_reward', { ascending: true, nullsFirst: false });
+  } else if (filters.sort === 'newest') {
+    query = query.order('fetched_at', { ascending: false });
+  } else if (!isSearch) {
+    query = query.order('fetched_at', { ascending: false });
   }
+
   if (filters.difficulty) {
     query = query.eq('difficulty', filters.difficulty);
   }
-  if (filters.repo) {
-    query = query.eq('repo_full_name', filters.repo);
+  const repoPattern = repoFilterPattern(filters.repo);
+  if (repoPattern) {
+    query = query.ilike('repo_full_name', repoPattern);
   }
 
   const { data, count, error } = await query;
@@ -204,7 +257,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
 }
 
 export async function claimIssue(issueId: number): Promise<Result<{ recId: number }>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -216,8 +269,7 @@ export async function claimIssue(issueId: number): Promise<Result<{ recId: numbe
   const rateRes = await rateLimit({
     namespace: 'issues:claim',
     key: user.id,
-    limit: 20,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.MEDIUM,
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 
@@ -282,7 +334,7 @@ export async function claimIssue(issueId: number): Promise<Result<{ recId: numbe
 }
 
 export async function unclaimIssue(recId: number): Promise<Result<void>> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return err('not_configured', 'auth not configured');
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'service role missing');
@@ -294,8 +346,7 @@ export async function unclaimIssue(recId: number): Promise<Result<void>> {
   const rateRes = await rateLimit({
     namespace: 'issues:unclaim',
     key: user.id,
-    limit: 20,
-    windowSec: 60,
+    ...RATE_LIMIT_TIERS.MEDIUM,
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true);
 

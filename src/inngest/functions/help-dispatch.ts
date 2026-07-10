@@ -1,6 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { rankReviewers, type ReviewerCandidate } from '@/lib/help/dispatch';
+import { sendHelpDispatchEmail } from '@/lib/email';
 
 /**
  * Help dispatch: when a user fires a help request, fan out notifications to
@@ -25,7 +26,7 @@ export const helpDispatch = inngest.createFunction(
 
       const { data: mentee } = await sb
         .from('profiles')
-        .select('level, primary_language')
+        .select('level, primary_language, github_handle')
         .eq('id', userId)
         .maybeSingle();
       const menteeLevel = mentee?.level ?? 0;
@@ -42,7 +43,7 @@ export const helpDispatch = inngest.createFunction(
       // Pool: all L2+ profiles. In production we'd narrow by recent activity etc.
       const { data: pool } = await sb
         .from('profiles')
-        .select('id, level, primary_language')
+        .select('id, level, primary_language, github_handle')
         .gte('level', 2)
         .neq('id', userId);
 
@@ -68,6 +69,21 @@ export const helpDispatch = inngest.createFunction(
 
       if (targets.length === 0) return { notified: 0 };
 
+      // Fetch emails for the selected targets
+      const targetUserIds = targets.map((t) => t.userId);
+      const { data: emailsData } = await sb
+        .from('profile_emails')
+        .select('user_id, email')
+        .in('user_id', targetUserIds);
+
+      const emailMap = new Map(emailsData?.map((row) => [row.user_id, row.email]));
+
+      const { data: helpRequest } = await sb
+        .from('help_requests')
+        .select('reason, pr_url')
+        .eq('id', helpRequestId)
+        .maybeSingle();
+
       // Write a notification row per target for the help-inbox to pick up.
       const rows = targets.map((t) => ({
         user_id: t.userId,
@@ -75,6 +91,25 @@ export const helpDispatch = inngest.createFunction(
         detail: { helpRequestId, fromUserId: userId } as never,
       }));
       await sb.from('activity_log').insert(rows);
+
+      for (const target of targets) {
+        const mentor = pool?.find((p) => p.id === target.userId);
+        const mentorEmail = emailMap.get(target.userId);
+
+        if (!mentorEmail) continue;
+
+        try {
+          await sendHelpDispatchEmail({
+            to: mentorEmail,
+            mentorHandle: mentor?.github_handle ?? 'mentor',
+            menteeHandle: mentee?.github_handle ?? 'contributor',
+            prUrl: helpRequest?.pr_url ?? '',
+            helpReason: helpRequest?.reason ?? null,
+          });
+        } catch (error) {
+          console.error('failed to send help dispatch email', error);
+        }
+      }
 
       return { notified: targets.length };
     });

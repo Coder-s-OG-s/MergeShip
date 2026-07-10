@@ -3,6 +3,7 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { computeCurrentStreak } from '@/lib/xp/streak';
+import { rateLimit } from '@/lib/rate-limit';
 
 /**
  * Returns the signed-in user's current activity streak in days.
@@ -10,12 +11,20 @@ import { computeCurrentStreak } from '@/lib/xp/streak';
  * computeCurrentStreak. Cheap query, runs on every dashboard render.
  */
 export async function getCurrentStreak(): Promise<{ days: number }> {
-  const sb = getServerSupabase();
+  const sb = await getServerSupabase();
   if (!sb) return { days: 0 };
   const {
     data: { user },
   } = await sb.auth.getUser();
   if (!user) return { days: 0 };
+
+  const limited = await rateLimit({
+    namespace: 'streak:current',
+    key: user.id,
+    limit: 60,
+    windowSec: 60,
+  });
+  if (!limited.ok) return { days: 0 };
 
   const service = getServiceSupabase();
   if (!service) return { days: 0 };
@@ -37,6 +46,23 @@ export async function getCurrentStreak(): Promise<{ days: number }> {
  * the caller to be that user. Used by the public profile page.
  */
 export async function getPublicStreak(userId: string): Promise<{ days: number }> {
+  let rlKey = 'anon:' + userId;
+  const sb = await getServerSupabase();
+  if (sb) {
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+    if (user) rlKey = user.id;
+  }
+
+  const limited = await rateLimit({
+    namespace: 'streak:public',
+    key: rlKey,
+    limit: 120,
+    windowSec: 60,
+  });
+  if (!limited.ok) return { days: 0 };
+
   const service = getServiceSupabase();
   if (!service) return { days: 0 };
 
