@@ -1,5 +1,15 @@
 import { Resend } from 'resend';
 
+function escapeHtml(unsafe: string | null | undefined): string {
+  if (!unsafe) return '';
+  return unsafe
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 type SendHelpDispatchEmailArgs = {
   to: string;
   mentorHandle: string;
@@ -31,13 +41,13 @@ export async function sendHelpDispatchEmail({
     html: `
       <h2>Someone needs your help on a PR</h2>
 
-      <p>Hello ${mentorHandle},</p>
+      <p>Hello ${escapeHtml(mentorHandle)},</p>
 
-      <p>${menteeHandle} has requested help on a pull request.</p>
+      <p>${escapeHtml(menteeHandle)} has requested help on a pull request.</p>
 
       <p>
         <strong>Pull Request:</strong><br />
-        <a href="${prUrl}">${prUrl}</a>
+        <a href="${escapeHtml(prUrl)}">${escapeHtml(prUrl)}</a>
       </p>
 
       ${
@@ -45,7 +55,7 @@ export async function sendHelpDispatchEmail({
           ? `
         <p>
           <strong>Help Request:</strong><br />
-          ${helpReason}
+          ${escapeHtml(helpReason)}
         </p>
       `
           : ''
@@ -91,7 +101,7 @@ export async function sendWeeklyDigestEmail({
       ? `
       <h3>Recommended for you:</h3>
       <ul>
-        ${recommendations.map((r) => `<li><a href="${r.url}">${r.title}</a> (+${r.xpReward} XP)</li>`).join('')}
+        ${recommendations.map((r) => `<li><a href="${escapeHtml(r.url)}">${escapeHtml(r.title)}</a> (+${r.xpReward} XP)</li>`).join('')}
       </ul>
     `
       : '';
@@ -103,7 +113,7 @@ export async function sendWeeklyDigestEmail({
     html: `
       <h2>Your Weekly Progress Digest</h2>
 
-      <p>Hello ${githubHandle}, here's what you achieved this week on MergeShip!</p>
+      <p>Hello ${escapeHtml(githubHandle)}, here's what you achieved this week on MergeShip!</p>
 
       <h3>Progress</h3>
       <ul>
@@ -155,9 +165,9 @@ export async function sendOrganizationInviteEmail({
     subject: `[MergeShip] ${inviterHandle} invited you to join ${organizationName}`,
     html: `
       <h2>You've been invited!</h2>
-      <p>${inviterHandle} invited you to join <strong>${organizationName}</strong> on MergeShip.</p>
+      <p>${escapeHtml(inviterHandle)} invited you to join <strong>${escapeHtml(organizationName)}</strong> on MergeShip.</p>
       <p>Click the link below to accept the invitation:</p>
-      <p><a href="${inviteLink}">${inviteLink}</a></p>
+      <p><a href="${escapeHtml(inviteLink)}">${escapeHtml(inviteLink)}</a></p>
     `,
   });
 }
