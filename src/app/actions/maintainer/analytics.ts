@@ -15,6 +15,7 @@ import {
   type MaintainerPrRow,
   type QueueFilters,
 } from '@/lib/maintainer/queue';
+import { computeTrustScore } from '@/lib/maintainer/trust';
 import { xpForLevel, MAX_LEVEL } from '@/lib/xp/curve';
 import {
   type RepoHealthRow,
@@ -299,14 +300,14 @@ export async function exportPrQueueCsv(
 
   const profilesById = new Map<
     string,
-    { handle: string; level: number; xp: number; mergedPrs: number }
+    { handle: string; level: number; xp: number; mergedPrs: number; trustScore: number }
   >();
 
   const ids = Array.from(new Set([...authorIds, ...mentorIds]));
   if (ids.length > 0) {
     const { data: profileRows } = await service
       .from('profiles')
-      .select('id, github_handle, level, xp')
+      .select('id, github_handle, level, xp, created_at')
       .in('id', ids);
     const merged = await service
       .from('xp_events')
@@ -318,11 +319,22 @@ export async function exportPrQueueCsv(
       mergedCount.set(row.user_id, (mergedCount.get(row.user_id) ?? 0) + 1);
     }
     for (const p of profileRows ?? []) {
+      const createdTime = p.created_at ? new Date(p.created_at).getTime() : Date.now();
+      const accountAgeDays = Math.max(
+        0,
+        Math.floor((Date.now() - createdTime) / (1000 * 60 * 60 * 24)),
+      );
+      const levelVal = p.level ?? 0;
+      const xpVal = p.xp ?? 0;
+      const mergedVal = mergedCount.get(p.id) ?? 0;
+      const trustScore = computeTrustScore(levelVal, xpVal, mergedVal, accountAgeDays);
+
       profilesById.set(p.id, {
         handle: p.github_handle,
-        level: p.level ?? 0,
-        xp: p.xp ?? 0,
-        mergedPrs: mergedCount.get(p.id) ?? 0,
+        level: levelVal,
+        xp: xpVal,
+        mergedPrs: mergedVal,
+        trustScore,
       });
     }
   }
@@ -343,6 +355,7 @@ export async function exportPrQueueCsv(
       authorLevel: author?.level ?? null,
       authorXp: author?.xp ?? null,
       authorMergedPrs: author?.mergedPrs ?? null,
+      authorTrustScore: author?.trustScore ?? null,
       mentorVerified: r.mentor_verified,
       mentorReviewerHandle: mentor?.handle ?? null,
       mentorReviewerLevel: mentor?.level ?? null,

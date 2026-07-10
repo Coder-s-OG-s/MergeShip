@@ -14,6 +14,7 @@ const row = (overrides: Partial<MaintainerPrRow>): MaintainerPrRow => ({
   authorLevel: null,
   authorXp: null,
   authorMergedPrs: null,
+  authorTrustScore: null,
   mentorVerified: false,
   mentorReviewerHandle: null,
   mentorReviewerLevel: null,

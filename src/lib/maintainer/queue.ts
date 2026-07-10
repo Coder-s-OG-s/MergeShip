@@ -22,6 +22,7 @@ export type MaintainerPrRow = {
   authorLevel: number | null; // null = not on MergeShip
   authorXp: number | null;
   authorMergedPrs: number | null;
+  authorTrustScore: number | null;
   mentorVerified: boolean;
   mentorReviewerHandle: string | null;
   mentorReviewerLevel: number | null;

@@ -461,7 +461,7 @@ export default async function MaintainerPage({
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
                     <span>@{r.authorLogin}</span>
-                    <AuthorBadge level={r.authorLevel} xp={r.authorXp} merged={r.authorMergedPrs} />
+                    <AuthorBadge trustScore={r.authorTrustScore} />
                     <span className="text-zinc-600">·</span>
                     <span>{relativeTime(r.githubUpdatedAt)}</span>
                   </div>
@@ -584,24 +584,12 @@ function NoiseDonut({ noise }: { noise: NoiseBreakdown }) {
   );
 }
 
-function AuthorBadge({
-  level,
-  xp,
-  merged,
-}: {
-  level: number | null;
-  xp: number | null;
-  merged: number | null;
-}) {
-  if (level === null) {
+function AuthorBadge({ trustScore }: { trustScore: number | null }) {
+  if (trustScore === null) {
     return <span className="text-zinc-600">not on MergeShip</span>;
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-zinc-500">
-      <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-zinc-300">L{level}</span>
-      {xp !== null && <span>{xp.toLocaleString()} XP</span>}
-      {merged !== null && merged > 0 && <span>· {merged} merged</span>}
-    </span>
+    <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-zinc-300">Trust {trustScore}</span>
   );
 }
 
