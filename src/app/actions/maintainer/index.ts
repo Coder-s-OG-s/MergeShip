@@ -45,7 +45,13 @@ export {
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';
-export * from './invites';
+export {
+  listPendingInvites,
+  sendInvite,
+  resendInvite,
+  getMyGithubHandle,
+  type InviteRow,
+} from './invites';
 
 export {
   getFailedWebhookEvents,

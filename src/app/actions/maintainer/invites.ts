@@ -105,6 +105,23 @@ export async function sendInvite(
   });
 }
 
+export async function getMyGithubHandle(): Promise<Result<string>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:my-handle', ...RATE_LIMIT_TIERS.GENEROUS },
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const db = getDb();
+  const [profile] = await db
+    .select({ githubHandle: profiles.githubHandle })
+    .from(profiles)
+    .where(eq(profiles.id, user.id));
+
+  if (!profile) return err('not_found', 'Profile not found');
+  return ok(profile.githubHandle);
+}
+
 export async function resendInvite(inviteId: string): Promise<Result<void>> {
   const authRes = await requireMaintainer({
     rateLimit: { namespace: 'maint:resend-invite', ...RATE_LIMIT_TIERS.STANDARD },

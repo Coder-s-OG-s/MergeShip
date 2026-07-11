@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { sendInvite } from '@/app/actions/maintainer';
+import { sendInvite, getMyGithubHandle } from '@/app/actions/maintainer';
+import { Link, Check } from 'lucide-react';
 
 export default function InviteContributorButton({
   installationId,
@@ -15,6 +16,8 @@ export default function InviteContributorButton({
   const [email, setEmail] = useState('');
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [generatingLink, setGeneratingLink] = useState(false);
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -35,6 +38,21 @@ export default function InviteContributorButton({
         setError(res.error.message || 'Failed to send invite');
       }
     });
+  }
+
+  async function handleCopyLink() {
+    setGeneratingLink(true);
+    const res = await getMyGithubHandle();
+    if (!res.ok) {
+      setError(res.error.message || 'Failed to generate invite link');
+      setGeneratingLink(false);
+      return;
+    }
+    const link = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.dev'}/invite?ref=${res.data}`;
+    await navigator.clipboard.writeText(link);
+    setLinkCopied(true);
+    setGeneratingLink(false);
+    setTimeout(() => setLinkCopied(false), 2000);
   }
 
   return (
@@ -77,12 +95,33 @@ export default function InviteContributorButton({
               {error && <p className="text-sm text-red-400">{error}</p>}
             </form>
 
+            <div className="mt-5 flex items-center gap-3">
+              <span className="h-px flex-1 bg-zinc-800" />
+              <span className="text-xs text-zinc-600">or</span>
+              <span className="h-px flex-1 bg-zinc-800" />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              disabled={generatingLink}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-600 disabled:opacity-50"
+            >
+              {linkCopied ? (
+                <Check className="h-4 w-4 text-emerald-500" />
+              ) : (
+                <Link className="h-4 w-4" />
+              )}
+              {linkCopied ? 'Link copied!' : generatingLink ? 'Generating...' : 'Copy invite link'}
+            </button>
+
             <button
               type="button"
               onClick={() => {
                 setOpen(false);
                 setError(null);
                 setEmail('');
+                setLinkCopied(false);
               }}
               className="mt-5 text-sm text-zinc-500 hover:text-zinc-300"
             >
