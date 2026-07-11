@@ -1,6 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
+import { checkRateBudget } from '@/lib/github/rate-budget';
 import { scoreDifficulty, repoHealth } from '@/lib/pipeline/score';
 import { fetchRepoMetrics } from '@/lib/github/repo-meta';
 import { llmCall } from '@/lib/llm/router';
@@ -46,6 +47,16 @@ export const issuesSweep = inngest.createFunction(
     }> = [];
 
     for (const install of installs) {
+      const budget = await step.run(`check-budget-install-${install.id}`, () =>
+        checkRateBudget(install.id),
+      );
+      if (!budget.ok) {
+        await step.sleepUntil(
+          `sleep-budget-install-${install.id}`,
+          new Date(budget.resetAt * 1000 + 5000),
+        );
+      }
+
       // Each install is its own checkpoint so we can see the boundary in
       // the trace if one install blows up.
       const report = await step.run(`process-install-${install.id}`, async () => {

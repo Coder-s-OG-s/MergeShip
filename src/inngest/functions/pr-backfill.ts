@@ -1,6 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
+import { checkRateBudget } from '@/lib/github/rate-budget';
 import { buildPrRow, isWithinBackfillWindow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
 import { classifyPrAsAi } from '@/lib/maintainer/pr-classify';
 import { getSyncCursor, setSyncCursor, clearSyncCursor } from '@/lib/maintainer/sync-cursor';
@@ -33,6 +34,16 @@ export const prBackfill = inngest.createFunction(
   async ({ event, step }) => {
     if (event.name === 'pr-backfill/repo') {
       const data = (event as RepoEvent).data;
+      const budget = await step.run(
+        `check-budget-repo-${data.repoFullName.replace('/', '-')}`,
+        () => checkRateBudget(data.installationId),
+      );
+      if (!budget.ok) {
+        await step.sleepUntil(
+          `sleep-budget-repo-${data.repoFullName.replace('/', '-')}`,
+          new Date(budget.resetAt * 1000 + 5000),
+        );
+      }
       return await step.run(`backfill-${data.repoFullName.replace('/', '-')}`, async () =>
         backfillSingleRepo(data.installationId, data.repoFullName),
       );
@@ -56,6 +67,16 @@ export const prBackfill = inngest.createFunction(
 
     const reports: Array<{ repo: string; prs: number; errors: string[] }> = [];
     for (const repo of repos) {
+      const budget = await step.run(`check-budget-repo-${repo.replace('/', '-')}`, () =>
+        checkRateBudget(installationId),
+      );
+      if (!budget.ok) {
+        await step.sleepUntil(
+          `sleep-budget-repo-${repo.replace('/', '-')}`,
+          new Date(budget.resetAt * 1000 + 5000),
+        );
+      }
+
       const report = await step.run(`backfill-${repo.replace('/', '-')}`, async () =>
         backfillSingleRepo(installationId, repo),
       );
