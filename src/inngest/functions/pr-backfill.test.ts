@@ -3,12 +3,18 @@ import { getInstallOctokit } from '@/lib/github/app';
 import { buildPrRow, isWithinBackfillWindow } from '@/lib/maintainer/pr-ingest';
 import { prBackfill } from './pr-backfill';
 import { sb, wire, step } from './__tests__/test-helpers';
+import { getSyncCursor, setSyncCursor, clearSyncCursor } from '@/lib/maintainer/sync-cursor';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn() }));
 vi.mock('@/lib/maintainer/pr-ingest', () => ({
   buildPrRow: vi.fn(),
   isWithinBackfillWindow: vi.fn(),
+}));
+vi.mock('@/lib/maintainer/sync-cursor', () => ({
+  getSyncCursor: vi.fn(),
+  setSyncCursor: vi.fn(),
+  clearSyncCursor: vi.fn(),
 }));
 vi.mock('../client', () => ({
   inngest: { createFunction: (_c: unknown, _t: unknown, h: Function) => h },
@@ -67,6 +73,7 @@ describe('prBackfill', () => {
     vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
     vi.mocked(isWithinBackfillWindow).mockReturnValue(true);
     vi.mocked(buildPrRow).mockReturnValue({ repo_full_name: 'test-org/repo-1', number: 1 } as any);
+    vi.mocked(getSyncCursor).mockResolvedValue(null);
 
     const result = await run({ event: evRepo(), step });
 
@@ -74,6 +81,8 @@ describe('prBackfill', () => {
       { repo_full_name: 'test-org/repo-1', number: 1 },
       { onConflict: 'repo_full_name,number' },
     );
+    expect(setSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests', 1);
+    expect(clearSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests');
     expect(result).toEqual({ repo: 'test-org/repo-1', prs: 1, errors: [] });
   });
 
@@ -104,11 +113,55 @@ describe('prBackfill', () => {
     };
     vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
     vi.mocked(isWithinBackfillWindow).mockReturnValue(false); // return false to break loop
+    vi.mocked(getSyncCursor).mockResolvedValue(null);
 
     const result = await run({ event: evRepo(), step });
 
     expect(buildPrRow).not.toHaveBeenCalled();
+    expect(clearSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests');
     expect(result).toEqual({ repo: 'test-org/repo-1', prs: 0, errors: [] });
+  });
+
+  it('resumes from saved page cursor', async () => {
+    const pull_requests = sb({ upsert: vi.fn().mockResolvedValue({}) });
+    wire({
+      pull_requests,
+      profiles: sb({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+      }),
+    });
+
+    const iterator = (async function* () {
+      yield {
+        data: [
+          { id: 104, number: 2, user: { login: 'bob' }, updated_at: new Date().toISOString() },
+        ],
+      };
+    })();
+
+    const octokit = {
+      paginate: { iterator: vi.fn().mockReturnValue(iterator) },
+      pulls: {
+        list: vi.fn(),
+        listReviews: vi.fn().mockResolvedValue({ data: [] }),
+      },
+    };
+    vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
+    vi.mocked(isWithinBackfillWindow).mockReturnValue(true);
+    vi.mocked(buildPrRow).mockReturnValue({ repo_full_name: 'test-org/repo-1', number: 2 } as any);
+    vi.mocked(getSyncCursor).mockResolvedValue(3); // Last processed page was 3
+
+    const result = await run({ event: evRepo(), step });
+
+    expect(octokit.paginate.iterator).toHaveBeenCalledWith(
+      octokit.pulls.list,
+      expect.objectContaining({ page: 4 }), // Starts at page 4
+    );
+    expect(setSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests', 4);
+    expect(clearSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests');
+    expect(result).toEqual({ repo: 'test-org/repo-1', prs: 1, errors: [] });
   });
 
   it('handles github api errors gracefully', async () => {

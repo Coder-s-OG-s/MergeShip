@@ -125,6 +125,22 @@ export const installationRepositories = pgTable(
   }),
 );
 
+export const repoSyncCursors = pgTable(
+  'repo_sync_cursors',
+  {
+    installationId: bigint('installation_id', { mode: 'number' })
+      .notNull()
+      .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+    repoFullName: text('repo_full_name').notNull(),
+    syncType: text('sync_type').notNull(),
+    page: integer('page').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.installationId, t.repoFullName, t.syncType] }),
+  }),
+);
+
 // ---------- issues (computed cache, forever) ----------
 
 export const issues = pgTable(

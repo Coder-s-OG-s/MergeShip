@@ -3,6 +3,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
 import { buildPrRow, isWithinBackfillWindow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
 import { classifyPrAsAi } from '@/lib/maintainer/pr-classify';
+import { getSyncCursor, setSyncCursor, clearSyncCursor } from '@/lib/maintainer/sync-cursor';
 
 /**
  * Backfill historic PRs for a newly-installed App or for a newly-added repo
@@ -104,6 +105,10 @@ async function backfillSingleRepo(
   const now = Date.now();
   let totalUpserts = 0;
 
+  const lastProcessedPage = await getSyncCursor(installationId, repoFullName, 'pull_requests');
+  const startingPage = (lastProcessedPage ?? 0) + 1;
+  let currentPage = startingPage;
+
   try {
     const pageIterator = octokit.paginate.iterator(octokit.pulls.list, {
       owner,
@@ -112,12 +117,14 @@ async function backfillSingleRepo(
       sort: 'updated',
       direction: 'desc',
       per_page: 100,
+      page: startingPage,
     });
 
     outer: for await (const page of pageIterator) {
       for (const pr of page.data) {
         // Stop walking once we pass the window — list is sorted updated desc.
         if (!isWithinBackfillWindow(pr.updated_at, now, BACKFILL_WINDOW_DAYS)) {
+          await clearSyncCursor(installationId, repoFullName, 'pull_requests');
           break outer;
         }
 
@@ -182,7 +189,14 @@ async function backfillSingleRepo(
           errors.push(`reviews #${pr.number}: ${(e as Error).message}`);
         }
       }
+
+      // All items in the page processed successfully. Update the cursor.
+      await setSyncCursor(installationId, repoFullName, 'pull_requests', currentPage);
+      currentPage++;
     }
+
+    // Finished processing all pages (or exited the loop naturally before hitting the window limit).
+    await clearSyncCursor(installationId, repoFullName, 'pull_requests');
   } catch (e) {
     errors.push(`pulls.list: ${(e as Error).message}`);
   }
