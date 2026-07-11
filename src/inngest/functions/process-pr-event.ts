@@ -163,7 +163,7 @@ async function upsertPrRow(
     .eq('installation_id', knownRepo.installation_id)
     .maybeSingle();
   if (settings?.ai_pr_detection) {
-    aiFlagged = classifyPrAsAi({ title: pr.title, body: pr.body });
+    aiFlagged = await classifyPrAsAi({ title: pr.title, body: pr.body });
   }
 
   await sb

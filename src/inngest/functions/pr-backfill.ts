@@ -163,7 +163,7 @@ async function backfillSingleRepo(
         };
 
         const aiFlagged = aiDetectionEnabled
-          ? classifyPrAsAi({ title: ingestible.title, body: ingestible.body })
+          ? await classifyPrAsAi({ title: ingestible.title, body: ingestible.body })
           : false;
 
         const row = buildPrRow(ingestible, authorUserId, 'backfill', aiFlagged);
