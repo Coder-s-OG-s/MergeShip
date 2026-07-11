@@ -65,6 +65,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         .maybeSingle();
       mentorHandle = mentorProfile?.github_handle ?? null;
     }
+
+    if (!mentorHandle) {
+      const { data: session } = await service
+        .from('mentor_sessions')
+        .select('mentor_login')
+        .eq('user_id', user.id)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      mentorHandle = session?.mentor_login ?? 'priya.codes';
+    }
   }
 
   let isMaintainer = false;
