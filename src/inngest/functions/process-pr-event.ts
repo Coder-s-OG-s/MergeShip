@@ -92,9 +92,24 @@ export const processPrEvent = inngest.createFunction(
         return { ok: true };
       });
       if (action === 'opened') {
-        await step.run('maybe-auto-assign-mentor', async () =>
+        const assignResult = await step.run('maybe-auto-assign-mentor', async () =>
           maybeAutoAssignMentor(repo, pr.number),
         );
+        if (assignResult.assigned) {
+          await step.run('notify-mentor-assigned', async () =>
+            inngest.send({
+              name: 'mentor/assigned',
+              data: {
+                mentorUserId: assignResult.mentorUserId!,
+                authorLogin: pr.user.login,
+                prUrl,
+                prTitle: pr.title,
+                repo,
+                prNumber: pr.number,
+              },
+            }),
+          );
+        }
         await step.run('increment-challenge-progress', async () => {
           try {
             const sb = getServiceSupabase();
@@ -176,9 +191,9 @@ async function upsertPrRow(
 async function maybeAutoAssignMentor(
   repo: string,
   prNumber: number,
-): Promise<{ assigned: boolean; handle: string | null }> {
+): Promise<{ assigned: boolean; handle: string | null; mentorUserId: string | null }> {
   const sb = getServiceSupabase();
-  if (!sb) return { assigned: false, handle: null };
+  if (!sb) return { assigned: false, handle: null, mentorUserId: null };
 
   const { data: repoRow } = await sb
     .from('installation_repositories')
@@ -186,7 +201,7 @@ async function maybeAutoAssignMentor(
     .eq('repo_full_name', repo)
     .limit(1)
     .maybeSingle();
-  if (!repoRow?.installation_id) return { assigned: false, handle: null };
+  if (!repoRow?.installation_id) return { assigned: false, handle: null, mentorUserId: null };
 
   const installationId = repoRow.installation_id as number;
   const { data: settings } = await sb
@@ -194,7 +209,8 @@ async function maybeAutoAssignMentor(
     .select('min_contributor_level, auto_assign_mentor_chain')
     .eq('installation_id', installationId)
     .maybeSingle();
-  if (!settings?.auto_assign_mentor_chain) return { assigned: false, handle: null };
+  if (!settings?.auto_assign_mentor_chain)
+    return { assigned: false, handle: null, mentorUserId: null };
 
   const minContributorLevel = settings.min_contributor_level ?? 0;
   const { data: prRow } = await sb
@@ -204,7 +220,7 @@ async function maybeAutoAssignMentor(
     .eq('number', prNumber)
     .maybeSingle();
   if (!prRow || prRow.mentor_reviewer_id || !prRow.author_user_id) {
-    return { assigned: false, handle: null };
+    return { assigned: false, handle: null, mentorUserId: null };
   }
 
   const { data: authorProfile } = await sb
@@ -213,7 +229,7 @@ async function maybeAutoAssignMentor(
     .eq('id', prRow.author_user_id)
     .maybeSingle();
   if (!shouldAutoAssignMentor(authorProfile?.level ?? null, minContributorLevel)) {
-    return { assigned: false, handle: null };
+    return { assigned: false, handle: null, mentorUserId: null };
   }
 
   // Senior = any install member at or above the mentor verification level (L2+),
@@ -244,7 +260,7 @@ async function maybeAutoAssignMentor(
     return [{ userId: row.user_id, handle: profile.github_handle }];
   });
   const chosen = pickMentor(seniors, prRow.author_user_id);
-  if (!chosen) return { assigned: false, handle: null };
+  if (!chosen) return { assigned: false, handle: null, mentorUserId: null };
 
   const { error } = await sb
     .from('pull_requests')
@@ -252,7 +268,7 @@ async function maybeAutoAssignMentor(
     .eq('id', prRow.id);
   if (error) throw new Error(error.message);
 
-  return { assigned: true, handle: chosen.handle };
+  return { assigned: true, handle: chosen.handle, mentorUserId: chosen.userId };
 }
 
 async function linkPrToClaim(
