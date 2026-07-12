@@ -21,6 +21,7 @@ export {
   getPrDetails,
   getMaintainerPrById,
   requestChanges,
+  postPrComment,
   mergePullRequest,
 } from './queue';
 

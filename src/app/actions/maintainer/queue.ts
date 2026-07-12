@@ -680,6 +680,83 @@ export async function requestChanges(prId: number, comment: string): Promise<Res
   return ok({ ok: true });
 }
 
+export async function postPrComment(
+  prId: number,
+  body: string,
+): Promise<Result<{ commentId: number }>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:post-pr-comment', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const commentBody = body.trim();
+  if (commentBody.length === 0) {
+    return err('invalid_input', 'Comment is required');
+  }
+
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select('repo_full_name, number')
+    .eq('id', prId)
+    .maybeSingle();
+
+  if (!pr) return err('not_found', 'PR not found');
+
+  const { data: repoRow } = await service
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', pr.repo_full_name)
+    .maybeSingle();
+
+  if (!repoRow?.installation_id) {
+    return err('not_found', 'Installation not found for this repository');
+  }
+  const installationId = repoRow.installation_id;
+
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(pr.repo_full_name)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    const [owner, repo] = pr.repo_full_name.split('/');
+    if (!owner || !repo) return err('invalid_input', 'Invalid repository format');
+
+    const res = await octokit.issues.createComment({
+      owner,
+      repo,
+      issue_number: pr.number,
+      body: commentBody,
+    });
+
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'post_pr_comment',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'success',
+    });
+
+    revalidatePath(`/maintainer/pr/${prId}`);
+    return ok({ commentId: res.data.id });
+  } catch (error: any) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'post_pr_comment',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'failed',
+      errorMessage: error.message || 'Failed to post PR comment via GitHub API',
+    });
+    return err('github_error', error.message || 'Failed to post PR comment via GitHub API');
+  }
+}
+
 export async function mergePullRequest(
   prId: number,
   options?: { mergeMethod?: 'merge' | 'squash' | 'rebase'; expectedHeadSha?: string },
