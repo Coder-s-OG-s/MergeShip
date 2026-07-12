@@ -35,11 +35,51 @@ describe('prBackfill', () => {
     vi.clearAllMocks();
   });
 
+  it('single-repo backfill skips an uninstalled installation', async () => {
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: '2026-01-01' } }),
+    });
+    wire({ github_installations: installs });
+
+    const result = await run({ event: evRepo(), step });
+    expect(result).toEqual({ skipped: true, reason: 'uninstalled' });
+    expect(getInstallOctokit).not.toHaveBeenCalled();
+  });
+
+  it('installation-wide backfill skips an uninstalled installation', async () => {
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: '2026-01-01' } }),
+    });
+    wire({ github_installations: installs });
+
+    const result = await run({
+      event: { name: 'pr-backfill/installation', data: { installationId: 1 } },
+      step,
+    });
+    expect(result).toEqual({ skipped: true, reason: 'uninstalled or empty' });
+    expect(getInstallOctokit).not.toHaveBeenCalled();
+  });
+
+  it('installation lookup database error is thrown rather than silently skipped', async () => {
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ error: { message: 'db error' } }),
+    });
+    wire({ github_installations: installs });
+
+    await expect(run({ event: evRepo(), step })).rejects.toThrow(
+      'Failed to check installation: db error',
+    );
+  });
+
   it('backfills recent PRs within backfill window', async () => {
     const pull_requests = sb({ upsert: vi.fn().mockResolvedValue({}) });
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: null } }),
+    });
 
     wire({
       pull_requests,
+      github_installations: installs,
       profiles: sb({
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
@@ -87,7 +127,11 @@ describe('prBackfill', () => {
   });
 
   it('stops pagination when encountering older PRs', async () => {
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: null } }),
+    });
     wire({
+      github_installations: installs,
       profiles: sb({
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
@@ -124,8 +168,12 @@ describe('prBackfill', () => {
 
   it('resumes from saved page cursor', async () => {
     const pull_requests = sb({ upsert: vi.fn().mockResolvedValue({}) });
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: null } }),
+    });
     wire({
       pull_requests,
+      github_installations: installs,
       profiles: sb({
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
@@ -165,6 +213,10 @@ describe('prBackfill', () => {
   });
 
   it('handles github api errors gracefully', async () => {
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: null } }),
+    });
+    wire({ github_installations: installs });
     vi.mocked(getInstallOctokit).mockRejectedValue(new Error('API quota exceeded'));
 
     const result = await run({ event: evRepo(), step });

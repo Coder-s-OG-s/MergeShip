@@ -34,6 +34,22 @@ export const prBackfill = inngest.createFunction(
   async ({ event, step }) => {
     if (event.name === 'pr-backfill/repo') {
       const data = (event as RepoEvent).data;
+
+      const isActive = await step.run(`check-active-${data.installationId}`, async () => {
+        const sb = getServiceSupabase();
+        if (!sb) throw new Error('service role missing');
+        const { data: install, error } = await sb
+          .from('github_installations')
+          .select('uninstalled_at')
+          .eq('id', data.installationId)
+          .maybeSingle();
+
+        if (error) throw new Error(`Failed to check installation: ${error.message}`);
+        return !!install && !install.uninstalled_at;
+      });
+
+      if (!isActive) return { skipped: true, reason: 'uninstalled' };
+
       const budget = await step.run(
         `check-budget-repo-${data.repoFullName.replace('/', '-')}`,
         () => checkRateBudget(data.installationId),
@@ -58,12 +74,28 @@ export const prBackfill = inngest.createFunction(
     const repos = await step.run('list-repos', async () => {
       const sb = getServiceSupabase();
       if (!sb) throw new Error('service role missing');
-      const { data: rows } = await sb
+
+      const { data: install, error: installError } = await sb
+        .from('github_installations')
+        .select('uninstalled_at')
+        .eq('id', installationId)
+        .maybeSingle();
+
+      if (installError) throw new Error(`Failed to check installation: ${installError.message}`);
+      if (!install || install.uninstalled_at) return [];
+
+      const { data: rows, error: reposError } = await sb
         .from('installation_repositories')
         .select('repo_full_name')
         .eq('installation_id', installationId);
+
+      if (reposError) throw new Error(`Failed to list repos: ${reposError.message}`);
       return (rows ?? []).map((r) => r.repo_full_name);
     });
+
+    if (repos.length === 0) {
+      return { skipped: true, reason: 'uninstalled or empty' };
+    }
 
     const reports: Array<{ repo: string; prs: number; errors: string[] }> = [];
     for (const repo of repos) {
