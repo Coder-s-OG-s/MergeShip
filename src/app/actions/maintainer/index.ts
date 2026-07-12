@@ -1,5 +1,4 @@
 'use server';
-
 import { requireMaintainerAuth } from '@/lib/action-auth';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
@@ -254,6 +253,7 @@ export async function pingReviewers(prId: number): Promise<Result<{ commented: b
   const service = getServiceSupabase();
   if (!service) return err('not_configured', 'Service role not configured');
 
+  // Fetch the PR row to get installation and metadata
   const { data: pr, error: prErr } = await service
     .from('pull_requests')
     .select('number, repo_full_name, installation_id, url')
