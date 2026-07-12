@@ -23,7 +23,23 @@ import {
   index,
   primaryKey,
   bigint,
+  pgEnum,
 } from 'drizzle-orm/pg-core';
+
+// ---------- enums ----------
+export const reviewStageEnum = pgEnum('review_stage', [
+  'mentor_approval',
+  'l2_approval',
+  'l3_approval',
+  'maintainer_approval',
+]);
+
+export const reviewStatusEnum = pgEnum('review_status', [
+  'pending',
+  'approved',
+  'changes_requested',
+  'dismissed',
+]);
 
 // ---------- users / identity ----------
 
@@ -54,6 +70,7 @@ export const profiles = pgTable(
     skills: text('skills').array(),
     websiteUrl: text('website_url'),
     twitterHandle: text('twitter_handle'),
+    weeklyDigest: boolean('weekly_digest').notNull().default(true),
   },
   (t) => ({
     xpDescIdx: index('profiles_xp_desc_idx').on(t.xp),
@@ -105,6 +122,22 @@ export const installationRepositories = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.installationId, t.repoFullName] }),
+  }),
+);
+
+export const repoSyncCursors = pgTable(
+  'repo_sync_cursors',
+  {
+    installationId: bigint('installation_id', { mode: 'number' })
+      .notNull()
+      .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+    repoFullName: text('repo_full_name').notNull(),
+    syncType: text('sync_type').notNull(),
+    page: integer('page').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.installationId, t.repoFullName, t.syncType] }),
   }),
 );
 
@@ -163,7 +196,7 @@ export const recommendations = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
     issueId: bigint('issue_id', { mode: 'number' })
       .notNull()
-      .references(() => issues.id),
+      .references(() => issues.id, { onDelete: 'cascade' }),
     difficulty: text('difficulty', { enum: ['E', 'M', 'H'] }).notNull(),
     xpReward: integer('xp_reward').notNull(),
     linkedPrUrl: text('linked_pr_url'),
@@ -259,6 +292,7 @@ export const helpRequests = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
     recommendationId: bigint('recommendation_id', { mode: 'number' }).references(
       () => recommendations.id,
+      { onDelete: 'cascade' },
     ),
     prUrl: text('pr_url').notNull(),
     reason: text('reason'),
@@ -404,6 +438,7 @@ export const pullRequests = pgTable(
     mentorReviewAt: timestamp('mentor_review_at', { withTimezone: true }),
     mentorCommentId: bigint('mentor_comment_id', { mode: 'number' }),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+    aiFlagged: boolean('ai_flagged').notNull().default(false),
   },
   (t) => ({
     uniqRepoNumber: uniqueIndex('pull_requests_repo_number_unique').on(t.repoFullName, t.number),
@@ -438,6 +473,31 @@ export const pullRequestReviews = pgTable(
   (t) => ({
     prMentorIdx: index('pull_request_reviews_pr_mentor_idx').on(t.prId, t.isMentor),
     reviewerIdx: index('pull_request_reviews_reviewer_idx').on(t.reviewerUserId, t.submittedAt),
+  }),
+);
+
+export const pullRequestPipelineStages = pgTable(
+  'pull_request_pipeline_stages',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    prId: bigint('pr_id', { mode: 'number' })
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    reviewId: bigint('review_id', { mode: 'number' }).references(() => pullRequestReviews.id, {
+      onDelete: 'set null',
+    }),
+    stageType: reviewStageEnum('stage_type').notNull(),
+    status: reviewStatusEnum('status').notNull(),
+    reviewerUserId: uuid('reviewer_user_id').references(() => profiles.id, {
+      onDelete: 'set null',
+    }),
+    reviewerLevelSnapshot: integer('reviewer_level_snapshot'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    prStageIdx: uniqueIndex('pull_request_pipeline_stages_pr_stage_idx').on(t.prId, t.stageType),
+    prStatusIdx: index('pull_request_pipeline_stages_pr_status_idx').on(t.prId, t.status),
   }),
 );
 
@@ -548,3 +608,97 @@ export const failedWebhookEvents = pgTable(
     eventTypeIdx: index('failed_webhook_event_type_idx').on(t.eventType),
   }),
 );
+
+// ---------- mentor sessions and announcements ----------
+
+export const mentorSessions = pgTable('mentor_sessions', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  mentorLogin: text('mentor_login').notNull(),
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+  note: text('note'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const announcements = pgTable('announcements', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+});
+// ---------- daily challenges ----------
+
+export const dailyChallenges = pgTable('daily_challenges', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  goal: integer('goal').notNull(),
+  xpReward: integer('xp_reward').notNull(),
+  type: text('type', { enum: ['pr_opened', 'issue_comment', 'review_submitted'] }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userChallengeProgress = pgTable(
+  'user_challenge_progress',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    date: date('date').notNull(),
+    challengeId: bigint('challenge_id', { mode: 'number' })
+      .notNull()
+      .references(() => dailyChallenges.id, { onDelete: 'cascade' }),
+    current: integer('current').notNull().default(0),
+    completed: boolean('completed').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.date] }),
+  }),
+);
+
+// ---------- maintainer audit logs ----------
+
+export const maintainerAuditLogs = pgTable(
+  'maintainer_audit_logs',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    actorUserId: uuid('actor_user_id').references(() => profiles.id, { onDelete: 'set null' }),
+    actorSnapshot: jsonb('actor_snapshot'),
+    installationId: bigint('installation_id', { mode: 'number' }).references(
+      () => githubInstallations.id,
+      { onDelete: 'cascade' },
+    ),
+    action: text('action').notNull(),
+    targetType: text('target_type').notNull(),
+    targetId: text('target_id').notNull(),
+    status: text('status', { enum: ['success', 'failed'] })
+      .notNull()
+      .default('success'),
+    errorMessage: text('error_message'),
+    oldValues: jsonb('old_values'),
+    newValues: jsonb('new_values'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    installationIdx: index('maintainer_audit_logs_installation_idx').on(
+      t.installationId,
+      t.createdAt,
+    ),
+    actorIdx: index('maintainer_audit_logs_actor_idx').on(t.actorUserId, t.createdAt),
+  }),
+);
+export const organizationInvites = pgTable('organization_invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  installationId: bigint('installation_id', { mode: 'number' })
+    .notNull()
+    .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+});

@@ -8,6 +8,8 @@ import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { ok, err, type Result } from '@/lib/result';
 import { cacheGet, cacheSet, cacheDel } from '@/lib/cache';
 import { filterAndRank, type ScoredIssue } from '@/lib/pipeline/recommend';
+import { getAllowedDifficulties } from '@/lib/pipeline/difficulty';
+import { getInstallationToken } from '@/lib/github/app';
 
 /**
  * Server actions for the recommendation lifecycle.
@@ -198,15 +200,32 @@ export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
 
-  // Security: verify the authenticated user actually authored this PR.
-  const sessionRes = await sb.auth.getSession();
-  const token = sessionRes.data.session?.provider_token;
-  if (!token) return err('no_github_token', 'reconnect your GitHub account');
-
   const match = trimmed.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/);
   if (!match)
     return err('invalid_url', 'paste a full https://github.com/<owner>/<repo>/pull/<n> URL');
   const [, owner, repo, number] = match;
+
+  let token: string | undefined;
+  try {
+    const { data: repoInsts } = await service
+      .from('installation_repositories')
+      .select('installation_id')
+      .eq('repo_full_name', `${owner}/${repo}`)
+      .limit(1);
+    const installationId = repoInsts?.[0]?.installation_id;
+    if (installationId) {
+      token = await getInstallationToken(installationId);
+    }
+  } catch {
+    // fall back
+  }
+
+  if (!token) {
+    const sessionRes = await sb.auth.getSession();
+    token = sessionRes.data.session?.provider_token ?? undefined;
+  }
+
+  if (!token) return err('no_github_token', 'reconnect your GitHub account');
 
   const ghRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -286,10 +305,18 @@ export async function skipRecommendation(
 
   // Insert a replacement pick. Same difficulty if possible. Excludes
   // anything the user has already seen (any status).
+  const { data: profile } = await service
+    .from('profiles')
+    .select('level')
+    .eq('id', user.id)
+    .maybeSingle();
+  const userLevel = profile?.level ?? 0;
+
   const replacement = await pickReplacement({
     service,
     userId: user.id,
     preferDifficulty: data.difficulty as 'E' | 'M' | 'H',
+    userLevel,
   });
 
   await cacheDel(`recs:${user.id}`);
@@ -300,8 +327,10 @@ async function pickReplacement(args: {
   service: NonNullable<ReturnType<typeof getServiceSupabase>>;
   userId: string;
   preferDifficulty: 'E' | 'M' | 'H';
+  userLevel: number;
 }): Promise<RecCard | null> {
-  const { service, userId, preferDifficulty } = args;
+  const { service, userId, preferDifficulty, userLevel } = args;
+  const allowedDifficulties = getAllowedDifficulties(userLevel);
 
   const { data: seen } = await service
     .from('recommendations')
@@ -310,15 +339,15 @@ async function pickReplacement(args: {
   const excludeIds = new Set((seen ?? []).map((r) => r.issue_id));
 
   // Try same tier first, then any tier. Health >= 40 filter mirrors filterAndRank.
-  for (const where of [{ difficulty: preferDifficulty }, {} as Record<string, string>]) {
-    let q = service
+  for (const where of [{ difficulty: preferDifficulty }, null]) {
+    const q = service
       .from('issues')
       .select('id, repo_full_name, github_issue_number, title, difficulty, xp_reward, url')
       .eq('state', 'open')
       .gte('repo_health_score', 40)
+      .in('difficulty', where ? [where.difficulty] : allowedDifficulties)
       .order('scored_at', { ascending: false })
       .limit(50);
-    if (where.difficulty) q = q.eq('difficulty', where.difficulty);
     const { data: pool } = await q;
     const pick = (pool ?? []).find((i) => !excludeIds.has(i.id));
     if (!pick) continue;

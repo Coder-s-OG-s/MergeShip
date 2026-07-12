@@ -1,8 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
-import { XP_REWARDS, XP_SOURCE, refIds } from '@/lib/xp/sources';
-import { applyCap } from '@/lib/xp/caps';
+import { XP_REWARDS, DAILY_CAPS, XP_SOURCE, refIds } from '@/lib/xp/sources';
 
 /**
  * Webhook handler for GitHub `pull_request_review` events.
@@ -75,6 +74,27 @@ export const processReviewEvent = inngest.createFunction(
       }
     });
 
+    await step.run('increment-challenge-progress', async () => {
+      try {
+        const sb = getServiceSupabase();
+        if (!sb) return;
+        const { data: reviewer } = await sb
+          .from('profiles')
+          .select('id')
+          .eq('github_handle', payload.review.user.login)
+          .maybeSingle();
+        if (reviewer?.id) {
+          const { incrementChallengeProgress } = await import('@/lib/daily-challenge/progress');
+          await incrementChallengeProgress({
+            userId: reviewer.id,
+            type: 'review_submitted',
+          });
+        }
+      } catch (err) {
+        console.error('Failed to increment daily challenge progress:', err);
+      }
+    });
+
     return await step.run('award-help-review', async () => {
       const sb = getServiceSupabase();
       if (!sb) throw new Error('service role missing');
@@ -88,29 +108,12 @@ export const processReviewEvent = inngest.createFunction(
 
       const { data: helpReq } = await sb
         .from('help_requests')
-        .select('id, user_id, created_at')
+        .select('id, user_id, created_at, status')
         .eq('pr_url', payload.pull_request.html_url)
         .eq('status', 'open')
         .maybeSingle();
 
       if (!helpReq) return { skipped: true, reason: 'no_open_help_request' };
-
-      // Daily review cap. Counts xp_events with source=help_review for this
-      // reviewer today; blocks the next event if already at cap.
-      const dayStartIso = new Date(
-        new Date().toISOString().slice(0, 10) + 'T00:00:00Z',
-      ).toISOString();
-      const { count: todaysReviewCount } = await sb
-        .from('xp_events')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', reviewer.id)
-        .eq('source', XP_SOURCE.HELP_REVIEW)
-        .gte('created_at', dayStartIso);
-
-      const cap = applyCap('review', todaysReviewCount ?? 0, 1);
-      if (!cap.allowed) {
-        return { skipped: true, reason: 'daily_review_cap_reached' };
-      }
 
       const { data: mentee } = await sb
         .from('profiles')
@@ -123,30 +126,75 @@ export const processReviewEvent = inngest.createFunction(
       const isMentor = reviewer.level > menteeLevel;
       if (isMentor) xp += XP_REWARDS.HELP_REVIEW_MENTOR_BONUS;
 
-      const responseMs =
-        new Date(payload.review.submitted_at).getTime() - new Date(helpReq.created_at).getTime();
-      const isFast = responseMs <= SPEED_BONUS_HOURS * 3600 * 1000;
+      let isFast = false;
+      if (payload.review.submitted_at) {
+        const submittedTime = new Date(payload.review.submitted_at).getTime();
+        const createdTime = new Date(helpReq.created_at).getTime();
+        if (!isNaN(submittedTime) && !isNaN(createdTime)) {
+          const responseMs = submittedTime - createdTime;
+          isFast = responseMs <= SPEED_BONUS_HOURS * 3600 * 1000;
+        }
+      }
       if (isFast) xp += XP_REWARDS.HELP_REVIEW_SPEED_BONUS;
 
-      const inserted = await insertXpEvent({
-        userId: reviewer.id,
-        source: XP_SOURCE.HELP_REVIEW,
-        refType: 'review',
-        refId: refIds.helpReview(helpReq.id, payload.review.user.login),
-        repo: payload.pull_request.base.repo.full_name,
-        xpDelta: xp,
-        metadata: { isMentor, isFast, menteeLevel },
-      });
+      const refId = refIds.helpReview(helpReq.id, payload.review.user.login);
 
-      if (inserted) {
-        await sb
+      // Optimistically resolve the help request first.
+      // This prevents concurrent reviews from claiming the same help request.
+      const { data: updateRes, error: updateErr } = await sb
+        .from('help_requests')
+        .update({
+          status: 'resolved',
+          resolved_by: reviewer.id,
+          resolved_at: new Date().toISOString(),
+        })
+        .eq('id', helpReq.id)
+        .eq('status', 'open')
+        .select('id');
+
+      if (updateErr) {
+        throw new Error(`Failed to resolve help request: ${updateErr.message}`);
+      }
+
+      // If the help request was already resolved/modified, abort.
+      if (!updateRes || updateRes.length === 0) {
+        return { xpAwarded: 0, reason: 'help_request_already_resolved' };
+      }
+
+      let inserted = false;
+      try {
+        inserted = await insertXpEvent({
+          userId: reviewer.id,
+          source: XP_SOURCE.HELP_REVIEW,
+          refType: 'review',
+          refId,
+          repo: payload.pull_request.base.repo.full_name,
+          xpDelta: xp,
+          metadata: { isMentor, isFast, menteeLevel },
+          dailyCapLimit: {
+            action: 'review',
+            limit: DAILY_CAPS.REVIEWS,
+          },
+        });
+      } catch (err: any) {
+        // Roll back the help request status if XP insertion failed
+        const { error: rollbackErr } = await sb
           .from('help_requests')
           .update({
-            status: 'resolved',
-            resolved_by: reviewer.id,
-            resolved_at: new Date().toISOString(),
+            status: 'open',
+            resolved_by: null,
+            resolved_at: null,
           })
           .eq('id', helpReq.id);
+
+        if (rollbackErr) {
+          console.error(`Failed to rollback help request status: ${rollbackErr.message}`);
+        }
+
+        if (err.message === 'daily_review_cap_reached') {
+          return { skipped: true, reason: 'daily_review_cap_reached' };
+        }
+        throw err;
       }
 
       return { xpAwarded: inserted ? xp : 0, isMentor, isFast };
@@ -189,19 +237,23 @@ async function upsertReviewRow(payload: ReviewPayload): Promise<void> {
   const substantive = isSubstantive(payload.review);
   const isMentor = substantive && reviewer.level > authorLevel;
 
-  await sb.from('pull_request_reviews').upsert(
-    {
-      pr_id: prRow.id,
-      github_review_id: payload.review.id,
-      reviewer_login: payload.review.user.login,
-      reviewer_user_id: reviewer.id,
-      state: payload.review.state,
-      body_excerpt: (payload.review.body ?? '').slice(0, 500),
-      is_mentor: isMentor,
-      submitted_at: payload.review.submitted_at,
-    },
-    { onConflict: 'github_review_id' },
-  );
+  const { data: reviewRow, error: reviewErr } = await sb
+    .from('pull_request_reviews')
+    .upsert(
+      {
+        pr_id: prRow.id,
+        github_review_id: payload.review.id,
+        reviewer_login: payload.review.user.login,
+        reviewer_user_id: reviewer.id,
+        state: payload.review.state,
+        body_excerpt: (payload.review.body ?? '').slice(0, 500),
+        is_mentor: isMentor,
+        submitted_at: payload.review.submitted_at,
+      },
+      { onConflict: 'github_review_id' },
+    )
+    .select('id')
+    .single();
 
   // Flag flip is conditional — never downgrade.
   if (isMentor && prRow.state !== 'closed') {
@@ -217,11 +269,31 @@ async function upsertReviewRow(payload: ReviewPayload): Promise<void> {
     await sb
       .from('pull_requests')
       .update({
-        mentor_verified: true,
+        mentor_verified: payload.review.state === 'approved',
         mentor_reviewer_id: reviewer.id,
         mentor_review_at: payload.review.submitted_at,
       })
       .eq('id', prRow.id);
+
+    if (!reviewErr && reviewRow) {
+      let status: 'pending' | 'approved' | 'changes_requested' | 'dismissed' = 'pending';
+      if (payload.review.state === 'approved') status = 'approved';
+      else if (payload.review.state === 'changes_requested') status = 'changes_requested';
+      else if (payload.review.state === 'dismissed') status = 'dismissed';
+
+      await sb.from('pull_request_pipeline_stages').upsert(
+        {
+          pr_id: prRow.id,
+          stage_type: 'mentor_approval',
+          status,
+          reviewer_user_id: reviewer.id,
+          reviewer_level_snapshot: reviewer.level,
+          review_id: reviewRow.id,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'pr_id, stage_type' },
+      );
+    }
 
     // Fire-and-forget the PR comment. Decoupled so a GitHub API failure
     // here can't roll back the verified flag we just set.

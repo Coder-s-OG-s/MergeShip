@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { readSupabaseEnv } from '@/lib/supabase/env';
+import { getServiceSupabase } from '@/lib/supabase/service';
 
 /**
  * Middleware:
@@ -36,6 +37,11 @@ function shouldBypassGate(pathname: string): boolean {
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next({ request: req });
+  const pathname = req.nextUrl.pathname;
+
+  if (shouldBypassGate(pathname)) {
+    return res;
+  }
 
   const env = readSupabaseEnv();
   if (!env) {
@@ -60,53 +66,50 @@ export async function middleware(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const pathname = req.nextUrl.pathname;
-
   if (!user) {
-    if (shouldBypassGate(pathname)) return res;
     const url = req.nextUrl.clone();
     url.pathname = '/';
     return NextResponse.redirect(url);
   }
 
-  if (shouldBypassGate(pathname)) return res;
-
-  // Use the PostgREST endpoint directly with the service-role key so RLS
-  // can't hide the row during session cookie refresh. supabase-js doesn't
-  // play nicely with the Edge runtime, but a plain fetch does.
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  let installed = false;
-  if (serviceKey) {
-    try {
-      const url = `${env.url}/rest/v1/github_installations?user_id=eq.${user.id}&uninstalled_at=is.null&select=id&limit=1`;
-      const r = await fetch(url, {
-        headers: {
-          apikey: serviceKey,
-          authorization: `Bearer ${serviceKey}`,
-        },
-        cache: 'no-store',
-      });
-      if (r.ok) {
-        const rows = (await r.json()) as Array<{ id: number }>;
-        installed = rows.length > 0;
-      }
-    } catch {
-      // Fall through — leaves installed = false, gate keeps protecting.
-    }
-  } else {
-    // No service key configured — fall back to the user-scoped client. This
-    // path was the original behaviour; keeping it for local-dev flows where
-    // service role isn't wired up.
-    const { data } = await supabase
-      .from('github_installations')
-      .select('id')
-      .eq('user_id', user.id)
-      .is('uninstalled_at', null)
-      .maybeSingle();
-    installed = Boolean(data);
-  }
+  // Read via service role, not the user-scoped client above. The RLS-scoped
+  // client can miss a perfectly good install row during the brief window
+  // when this middleware is refreshing the session's access token — same
+  // race documented in /install's page.tsx. Bypassing RLS here avoids
+  // bouncing a freshly-installed user back to /install right after they
+  // land on their first gated page.
+  const service = getServiceSupabase();
+  const installed = service
+    ? Boolean(
+        (
+          await service
+            .from('github_installations')
+            .select('id')
+            .eq('user_id', user.id)
+            .is('uninstalled_at', null)
+            .limit(1)
+        ).data?.length,
+      )
+    : Boolean(
+        (
+          await supabase
+            .from('github_installations')
+            .select('id')
+            .eq('user_id', user.id)
+            .is('uninstalled_at', null)
+            .maybeSingle()
+        ).data,
+      );
 
   if (!installed) {
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      user.email?.endsWith('@test.local') &&
+      req.cookies.has('dev_skip_install')
+    ) {
+      return res;
+    }
+
     const url = req.nextUrl.clone();
     url.pathname = '/install';
     return NextResponse.redirect(url);

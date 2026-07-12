@@ -214,6 +214,8 @@ const profileUpdateSchema = z.object({
     .optional()
     .nullable()
     .or(z.literal('')),
+
+  weekly_digest: z.boolean().optional(),
 });
 
 export type ProfileUpdateData = z.infer<typeof profileUpdateSchema>;
@@ -263,6 +265,7 @@ export async function updateProfile(data: ProfileUpdateData): Promise<Result<{ m
     skills: validatedData.skills || [],
     website_url: validatedData.website_url || null,
     twitter_handle: validatedData.twitter_handle || null,
+    weekly_digest: validatedData.weekly_digest,
     updated_at: new Date().toISOString(),
   };
 

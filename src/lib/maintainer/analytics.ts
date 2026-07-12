@@ -17,6 +17,7 @@ export type LevelDistributionTrend = {
 export type MaintainerAnalyticsTrends = {
   weekly: WeeklyMaintainerTrend[];
   levelDistribution: LevelDistributionTrend[];
+  avgReviewTimeHours: number | null;
 };
 
 export type AnalyticsMergedPullRequest = {
@@ -49,6 +50,7 @@ export function buildMaintainerAnalyticsTrends(args: {
   completedRecommendations: AnalyticsCompletedRecommendation[];
   contributorProfiles: AnalyticsContributorProfile[];
   levelUps: AnalyticsLevelUp[];
+  avgReviewTimeHours?: number | null;
 }): MaintainerAnalyticsTrends {
   const weekly = buildWeeklyTrends(
     args.now,
@@ -61,7 +63,7 @@ export function buildMaintainerAnalyticsTrends(args: {
     args.levelUps,
   );
 
-  return { weekly, levelDistribution };
+  return { weekly, levelDistribution, avgReviewTimeHours: args.avgReviewTimeHours ?? null };
 }
 
 function buildWeeklyTrends(
@@ -189,4 +191,18 @@ function monthLabel(date: Date): string {
   return new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
     date,
   );
+}
+
+export type LevelSnapshot = { l0: number; l1: number; l2: number; l3Plus: number };
+
+export function buildCurrentLevelSnapshot(contributors: { level: number }[]): LevelSnapshot {
+  const snapshot: LevelSnapshot = { l0: 0, l1: 0, l2: 0, l3Plus: 0 };
+  for (const c of contributors) {
+    const level = c.level;
+    if (level <= 0) snapshot.l0++;
+    else if (level === 1) snapshot.l1++;
+    else if (level === 2) snapshot.l2++;
+    else snapshot.l3Plus++;
+  }
+  return snapshot;
 }

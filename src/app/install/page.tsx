@@ -11,19 +11,7 @@ export const dynamic = 'force-dynamic';
  * GitHub App on their account yet. One click sends them to GitHub's install flow;
  * the App's installation.created webhook records the install and unblocks them.
  */
-export default async function InstallPage(props: {
-  searchParams: Promise<{ step?: string | string[] }>;
-}) {
-  const searchParams = await props.searchParams;
-  const stepParam = searchParams?.step;
-  let initialStep = stepParam
-    ? parseInt(Array.isArray(stepParam) ? (stepParam[0] ?? '') : stepParam, 10)
-    : 1;
-
-  if (isNaN(initialStep) || initialStep < 1 || initialStep > 3) {
-    initialStep = 1;
-  }
-
+export default async function InstallPage() {
   const sb = await getServerSupabase();
   if (!sb) {
     return <NotConfiguredNotice />;
@@ -34,6 +22,8 @@ export default async function InstallPage(props: {
   } = await sb.auth.getUser();
 
   if (!user) redirect('/');
+
+  const isDevUser = process.env.NODE_ENV !== 'production' && !!user.email?.endsWith('@test.local');
 
   // Idempotent — makes sure a profile row exists so the install webhook can
   // resolve account_login → user_id. Quietly no-ops if already bootstrapped.
@@ -51,7 +41,9 @@ export default async function InstallPage(props: {
     // the previous one (reinstalls after the old row was force-reactivated).
     // maybeSingle() would error and fall through, leaving the user stuck.
 
-    // 1. Already linked to this user → straight to dashboard.
+    let installationId: number | undefined;
+
+    // 1. Already linked to this user → determine next step
     const { data: linkedRows } = await service
       .from('github_installations')
       .select('id')
@@ -59,7 +51,9 @@ export default async function InstallPage(props: {
       .is('uninstalled_at', null)
       .order('installed_at', { ascending: false })
       .limit(1);
-    if (linkedRows && linkedRows.length > 0) redirect('/onboarding/analyze');
+    if (linkedRows && linkedRows[0]) {
+      installationId = linkedRows[0].id;
+    }
 
     // 2. Row exists by account_login but user_id is null or stale → link it
     //    to the current user. Covers orphans from pre-bootstrap webhooks and
@@ -72,7 +66,7 @@ export default async function InstallPage(props: {
       .order('installed_at', { ascending: false })
       .limit(1);
     const byHandle = byHandleRows?.[0];
-    if (byHandle) {
+    if (byHandle && !installationId) {
       if (byHandle.user_id !== user.id) {
         await service
           .from('github_installations')
@@ -104,6 +98,13 @@ export default async function InstallPage(props: {
           },
         });
       }
+      installationId = byHandle.id;
+    }
+
+    // Repos default to managed=true the moment the installation webhook
+    // records them (migration 0018), so there's nothing to wait on or pick
+    // here — an installed account can go straight to the dashboard.
+    if (installationId) {
       redirect('/onboarding/analyze');
     }
   }
@@ -111,7 +112,7 @@ export default async function InstallPage(props: {
   const slug = process.env.GITHUB_APP_SLUG ?? 'mergeship';
   const installUrl = `https://github.com/apps/${slug}/installations/new`;
 
-  return <InstallWizard initialStep={initialStep} installUrl={installUrl} />;
+  return <InstallWizard installUrl={installUrl} isDevUser={isDevUser} />;
 }
 
 function NotConfiguredNotice() {
