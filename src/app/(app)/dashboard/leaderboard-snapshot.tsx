@@ -4,12 +4,48 @@ export default async function LeaderboardSnapshot({ githubHandle }: { githubHand
   const service = getServiceSupabase();
   if (!service) return null;
 
-  // Leaderboard
-  const { data: leaders } = await service
+  // Get current user's level
+  const { data: currentProfile } = await service
     .from('profiles')
-    .select('github_handle, xp')
-    .order('xp', { ascending: false })
-    .limit(4);
+    .select('level')
+    .eq('github_handle', githubHandle)
+    .maybeSingle();
+
+  const userLevel = currentProfile?.level ?? 0;
+
+  // Leaderboard scoped to same level
+  const { data: tierProfiles } = await service
+    .from('profiles')
+    .select('github_handle, xp, level')
+    .eq('level', userLevel)
+    .order('xp', { ascending: false });
+
+  const allTier = tierProfiles ?? [];
+  const myIndex = allTier.findIndex((p) => p.github_handle === githubHandle);
+
+  const mappedProfiles = allTier.map((p, idx) => ({
+    github_handle: p.github_handle,
+    xp: p.xp,
+    level: p.level,
+    rank: idx + 1,
+  }));
+
+  const limit = 5;
+  let displayProfiles: typeof mappedProfiles = [];
+
+  if (myIndex === -1) {
+    displayProfiles = mappedProfiles.slice(0, limit);
+  } else if (mappedProfiles.length <= limit) {
+    displayProfiles = mappedProfiles;
+  } else {
+    if (myIndex <= 2) {
+      displayProfiles = mappedProfiles.slice(0, limit);
+    } else if (myIndex >= mappedProfiles.length - 3) {
+      displayProfiles = mappedProfiles.slice(mappedProfiles.length - limit);
+    } else {
+      displayProfiles = mappedProfiles.slice(myIndex - 2, myIndex + 3);
+    }
+  }
 
   return (
     <section className="flex h-full flex-col border border-zinc-800 bg-[#161b22] p-5">
@@ -18,13 +54,13 @@ export default async function LeaderboardSnapshot({ githubHandle }: { githubHand
           LEADERBOARD SNAPSHOT
         </h2>
         <span className="text-[11px] font-bold uppercase tracking-widest text-[#00FF87]">
-          GLOBAL
+          TIER L{userLevel}
         </span>
       </div>
 
       <div className="custom-scrollbar flex-1 overflow-y-auto pr-2 text-xs uppercase tracking-widest">
-        {leaders && leaders.length > 0 ? (
-          leaders.map((leader, index) => {
+        {displayProfiles.length > 0 ? (
+          displayProfiles.map((leader) => {
             const isMe = leader.github_handle === githubHandle;
             return (
               <div
@@ -33,7 +69,7 @@ export default async function LeaderboardSnapshot({ githubHandle }: { githubHand
               >
                 <div className="flex gap-5">
                   <span className={`w-6 ${isMe ? 'opacity-50' : 'text-zinc-600'}`}>
-                    {(index + 1).toString().padStart(2, '0')}
+                    {leader.rank.toString().padStart(2, '0')}
                   </span>
                   {leader.github_handle} {isMe && '(YOU)'}
                 </div>

@@ -11,6 +11,35 @@ import {
 } from '@/lib/maintainer/detect';
 import { type InstallationSettingsData, type RepoPickerRow } from './types';
 import { MIN_CONTRIBUTOR_LEVELS } from './constants';
+import { tryGetDb } from '@/lib/db/client';
+import { sql } from 'drizzle-orm';
+import { logMaintainerAction } from './audit';
+
+async function reloadPostgrestCache() {
+  const db = tryGetDb();
+  if (db) {
+    try {
+      await db.execute(sql`NOTIFY pgrst, 'reload schema'`);
+    } catch (e) {
+      console.warn('Failed to notify PostgREST schema cache reload:', e);
+    }
+  }
+}
+
+async function withSchemaCacheRetry<T>(operation: () => PromiseLike<T>): Promise<T> {
+  const res = await operation();
+  const err = (res as any)?.error;
+  if (
+    err &&
+    String(err.message || '')
+      .toLowerCase()
+      .includes('schema cache')
+  ) {
+    await reloadPostgrestCache();
+    return (await operation()) as T;
+  }
+  return res;
+}
 
 async function assertMaintainerInstall(
   service: NonNullable<ReturnType<typeof getServiceSupabase>>,
@@ -19,23 +48,28 @@ async function assertMaintainerInstall(
 ): Promise<boolean> {
   const { data: junction } = await service
     .from('github_installation_users')
-    .select('installation_id')
+    .select('permission_level')
     .eq('user_id', userId)
     .eq('installation_id', installationId)
     .maybeSingle();
 
-  return !!junction;
+  return (
+    !!junction &&
+    (junction.permission_level === 'org_admin' || junction.permission_level === 'repo_admin')
+  );
 }
 
 async function readInstallationSettings(
   service: NonNullable<ReturnType<typeof getServiceSupabase>>,
   installationId: number,
 ): Promise<Omit<InstallationSettingsData, 'installationId'>> {
-  const { data } = await service
-    .from('installation_settings')
-    .select('min_contributor_level, auto_assign_mentor_chain, ai_pr_detection')
-    .eq('installation_id', installationId)
-    .maybeSingle();
+  const { data } = await withSchemaCacheRetry(() =>
+    service
+      .from('installation_settings')
+      .select('min_contributor_level, auto_assign_mentor_chain, ai_pr_detection')
+      .eq('installation_id', installationId)
+      .maybeSingle(),
+  );
 
   const level = data?.min_contributor_level;
   return {
@@ -96,17 +130,43 @@ export async function setMinContributorLevel(opts: {
 
   const minContributorLevel = opts.minContributorLevel as 0 | 1 | 2 | 3;
   const current = await readInstallationSettings(service, opts.installationId);
-  const { error } = await service.from('installation_settings').upsert(
-    {
-      installation_id: opts.installationId,
-      min_contributor_level: minContributorLevel,
-      auto_assign_mentor_chain: current.autoAssignMentorChain,
-      ai_pr_detection: current.aiPrDetection,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'installation_id' },
+  const { error } = await withSchemaCacheRetry(() =>
+    service.from('installation_settings').upsert(
+      {
+        installation_id: opts.installationId,
+        min_contributor_level: minContributorLevel,
+        auto_assign_mentor_chain: current.autoAssignMentorChain,
+        ai_pr_detection: current.aiPrDetection,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'installation_id' },
+    ),
   );
-  if (error) return err('persist_failed', error.message);
+  if (error) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId: opts.installationId,
+      action: 'set_min_contributor_level',
+      targetType: 'installation_settings',
+      targetId: opts.installationId.toString(),
+      status: 'failed',
+      errorMessage: error.message,
+      oldValues: { minContributorLevel: current.minContributorLevel },
+      newValues: { minContributorLevel },
+    });
+    return err('persist_failed', error.message);
+  }
+
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId: opts.installationId,
+    action: 'set_min_contributor_level',
+    targetType: 'installation_settings',
+    targetId: opts.installationId.toString(),
+    status: 'success',
+    oldValues: { minContributorLevel: current.minContributorLevel },
+    newValues: { minContributorLevel },
+  });
 
   return ok({
     installationId: opts.installationId,
@@ -132,17 +192,43 @@ export async function setAutoAssignMentorChain(opts: {
   }
 
   const current = await readInstallationSettings(service, opts.installationId);
-  const { error } = await service.from('installation_settings').upsert(
-    {
-      installation_id: opts.installationId,
-      min_contributor_level: current.minContributorLevel,
-      auto_assign_mentor_chain: opts.enabled,
-      ai_pr_detection: current.aiPrDetection,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'installation_id' },
+  const { error } = await withSchemaCacheRetry(() =>
+    service.from('installation_settings').upsert(
+      {
+        installation_id: opts.installationId,
+        min_contributor_level: current.minContributorLevel,
+        auto_assign_mentor_chain: opts.enabled,
+        ai_pr_detection: current.aiPrDetection,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'installation_id' },
+    ),
   );
-  if (error) return err('persist_failed', error.message);
+  if (error) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId: opts.installationId,
+      action: 'set_auto_assign_mentor_chain',
+      targetType: 'installation_settings',
+      targetId: opts.installationId.toString(),
+      status: 'failed',
+      errorMessage: error.message,
+      oldValues: { autoAssignMentorChain: current.autoAssignMentorChain },
+      newValues: { autoAssignMentorChain: opts.enabled },
+    });
+    return err('persist_failed', error.message);
+  }
+
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId: opts.installationId,
+    action: 'set_auto_assign_mentor_chain',
+    targetType: 'installation_settings',
+    targetId: opts.installationId.toString(),
+    status: 'success',
+    oldValues: { autoAssignMentorChain: current.autoAssignMentorChain },
+    newValues: { autoAssignMentorChain: opts.enabled },
+  });
 
   return ok({
     installationId: opts.installationId,
@@ -168,17 +254,43 @@ export async function setAiPrDetection(opts: {
   }
 
   const current = await readInstallationSettings(service, opts.installationId);
-  const { error } = await service.from('installation_settings').upsert(
-    {
-      installation_id: opts.installationId,
-      min_contributor_level: current.minContributorLevel,
-      auto_assign_mentor_chain: current.autoAssignMentorChain,
-      ai_pr_detection: opts.enabled,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'installation_id' },
+  const { error } = await withSchemaCacheRetry(() =>
+    service.from('installation_settings').upsert(
+      {
+        installation_id: opts.installationId,
+        min_contributor_level: current.minContributorLevel,
+        auto_assign_mentor_chain: current.autoAssignMentorChain,
+        ai_pr_detection: opts.enabled,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'installation_id' },
+    ),
   );
-  if (error) return err('persist_failed', error.message);
+  if (error) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId: opts.installationId,
+      action: 'set_ai_pr_detection',
+      targetType: 'installation_settings',
+      targetId: opts.installationId.toString(),
+      status: 'failed',
+      errorMessage: error.message,
+      oldValues: { aiPrDetection: current.aiPrDetection },
+      newValues: { aiPrDetection: opts.enabled },
+    });
+    return err('persist_failed', error.message);
+  }
+
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId: opts.installationId,
+    action: 'set_ai_pr_detection',
+    targetType: 'installation_settings',
+    targetId: opts.installationId.toString(),
+    status: 'success',
+    oldValues: { aiPrDetection: current.aiPrDetection },
+    newValues: { aiPrDetection: opts.enabled },
+  });
 
   return ok({
     installationId: opts.installationId,
@@ -284,10 +396,44 @@ export async function setRepoManaged(input: {
     .eq('installation_id', input.installationId)
     .eq('repo_full_name', input.repoFullName)
     .select('repo_full_name');
-  if (error) return err('persist_failed', error.message);
+  if (error) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId: input.installationId,
+      action: 'set_repo_managed',
+      targetType: 'repository',
+      targetId: input.repoFullName,
+      status: 'failed',
+      errorMessage: error.message,
+      newValues: { managed: input.managed },
+    });
+    return err('persist_failed', error.message);
+  }
   // Zero rows updated → the repo isn't installed under this install (e.g. stale
   // scope data). Surface it rather than reporting a phantom success.
-  if (!data || data.length === 0) return err('not_found', 'repo not found for install');
+  if (!data || data.length === 0) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId: input.installationId,
+      action: 'set_repo_managed',
+      targetType: 'repository',
+      targetId: input.repoFullName,
+      status: 'failed',
+      errorMessage: 'repo not found for install',
+      newValues: { managed: input.managed },
+    });
+    return err('not_found', 'repo not found for install');
+  }
+
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId: input.installationId,
+    action: 'set_repo_managed',
+    targetType: 'repository',
+    targetId: input.repoFullName,
+    status: 'success',
+    newValues: { managed: input.managed },
+  });
 
   return ok({ ok: true });
 }

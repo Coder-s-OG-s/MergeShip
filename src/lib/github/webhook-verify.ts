@@ -9,20 +9,32 @@ import crypto from 'node:crypto';
 export function verifyWebhookSignature(
   rawBody: string,
   signatureHeader: string | null | undefined,
-  secret: string,
+  secret: string | string[],
 ): boolean {
   if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false;
   const provided = signatureHeader.slice('sha256='.length);
   if (provided.length === 0) return false;
 
-  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  const secrets = Array.isArray(secret) ? secret : [secret];
+  if (secrets.length === 0) return false;
 
-  // timingSafeEqual requires equal-length buffers
-  if (provided.length !== expected.length) return false;
+  const providedBuffer = Buffer.from(provided, 'hex');
+  let isValid = false;
 
-  try {
-    return crypto.timingSafeEqual(Buffer.from(provided, 'hex'), Buffer.from(expected, 'hex'));
-  } catch {
-    return false;
+  for (const candidate of secrets) {
+    const expected = crypto.createHmac('sha256', candidate).update(rawBody).digest('hex');
+
+    // timingSafeEqual requires equal-length buffers
+    if (provided.length === expected.length) {
+      try {
+        if (crypto.timingSafeEqual(providedBuffer, Buffer.from(expected, 'hex'))) {
+          isValid = true;
+        }
+      } catch {
+        // continue checking other candidates
+      }
+    }
   }
+
+  return isValid;
 }

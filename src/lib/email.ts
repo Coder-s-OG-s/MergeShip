@@ -1,5 +1,15 @@
 import { Resend } from 'resend';
 
+export function htmlEscape(raw: string | null | undefined): string {
+  if (!raw) return '';
+  return raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 type SendHelpDispatchEmailArgs = {
   to: string;
   mentorHandle: string;
@@ -31,13 +41,13 @@ export async function sendHelpDispatchEmail({
     html: `
       <h2>Someone needs your help on a PR</h2>
 
-      <p>Hello ${mentorHandle},</p>
+      <p>Hello ${htmlEscape(mentorHandle)},</p>
 
-      <p>${menteeHandle} has requested help on a pull request.</p>
+      <p>${htmlEscape(menteeHandle)} has requested help on a pull request.</p>
 
       <p>
         <strong>Pull Request:</strong><br />
-        <a href="${prUrl}">${prUrl}</a>
+        <a href="${htmlEscape(prUrl)}">${htmlEscape(prUrl)}</a>
       </p>
 
       ${
@@ -45,7 +55,7 @@ export async function sendHelpDispatchEmail({
           ? `
         <p>
           <strong>Help Request:</strong><br />
-          ${helpReason}
+          ${htmlEscape(helpReason)}
         </p>
       `
           : ''
@@ -91,7 +101,7 @@ export async function sendWeeklyDigestEmail({
       ? `
       <h3>Recommended for you:</h3>
       <ul>
-        ${recommendations.map((r) => `<li><a href="${r.url}">${r.title}</a> (+${r.xpReward} XP)</li>`).join('')}
+        ${recommendations.map((r) => `<li><a href="${htmlEscape(r.url)}">${htmlEscape(r.title)}</a> (+${r.xpReward} XP)</li>`).join('')}
       </ul>
     `
       : '';
@@ -103,7 +113,7 @@ export async function sendWeeklyDigestEmail({
     html: `
       <h2>Your Weekly Progress Digest</h2>
 
-      <p>Hello ${githubHandle}, here's what you achieved this week on MergeShip!</p>
+      <p>Hello ${htmlEscape(githubHandle)}, here's what you achieved this week on MergeShip!</p>
 
       <h3>Progress</h3>
       <ul>
@@ -130,5 +140,34 @@ export async function sendWeeklyDigestEmail({
       </p>
     `,
     text: `Your Weekly Progress Digest\n\nHello ${githubHandle}, here's what you achieved this week on MergeShip!\n\nProgress:\n- XP Gained: ${xpGained} XP\n- Current Level: Level ${currentLevel}\n- Progress to Next Level: ${xpToNextLevel} XP needed\n\nActivity:\n- Issues Completed: ${issuesCompleted}\n- PRs Merged: ${prsMerged}\n- Reviews Performed: ${reviewsPerformed}\n\n${recommendations.length > 0 ? `Recommended for you:\n${recommendations.map((r) => `- ${r.title} (+${r.xpReward} XP): ${r.url}`).join('\n')}\n\n` : ''}View your dashboard: ${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com'}\n\nYou can unsubscribe from these emails by updating your Profile Settings.\n`,
+  });
+}
+
+export async function sendOrganizationInviteEmail({
+  to,
+  inviteLink,
+  inviterHandle,
+  organizationName,
+}: {
+  to: string;
+  inviteLink: string;
+  inviterHandle: string;
+  organizationName: string;
+}) {
+  if (!resend) {
+    console.warn('RESEND_API_KEY missing, skipping email send');
+    return { skipped: true };
+  }
+
+  return resend.emails.send({
+    from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+    to,
+    subject: `[MergeShip] ${inviterHandle} invited you to join ${organizationName}`,
+    html: `
+      <h2>You've been invited!</h2>
+      <p>${htmlEscape(inviterHandle)} invited you to join <strong>${htmlEscape(organizationName)}</strong> on MergeShip.</p>
+      <p>Click the link below to accept the invitation:</p>
+      <p><a href="${htmlEscape(inviteLink)}">${htmlEscape(inviteLink)}</a></p>
+    `,
   });
 }

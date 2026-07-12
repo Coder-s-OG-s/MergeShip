@@ -3,6 +3,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
 import { buildPrRow, isWithinBackfillWindow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
 import { classifyPrAsAi } from '@/lib/maintainer/pr-classify';
+import { getSyncCursor, setSyncCursor, clearSyncCursor } from '@/lib/maintainer/sync-cursor';
 
 /**
  * Backfill historic PRs for a newly-installed App or for a newly-added repo
@@ -59,7 +60,7 @@ export const prBackfill = inngest.createFunction(
         backfillSingleRepo(installationId, repo),
       );
       reports.push(report);
-      await sleep(PER_REPO_SLEEP_MS);
+      await step.sleep(`sleep-${repo.replace('/', '-')}`, '2s');
     }
 
     return {
@@ -104,6 +105,10 @@ async function backfillSingleRepo(
   const now = Date.now();
   let totalUpserts = 0;
 
+  const lastProcessedPage = await getSyncCursor(installationId, repoFullName, 'pull_requests');
+  const startingPage = (lastProcessedPage ?? 0) + 1;
+  let currentPage = startingPage;
+
   try {
     const pageIterator = octokit.paginate.iterator(octokit.pulls.list, {
       owner,
@@ -112,12 +117,14 @@ async function backfillSingleRepo(
       sort: 'updated',
       direction: 'desc',
       per_page: 100,
+      page: startingPage,
     });
 
     outer: for await (const page of pageIterator) {
       for (const pr of page.data) {
         // Stop walking once we pass the window — list is sorted updated desc.
         if (!isWithinBackfillWindow(pr.updated_at, now, BACKFILL_WINDOW_DAYS)) {
+          await clearSyncCursor(installationId, repoFullName, 'pull_requests');
           break outer;
         }
 
@@ -182,7 +189,14 @@ async function backfillSingleRepo(
           errors.push(`reviews #${pr.number}: ${(e as Error).message}`);
         }
       }
+
+      // All items in the page processed successfully. Update the cursor.
+      await setSyncCursor(installationId, repoFullName, 'pull_requests', currentPage);
+      currentPage++;
     }
+
+    // Finished processing all pages (or exited the loop naturally before hitting the window limit).
+    await clearSyncCursor(installationId, repoFullName, 'pull_requests');
   } catch (e) {
     errors.push(`pulls.list: ${(e as Error).message}`);
   }
@@ -250,24 +264,28 @@ async function upsertReviews(
     const substantive = isSubstantive(r);
     const isMentor = !isSelf && substantive && reviewer !== null && reviewer.level > authorLevel;
 
-    await sb.from('pull_request_reviews').upsert(
-      {
-        pr_id: prRow.id,
-        github_review_id: r.id,
-        reviewer_login: login,
-        reviewer_user_id: reviewer?.id ?? null,
-        state: r.state.toLowerCase() as
-          | 'approved'
-          | 'changes_requested'
-          | 'commented'
-          | 'dismissed'
-          | 'pending',
-        body_excerpt: (r.body ?? '').slice(0, 500) || null,
-        is_mentor: isMentor,
-        submitted_at: r.submitted_at,
-      },
-      { onConflict: 'github_review_id' },
-    );
+    const { data: reviewRow, error: reviewErr } = await sb
+      .from('pull_request_reviews')
+      .upsert(
+        {
+          pr_id: prRow.id,
+          github_review_id: r.id,
+          reviewer_login: login,
+          reviewer_user_id: reviewer?.id ?? null,
+          state: r.state.toLowerCase() as
+            | 'approved'
+            | 'changes_requested'
+            | 'commented'
+            | 'dismissed'
+            | 'pending',
+          body_excerpt: (r.body ?? '').slice(0, 500) || null,
+          is_mentor: isMentor,
+          submitted_at: r.submitted_at,
+        },
+        { onConflict: 'github_review_id' },
+      )
+      .select('id')
+      .single();
 
     // Retroactively flip mentor_verified for the highest-level mentor.
     if (isMentor && reviewer) {
@@ -289,6 +307,27 @@ async function upsertReviews(
             mentor_review_at: r.submitted_at,
           })
           .eq('id', prRow.id);
+
+        if (!reviewErr && reviewRow) {
+          let status: 'pending' | 'approved' | 'changes_requested' | 'dismissed' = 'pending';
+          const rState = r.state.toLowerCase();
+          if (rState === 'approved') status = 'approved';
+          else if (rState === 'changes_requested') status = 'changes_requested';
+          else if (rState === 'dismissed') status = 'dismissed';
+
+          await sb.from('pull_request_pipeline_stages').upsert(
+            {
+              pr_id: prRow.id,
+              stage_type: 'mentor_approval',
+              status,
+              reviewer_user_id: reviewer.id,
+              reviewer_level_snapshot: reviewer.level,
+              review_id: reviewRow.id,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'pr_id, stage_type' },
+          );
+        }
       }
     }
   }

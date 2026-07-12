@@ -11,12 +11,14 @@ import * as flaggedAccountsActions from './flagged-accounts';
 import * as contributorsActions from './contributors';
 import * as failedEventsActions from './failed-events';
 import * as xpPreviewActions from './xp-preview';
+import * as invitesActions from './invites';
 
 export type * from './types';
 export type { StalePrRow } from './analytics';
 export type { ContributorListRow, ContributorStats } from './contributors';
 export type { FailedWebhookEventRow } from './failed-events';
 export type { XpPreviewBreakdown } from './xp-preview';
+export type { InviteRow } from './invites';
 
 export async function getMaintainerInstalls(
   ...args: Parameters<typeof settingsActions.getMaintainerInstalls>
@@ -228,6 +230,12 @@ export async function getContributorStats(
   return contributorsActions.getContributorStats(...args);
 }
 
+export async function exportContributorsCsv(
+  ...args: Parameters<typeof contributorsActions.exportContributorsCsv>
+): ReturnType<typeof contributorsActions.exportContributorsCsv> {
+  return contributorsActions.exportContributorsCsv(...args);
+}
+
 export async function getFailedWebhookEvents(
   ...args: Parameters<typeof failedEventsActions.getFailedWebhookEvents>
 ): ReturnType<typeof failedEventsActions.getFailedWebhookEvents> {
@@ -244,6 +252,24 @@ export async function previewMergeXp(
   ...args: Parameters<typeof xpPreviewActions.previewMergeXp>
 ): ReturnType<typeof xpPreviewActions.previewMergeXp> {
   return xpPreviewActions.previewMergeXp(...args);
+}
+
+export async function listPendingInvites(
+  ...args: Parameters<typeof invitesActions.listPendingInvites>
+): ReturnType<typeof invitesActions.listPendingInvites> {
+  return invitesActions.listPendingInvites(...args);
+}
+
+export async function sendInvite(
+  ...args: Parameters<typeof invitesActions.sendInvite>
+): ReturnType<typeof invitesActions.sendInvite> {
+  return invitesActions.sendInvite(...args);
+}
+
+export async function resendInvite(
+  ...args: Parameters<typeof invitesActions.resendInvite>
+): ReturnType<typeof invitesActions.resendInvite> {
+  return invitesActions.resendInvite(...args);
 }
 
 export async function pingReviewers(prId: number): Promise<Result<{ commented: boolean }>> {

@@ -30,7 +30,7 @@ export function ClosePrButton({ prId }: { prId: number }) {
     <button
       onClick={handleClose}
       disabled={loading}
-      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+      className="rounded-sm border border-zinc-800/80 px-4 py-2.5 font-mono text-xs text-zinc-400 hover:bg-zinc-800/30 disabled:opacity-50"
     >
       {loading ? 'Closing...' : 'Close PR'}
     </button>

@@ -45,6 +45,12 @@ Set in your deployment platform:
 GITHUB_WEBHOOK_SECRET="your_github_webhook_secret_here"
 ```
 
+For zero-downtime rotation, you can instead provide a comma-separated list of active secrets:
+
+```bash
+GITHUB_WEBHOOK_SECRETS="new_secret_here,old_secret_here"
+```
+
 ### GitHub Setup
 
 In your GitHub App settings:
@@ -59,17 +65,24 @@ In your GitHub App settings:
 
 ### Secret Rotation
 
-If the webhook secret is compromised:
+If you need to rotate your webhook secret (e.g., routine maintenance or suspected compromise):
 
-1. **Immediately**:
-   - Update `GITHUB_WEBHOOK_SECRET` in your deployment
+1. **Prepare Deployment**:
+   - Update your environment variables to use `GITHUB_WEBHOOK_SECRETS`
+   - Include both the new and old secret: `GITHUB_WEBHOOK_SECRETS="new_secret,old_secret"`
    - Redeploy the application
-   - GitHub will retry failed deliveries
+   - At this point, the application will accept webhooks signed by either secret.
 
-2. **In GitHub Settings**:
-   - Generate a new webhook secret
-   - Update your app settings
-   - Old secret stops working immediately
+2. **Update GitHub Settings**:
+   - Go to your GitHub App settings
+   - Update the webhook secret to the `new_secret`
+   - GitHub will now sign new deliveries with the new secret. Delayed deliveries signed with the `old_secret` will still be accepted by the application.
+
+3. **Cleanup**:
+   - Wait for any delayed deliveries to complete (or for a safe period, like a few hours).
+   - Remove the `old_secret` from your environment configuration (revert to just `GITHUB_WEBHOOK_SECRET` or keep `GITHUB_WEBHOOK_SECRETS` with a single value).
+   - Redeploy the application.
+   - The app logs a startup warning if more than two secrets are configured to remind you to clean up.
 
 ## Attack Prevention
 
