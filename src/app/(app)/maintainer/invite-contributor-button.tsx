@@ -49,10 +49,19 @@ export default function InviteContributorButton({
       return;
     }
     const link = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.dev'}/invite?ref=${res.data}`;
-    await navigator.clipboard.writeText(link);
-    setLinkCopied(true);
-    setGeneratingLink(false);
-    setTimeout(() => setLinkCopied(false), 2000);
+
+    try {
+      await navigator.clipboard.writeText(link);
+      setLinkCopied(true);
+    } catch {
+      setError('Failed to copy to clipboard. Please try again.');
+    } finally {
+      setGeneratingLink(false);
+      setTimeout(() => {
+        setLinkCopied(false);
+        setError(null);
+      }, 2000);
+    }
   }
 
   return (
