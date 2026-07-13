@@ -124,15 +124,6 @@ export async function getLeaderboard(
     const db = tryGetDb();
     if (!db) return err('not_configured', 'database not configured');
 
-    // Rate-limit non-friends scopes to prevent database resource exhaustion.
-    if (scope !== 'friends') {
-      const rlRes = await requireUser({
-        rateLimit: { namespace: 'leaderboard', limit: 30, windowSec: 60 },
-        rateLimitMessage: 'too many leaderboard requests, slow down',
-      });
-      if (!rlRes.ok) return rlRes;
-    }
-
     let rows: {
       id: string;
       github_handle: string;
@@ -146,6 +137,15 @@ export async function getLeaderboard(
     }[] = [];
 
     if (!cached) {
+      // Rate-limit non-friends scopes to prevent database resource exhaustion.
+      if (scope !== 'friends') {
+        const rlRes = await requireUser({
+          rateLimit: { namespace: 'leaderboard', ...RATE_LIMIT_TIERS.STANDARD },
+          rateLimitMessage: 'too many leaderboard requests, slow down',
+        });
+        if (!rlRes.ok) return rlRes;
+      }
+
       if (scope === 'global') {
         rows = (await db.execute(sql`
         select id, github_handle, display_name, avatar_url, xp, level, github_total_merges, github_streak,
