@@ -87,7 +87,7 @@ describe('classifyPrAsAi', () => {
       await classifyPrAsAi({ title: 'My PR', body: adversarialBody });
 
       expect(llmCall).toHaveBeenCalledTimes(1);
-      const args = vi.mocked(llmCall).mock.calls[0][0];
+      const args = vi.mocked(llmCall).mock.calls[0]![0]!;
       const prompt = args.prompt;
 
       // Verify untrusted boundary framing exists
