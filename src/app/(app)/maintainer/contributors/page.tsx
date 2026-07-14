@@ -13,6 +13,8 @@ import { isOk } from '@/lib/result';
 import { ContributorsTable } from './contributors-table';
 
 import { LevelDistributionPanel } from './level-distribution-panel';
+import { buildTrustSegments } from '@/lib/maintainer/trust';
+import { TrustSegmentsPanel } from './trust-segments-panel';
 import ExportContributorsButton from './export-contributors-button';
 import { StatsBar } from './stats-bar';
 import { PendingInvitesPanel } from './pending-invites-panel';
@@ -45,6 +47,8 @@ export default async function ContributorsPage({
 
   const contributorsRes = await getContributorsList(installId);
   const contributors: ContributorListRow[] = isOk(contributorsRes) ? contributorsRes.data : [];
+  const trustScores = contributors.map((c) => c.trustScore);
+  const trustSegments = buildTrustSegments(trustScores);
   const install = installs.find((i) => i.installationId === installId)!;
 
   const repos = await listMaintainerRepos(user.id, installId);
@@ -83,6 +87,7 @@ export default async function ContributorsPage({
           </div>
           <div className="flex flex-col gap-8 lg:col-span-1">
             <LevelDistributionPanel contributors={contributors} />
+            <TrustSegmentsPanel segments={trustSegments} total={contributors.length} />
             <PendingInvitesPanel invites={pendingInvites} installationId={installId} />
           </div>
         </div>

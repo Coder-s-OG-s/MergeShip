@@ -42,7 +42,8 @@ export async function getFlaggedAccounts(args?: {
     .from('flagged_accounts')
     .select('id, user_id, reason, severity, evidence, detected_at')
     .eq('status', 'open')
-    .order('detected_at', { ascending: false });
+    .order('detected_at', { ascending: false })
+    .limit(100);
 
   if (error) {
     return err('query_failed', error.message);

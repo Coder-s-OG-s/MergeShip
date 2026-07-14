@@ -45,8 +45,10 @@ export async function middleware(req: NextRequest) {
 
   const env = readSupabaseEnv();
   if (!env) {
-    // No Supabase configured — let the request through. The landing page renders;
-    // anything that needs auth will show its own "not configured" state.
+    if (process.env.NODE_ENV === 'production') {
+      return new NextResponse('Service temporarily unavailable', { status: 503 });
+    }
+    // Dev mode: allow through for landing page
     return res;
   }
 

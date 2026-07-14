@@ -145,11 +145,36 @@ export const processInstallationEvent = inngest.createFunction(
       }
 
       if (payload.action === 'deleted') {
-        await sb
+        const { error: markError } = await sb
           .from('github_installations')
           .update({ uninstalled_at: new Date().toISOString() })
           .eq('id', install.id);
-        return { ok: true, uninstalled: true };
+
+        if (markError) {
+          throw new Error(
+            `Failed to mark install ${install.id} as uninstalled: ${markError.message}`,
+          );
+        }
+
+        const tables = [
+          'installation_repositories',
+          'github_installation_users',
+          'installation_user_repos',
+          'installation_settings',
+          'org_communities',
+          'repo_sync_cursors',
+        ] as const;
+
+        for (const table of tables) {
+          const { error } = await sb.from(table).delete().eq('installation_id', install.id);
+          if (error) {
+            throw new Error(
+              `Failed to delete from ${table} for install ${install.id}: ${error.message}`,
+            );
+          }
+        }
+
+        return { ok: true, uninstalled: true, cleanup: true };
       }
 
       if (payload.action === 'suspend') {
