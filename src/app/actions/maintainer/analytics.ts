@@ -125,6 +125,74 @@ export async function getStaleIssues(args: {
   );
 }
 
+export type StalePrRow = {
+  id: number;
+  number: number;
+  title: string;
+  url: string;
+  repoFullName: string;
+  daysSinceUpdate: number;
+  authorLogin: string;
+};
+
+export async function getStalePrs({
+  installationId,
+  thresholdDays = 14,
+}: {
+  installationId: number;
+  thresholdDays?: number;
+}): Promise<Result<StalePrRow[]>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return ok([]);
+  }
+
+  const thresholdDate = new Date();
+  thresholdDate.setDate(thresholdDate.getDate() - thresholdDays);
+
+  const { data, error } = await service
+    .from('pull_requests')
+    .select('id, number, title, url, repo_full_name, github_updated_at, author_login')
+    .in('repo_full_name', repos)
+    .eq('state', 'open')
+    .lt('github_updated_at', thresholdDate.toISOString())
+    .order('github_updated_at', { ascending: true })
+    .limit(5);
+
+  if (error) return err('db_error', error.message);
+
+  type RawStalePr = {
+    id: number;
+    number: number;
+    title: string;
+    url: string;
+    repo_full_name: string;
+    github_updated_at: string;
+    author_login: string | null;
+  };
+
+  const rows: StalePrRow[] = ((data ?? []) as RawStalePr[]).map((row) => ({
+    id: row.id,
+    number: row.number,
+    title: row.title,
+    url: row.url,
+    repoFullName: row.repo_full_name,
+    daysSinceUpdate: Math.floor(
+      (Date.now() - new Date(row.github_updated_at).getTime()) / 86_400_000,
+    ),
+    authorLogin: row.author_login ?? 'unknown',
+  }));
+
+  return ok(rows);
+}
+
 export async function getTopContributors(args: {
   installationId: number;
 }): Promise<Result<ContributorRow[]>> {
@@ -160,7 +228,7 @@ export async function getTopContributors(args: {
       .limit(5);
 
     return ok(
-      rows.map((row) => ({
+      rows.map((row: { githubHandle: string | null; xp: unknown; level: number | null }) => ({
         githubHandle: row.githubHandle ?? 'unknown',
         xp: row.xp ? Number(row.xp) : 0,
         level: row.level ?? 0,
@@ -501,12 +569,19 @@ export async function getReviewerLoad(args: {
       .orderBy(desc(count(pullRequests.id)));
 
     return ok(
-      rows.map((row) => ({
-        reviewerId: row.reviewerId as string,
-        githubHandle: row.githubHandle,
-        avatarUrl: row.avatarUrl,
-        prCount: row.prCount,
-      })),
+      rows.map(
+        (row: {
+          reviewerId: string | null;
+          githubHandle: string;
+          avatarUrl: string | null;
+          prCount: number;
+        }) => ({
+          reviewerId: row.reviewerId as string,
+          githubHandle: row.githubHandle,
+          avatarUrl: row.avatarUrl,
+          prCount: row.prCount,
+        }),
+      ),
     );
   } catch (error: any) {
     return err('query_failed', error.message || 'Drizzle query failed');

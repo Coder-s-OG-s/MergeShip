@@ -24,6 +24,7 @@ vi.mock('../client', () => ({
 
 const run = maintainerDiscover as unknown as (ctx: {
   event: { data?: Record<string, unknown> };
+  step: any;
 }) => Promise<unknown>;
 
 const ev = (over: Record<string, unknown> = {}) => ({
@@ -31,8 +32,13 @@ const ev = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('maintainerDiscover', () => {
+  let step: any;
   beforeEach(() => {
     vi.clearAllMocks();
+    step = {
+      run: vi.fn().mockImplementation(async (_name, cb) => cb()),
+      sleepUntil: vi.fn().mockResolvedValue(undefined),
+    };
   });
 
   it('inserts new access grants when a user gains repo access', async () => {
@@ -76,7 +82,7 @@ describe('maintainerDiscover', () => {
     });
     vi.mocked(cacheGet).mockResolvedValue(null);
 
-    const result = await run({ event: ev() });
+    const result = await run({ event: ev(), step });
 
     expect(octokit.orgs.getMembershipForUser).toHaveBeenCalledWith({
       org: 'test-org',
@@ -137,7 +143,7 @@ describe('maintainerDiscover', () => {
       toDelete: [1],
     });
 
-    const result = await run({ event: ev() });
+    const result = await run({ event: ev(), step });
 
     expect(installUsers.delete).toHaveBeenCalled();
     expect(installUsers.in).toHaveBeenCalledWith('installation_id', [1]);
@@ -171,7 +177,7 @@ describe('maintainerDiscover', () => {
       }),
     });
 
-    const result = await run({ event: {} });
+    const result = await run({ event: {}, step });
 
     expect(mockSend).toHaveBeenCalledWith({
       name: 'maintainer/discover',

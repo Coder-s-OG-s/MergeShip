@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { pingReviewers } from '@/app/actions/maintainer';
 import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
@@ -8,6 +9,7 @@ import {
   getMaintainerAnalyticsTrends,
   getRepoHealthOverview,
   getStaleIssues,
+  getStalePrs,
   getFlaggedAccounts,
   getTopContributors,
   getInstallationSettings,
@@ -19,6 +21,7 @@ import {
   type InstallationSettingsData,
   type RepoHealthRow,
   type StaleIssueRow,
+  type StalePrRow,
   type ContributorRow,
   type ReviewerLoadRow,
   type NoiseBreakdown,
@@ -37,6 +40,7 @@ import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
 import QueueSettings from './queue-settings';
 import { ResolveFlagButton } from './resolve-flag-button';
+import { StalePrBanner } from './stale-pr-banner';
 import { getContributorFunnel } from '@/app/actions/maintainer/analytics';
 import type { ContributorFunnelData } from '@/app/actions/maintainer/types';
 import { ContributorFunnel } from './contributor-funnel';
@@ -146,6 +150,8 @@ export default async function MaintainerPage({
   const reviewerLoads: ReviewerLoadRow[] = isOk(reviewerLoadsRes) ? reviewerLoadsRes.data : [];
   const maxLoad = reviewerLoads.length > 0 ? Math.max(...reviewerLoads.map((r) => r.prCount)) : 0;
 
+  const stalePrsRes = await getStalePrs({ installationId: activeInstallId });
+  const stalePrs: StalePrRow[] = isOk(stalePrsRes) ? stalePrsRes.data : [];
   let noise: NoiseBreakdown = { valid: 0, spamAi: 0, other: 0, total: 0 };
   if (settings.aiPrDetection) {
     const noiseRes = await getNoiseBreakdown({ installationId: activeInstallId });
@@ -175,6 +181,7 @@ export default async function MaintainerPage({
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-5xl">
+        <StalePrBanner stalePrs={stalePrs} onPing={pingReviewers} />
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <h1 className="font-display text-3xl font-bold">Maintainer</h1>
           <div className="flex items-center gap-2">
