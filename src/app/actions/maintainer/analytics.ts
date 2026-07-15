@@ -5,8 +5,13 @@ import { requireMaintainer } from '@/lib/action-auth';
 import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerRepos } from '@/lib/maintainer/detect';
 import { tryGetDb } from '@/lib/db/client';
-import { profiles, xpEvents, pullRequests } from '@/lib/db/schema';
-import { eq, inArray, sum, desc, and, count } from 'drizzle-orm';
+import { profiles, xpEvents, pullRequests, githubInstallations, issues } from '@/lib/db/schema';
+import { eq, inArray, sum, desc, and, count, gte, isNotNull } from 'drizzle-orm';
+import {
+  computeTimeSaved,
+  type AnalyticsRange,
+  type TimeSavedBreakdown,
+} from '@/lib/maintainer/time-saved';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
 import {
@@ -688,4 +693,115 @@ export async function getContributorFunnel(args: {
   const l2Promoted = (profileRows ?? []).length;
 
   return ok({ registered, firstPr, l2Promoted });
+}
+
+export async function getTimeSaved(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<TimeSavedBreakdown>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const db = tryGetDb();
+  if (!db) {
+    return err('not_configured', 'database not configured');
+  }
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return ok({
+      aiFilteringHours: 0,
+      chainReviewsHours: 0,
+      autoTriageHours: 0,
+      totalHours: 0,
+      projectedAnnualHours: 0,
+    });
+  }
+
+  let startDate: Date | null = null;
+  let daysInRange = 0;
+
+  if (range === '30d') {
+    daysInRange = 30;
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+  } else if (range === '90d') {
+    daysInRange = 90;
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - 90);
+  } else {
+    // 'all'
+    const install = await db
+      .select({ installedAt: githubInstallations.installedAt })
+      .from(githubInstallations)
+      .where(eq(githubInstallations.id, installationId))
+      .limit(1);
+
+    if (install.length > 0 && install[0]?.installedAt) {
+      const diffMs = Date.now() - new Date(install[0].installedAt).getTime();
+      daysInRange = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    } else {
+      daysInRange = 30; // fallback default
+    }
+  }
+
+  try {
+    // 1. ai_flagged_prs_blocked
+    const aiFlaggedConditions = [
+      inArray(pullRequests.repoFullName, repos),
+      eq(pullRequests.aiFlagged, true),
+    ];
+    if (startDate) {
+      aiFlaggedConditions.push(gte(pullRequests.githubCreatedAt, startDate));
+    }
+    const aiFlaggedResult = await db
+      .select({ count: count() })
+      .from(pullRequests)
+      .where(and(...aiFlaggedConditions));
+    const aiBlockedPrs = aiFlaggedResult[0]?.count ?? 0;
+
+    // 2. mentor_verified_prs
+    const mentorVerifiedConditions = [
+      inArray(pullRequests.repoFullName, repos),
+      eq(pullRequests.mentorVerified, true),
+      eq(pullRequests.state, 'merged'),
+    ];
+    if (startDate) {
+      mentorVerifiedConditions.push(gte(pullRequests.githubCreatedAt, startDate));
+    }
+    const mentorVerifiedResult = await db
+      .select({ count: count() })
+      .from(pullRequests)
+      .where(and(...mentorVerifiedConditions));
+    const mentorVerifiedPrs = mentorVerifiedResult[0]?.count ?? 0;
+
+    // 3. auto_triaged_issues
+    const autoTriagedConditions = [
+      inArray(issues.repoFullName, repos),
+      isNotNull(issues.assigneeLogin),
+    ];
+    if (startDate) {
+      autoTriagedConditions.push(gte(issues.githubCreatedAt, startDate));
+    }
+    const autoTriagedResult = await db
+      .select({ count: count() })
+      .from(issues)
+      .where(and(...autoTriagedConditions));
+    const autoTriagedIssues = autoTriagedResult[0]?.count ?? 0;
+
+    const breakdown = computeTimeSaved({
+      aiBlockedPrs,
+      mentorVerifiedPrs,
+      autoTriagedIssues,
+      daysInRange,
+    });
+
+    return ok(breakdown);
+  } catch (error: any) {
+    return err('query_failed', error.message || 'Drizzle query failed');
+  }
 }

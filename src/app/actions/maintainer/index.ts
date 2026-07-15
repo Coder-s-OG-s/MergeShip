@@ -200,6 +200,12 @@ export async function getPromotionEligible(
   return analyticsActions.getPromotionEligible(...args);
 }
 
+export async function getTimeSaved(
+  ...args: Parameters<typeof analyticsActions.getTimeSaved>
+): ReturnType<typeof analyticsActions.getTimeSaved> {
+  return analyticsActions.getTimeSaved(...args);
+}
+
 export async function getFlaggedAccounts(
   ...args: Parameters<typeof flaggedAccountsActions.getFlaggedAccounts>
 ): ReturnType<typeof flaggedAccountsActions.getFlaggedAccounts> {
