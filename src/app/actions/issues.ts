@@ -275,10 +275,18 @@ export async function claimIssue(issueId: number): Promise<Result<{ recId: numbe
 
   const { data: issue } = await service
     .from('issues')
-    .select('id, difficulty, xp_reward')
+    .select('id, difficulty, xp_reward, repo_full_name')
     .eq('id', issueId)
     .single();
   if (!issue) return err('not_found', 'issue not found');
+
+  // Validate that the issue belongs to a repo the user has access to.
+  const repoOptsRes = await getRepoOptions();
+  if (!repoOptsRes.ok) return err(repoOptsRes.error.code, repoOptsRes.error.message);
+  const allowedRepos = repoOptsRes.data.map((o) => o.value);
+  if (!allowedRepos.includes(issue.repo_full_name)) {
+    return err('forbidden', 'you do not have access to this repository');
+  }
 
   const { data: existing } = await service
     .from('recommendations')

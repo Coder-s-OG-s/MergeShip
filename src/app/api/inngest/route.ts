@@ -30,6 +30,7 @@ import { processIssueEvent } from '@/inngest/functions/process-issue-event';
 import { processIssueCommentEvent } from '@/inngest/functions/process-issue-comment-event';
 import { weeklyDigest, sendUserDigest } from '@/inngest/functions/weekly-digest';
 import { deadLetterHandler } from '@/inngest/functions/dead-letter';
+import { mentorAssignedNotify } from '@/inngest/functions/mentor-assigned-notify';
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -59,5 +60,6 @@ export const { GET, POST, PUT } = serve({
     weeklyDigest,
     sendUserDigest,
     deadLetterHandler,
+    mentorAssignedNotify,
   ],
 });

@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { sendInvite, getMyGithubHandle } from '@/app/actions/maintainer';
-import { Link, Check } from 'lucide-react';
+import { sendInvite } from '@/app/actions/maintainer';
+import { captureEvent } from '@/lib/posthog/helpers';
+import { EVENTS } from '@/lib/posthog/events';
 
 export default function InviteContributorButton({
   installationId,
@@ -34,6 +35,7 @@ export default function InviteContributorButton({
         setEmail('');
         setOpen(false);
         router.refresh();
+        captureEvent(EVENTS.MAINTAINER_INVITE_SENT, { installationId, accountLogin });
       } else {
         setError(res.error.message || 'Failed to send invite');
       }
