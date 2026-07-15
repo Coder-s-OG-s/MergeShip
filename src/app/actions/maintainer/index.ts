@@ -206,6 +206,12 @@ export async function getTimeSaved(
   return analyticsActions.getTimeSaved(...args);
 }
 
+export async function getRepoAnalyticsBreakdown(
+  ...args: Parameters<typeof analyticsActions.getRepoAnalyticsBreakdown>
+): ReturnType<typeof analyticsActions.getRepoAnalyticsBreakdown> {
+  return analyticsActions.getRepoAnalyticsBreakdown(...args);
+}
+
 export async function getFlaggedAccounts(
   ...args: Parameters<typeof flaggedAccountsActions.getFlaggedAccounts>
 ): ReturnType<typeof flaggedAccountsActions.getFlaggedAccounts> {

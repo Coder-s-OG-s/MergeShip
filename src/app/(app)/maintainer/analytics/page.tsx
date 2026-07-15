@@ -1,10 +1,15 @@
 import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
-import { getMaintainerInstalls, getTimeSaved } from '@/app/actions/maintainer';
+import {
+  getMaintainerInstalls,
+  getTimeSaved,
+  getRepoAnalyticsBreakdown,
+} from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { isOk } from '@/lib/result';
 import TimeSavedPanel from './time-saved-panel';
+import { RepoBreakdownTable } from './repo-breakdown-table';
 import Link from 'next/link';
 import type { AnalyticsRange } from '@/lib/maintainer/time-saved';
 
@@ -54,9 +59,15 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
 
   const rawRange = resolvedSearchParams.range;
   const range: AnalyticsRange =
-    rawRange === '30d' || rawRange === '90d' || rawRange === 'all' ? rawRange : '30d';
+    rawRange === '7d' || rawRange === '30d' || rawRange === '90d' || rawRange === 'all'
+      ? rawRange
+      : '30d';
 
-  const timeSavedRes = await getTimeSaved(activeInstallId, range);
+  const [timeSavedRes, repoAnalyticsRes] = await Promise.all([
+    getTimeSaved(activeInstallId, range),
+    getRepoAnalyticsBreakdown(activeInstallId, range),
+  ]);
+
   const timeSaved = isOk(timeSavedRes)
     ? timeSavedRes.data
     : {
@@ -67,14 +78,16 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         projectedAnnualHours: 0,
       };
 
+  const repoAnalytics = isOk(repoAnalyticsRes) ? repoAnalyticsRes.data : [];
+
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <h1 className="font-display text-3xl font-bold">Analytics</h1>
           <div className="flex items-center gap-4">
             <div className="flex gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-1 text-xs">
-              {(['30d', '90d', 'all'] as const).map((r) => {
+              {(['7d', '30d', '90d', 'all'] as const).map((r) => {
                 const active = range === r;
                 return (
                   <Link
@@ -86,7 +99,13 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
                         : 'text-zinc-400 hover:text-white'
                     }`}
                   >
-                    {r === '30d' ? '30 Days' : r === '90d' ? '90 Days' : 'All Time'}
+                    {r === '7d'
+                      ? '7 Days'
+                      : r === '30d'
+                        ? '30 Days'
+                        : r === '90d'
+                          ? '90 Days'
+                          : 'All Time'}
                   </Link>
                 );
               })}
@@ -94,8 +113,18 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
           </div>
         </header>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <TimeSavedPanel breakdown={timeSaved} installationId={activeInstallId} range={range} />
+        <div className="grid gap-8 lg:grid-cols-3">
+          <div className="lg:col-span-1">
+            <TimeSavedPanel breakdown={timeSaved} installationId={activeInstallId} range={range} />
+          </div>
+          <div className="lg:col-span-2">
+            <div className="rounded-xl border border-zinc-800 bg-[#161b22] p-5">
+              <div className="mb-4 text-[10px] uppercase tracking-widest text-zinc-500">
+                REPOSITORY BREAKDOWN
+              </div>
+              <RepoBreakdownTable data={repoAnalytics} />
+            </div>
+          </div>
         </div>
       </div>
     </div>
