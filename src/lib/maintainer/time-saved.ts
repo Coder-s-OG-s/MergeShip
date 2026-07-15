@@ -10,7 +10,7 @@ export type TimeSavedBreakdown = {
   projectedAnnualHours: number;
 };
 
-export type AnalyticsRange = '30d' | '90d' | 'all';
+export type { AnalyticsRange } from './analytics-range';
 
 export function computeTimeSaved(params: {
   aiBlockedPrs: number;
