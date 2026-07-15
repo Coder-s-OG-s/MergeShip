@@ -601,11 +601,16 @@ export const failedWebhookEvents = pgTable(
 
     retryCount: integer('retry_count').notNull().default(0),
 
+    installationId: bigint('installation_id', { mode: 'number' }).references(
+      () => githubInstallations.id,
+    ),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     deliveryIdx: index('failed_webhook_delivery_idx').on(t.deliveryId),
     eventTypeIdx: index('failed_webhook_event_type_idx').on(t.eventType),
+    installationIdx: index('failed_webhook_events_installation_idx').on(t.installationId),
   }),
 );
 
