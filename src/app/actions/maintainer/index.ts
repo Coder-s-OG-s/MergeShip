@@ -122,6 +122,12 @@ export async function requestChanges(
   return queueActions.requestChanges(...args);
 }
 
+export async function postPrComment(
+  ...args: Parameters<typeof queueActions.postPrComment>
+): ReturnType<typeof queueActions.postPrComment> {
+  return queueActions.postPrComment(...args);
+}
+
 export async function mergePullRequest(
   ...args: Parameters<typeof queueActions.mergePullRequest>
 ): ReturnType<typeof queueActions.mergePullRequest> {
@@ -291,60 +297,6 @@ export async function pingReviewers(prId: number): Promise<Result<{ commented: b
   const [owner, repo] = pr.repo_full_name.split('/');
   if (!owner || !repo) return err('invalid_data', 'Could not parse repo name');
 
-export {
-  getMaintainerInstalls,
-  getInstallationSettings,
-  setMinContributorLevel,
-  setAutoAssignMentorChain,
-  setAiPrDetection,
-  getRepoPicker,
-  setRepoManaged,
-} from './settings';
-
-export {
-  getMaintainerPrQueue,
-  getMaintainerIssueQueue,
-  refreshMaintainerBackfill,
-  getPrCiStatus,
-  closePullRequest,
-  getPrDiff,
-  getPrActivityTimeline,
-  getPrDetails,
-  getMaintainerPrById,
-  requestChanges,
-  postPrComment,
-  mergePullRequest,
-} from './queue';
-
-export { getCommunityLinks, upsertCommunityLink, deleteCommunityLink } from './community';
-export {
-  getContributorsList,
-  exportContributorsCsv,
-  removeContributorFromOrg,
-  type ContributorListRow,
-  getContributorStats,
-  type ContributorStats,
-} from './contributors';
-export {
-  getRepoHealthOverview,
-  getStaleIssues,
-  getTopContributors,
-  getMaintainerAnalyticsTrends,
-  exportPrQueueCsv,
-  getReviewerLoad,
-  getNoiseBreakdown,
-  getPromotionEligible,
-} from './analytics';
-
-export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';
-export * from './invites';
-
-export {
-  getFailedWebhookEvents,
-  retryFailedWebhookEvent,
-  type FailedWebhookEventRow,
-} from './failed-events';
-export { previewMergeXp, type XpPreviewBreakdown } from './xp-preview';
   try {
     const octokit = await getInstallOctokit(pr.installation_id);
     await octokit.rest.issues.createComment({
