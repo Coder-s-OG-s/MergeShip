@@ -13,7 +13,14 @@ export default function TimeSavedPanel({ breakdown, installationId, range }: Tim
   const { aiFilteringHours, chainReviewsHours, autoTriageHours, totalHours, projectedAnnualHours } =
     breakdown;
 
-  const rangeText = range === '30d' ? 'THIS MONTH' : range === '90d' ? 'THIS QUARTER' : 'ALL TIME';
+  const rangeText =
+    range === '7d'
+      ? 'THIS WEEK'
+      : range === '30d'
+        ? 'THIS MONTH'
+        : range === '90d'
+          ? 'THIS QUARTER'
+          : 'ALL TIME';
 
   if (totalHours === 0) {
     return (
