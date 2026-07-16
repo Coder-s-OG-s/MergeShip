@@ -194,7 +194,12 @@ export async function resolveFlaggedAccount(
   const repos = await listMaintainerRepos(user.id, installationId);
   const evidence = flag.evidence as any;
   const items = Array.isArray(evidence?.items) ? evidence.items : [];
-  const isAuthorized = items.some((item: any) => {
+
+  if (items.length === 0) {
+    return err('not_authorised', 'Flag has no evidence items');
+  }
+
+  const isAuthorized = items.every((item: any) => {
     const r = item.repo || item.repoFullName;
     return typeof r === 'string' && repos.includes(r);
   });
