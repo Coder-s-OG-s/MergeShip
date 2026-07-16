@@ -215,11 +215,17 @@ async function backfillSingleRepo(
           base: { repo: { full_name: repoFullName } },
         };
 
-        const aiFlagged = aiDetectionEnabled
+        const classification = aiDetectionEnabled
           ? await classifyPrAsAi({ title: ingestible.title, body: ingestible.body })
-          : false;
+          : { flagged: false, reason: null };
 
-        const row = buildPrRow(ingestible, authorUserId, 'backfill', aiFlagged);
+        const row = buildPrRow(
+          ingestible,
+          authorUserId,
+          'backfill',
+          classification.flagged,
+          classification.reason,
+        );
         const { error: upsertErr } = await sb
           .from('pull_requests')
           .upsert(row, { onConflict: 'repo_full_name,number' });

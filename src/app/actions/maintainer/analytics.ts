@@ -830,3 +830,78 @@ export async function getRepoAnalyticsBreakdown(
 
   return ok(resultRows);
 }
+
+export type AiDetectionBreakdown = {
+  total: number;
+  byReason: {
+    largeDiff: number;
+    generatedMsg: number;
+    newAccount: number;
+    suspiciousIp: number;
+  };
+};
+
+export async function getAiDetectionBreakdown(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<AiDetectionBreakdown>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  // Check if AI detection is enabled for this installation
+  const { data: settings } = await service
+    .from('installation_settings')
+    .select('ai_pr_detection')
+    .eq('installation_id', installationId)
+    .maybeSingle();
+
+  if (!settings?.ai_pr_detection) {
+    return err('ai_detection_disabled', 'AI PR detection is not enabled for this installation');
+  }
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return ok({
+      total: 0,
+      byReason: { largeDiff: 0, generatedMsg: 0, newAccount: 0, suspiciousIp: 0 },
+    });
+  }
+
+  const now = new Date();
+  const bounds = rangeToDateBounds(range, now);
+
+  const { data: rows, error } = await service
+    .from('pull_requests')
+    .select('ai_flag_reason')
+    .in('repo_full_name', repos)
+    .eq('ai_flagged', true)
+    .gte('github_updated_at', bounds.from.toISOString())
+    .lte('github_updated_at', bounds.to.toISOString());
+
+  if (error) {
+    return err('query_failed', error.message);
+  }
+
+  const byReason = {
+    largeDiff: 0,
+    generatedMsg: 0,
+    newAccount: 0,
+    suspiciousIp: 0,
+  };
+
+  for (const row of rows ?? []) {
+    const reason = (row as { ai_flag_reason: string | null }).ai_flag_reason;
+    if (reason === 'large_diff') byReason.largeDiff++;
+    else if (reason === 'generated_msg') byReason.generatedMsg++;
+    else if (reason === 'new_account') byReason.newAccount++;
+    else if (reason === 'suspicious_ip') byReason.suspiciousIp++;
+    // Rows with null reason (legacy data before migration) are still counted in total
+  }
+
+  const total = (rows ?? []).length;
+  return ok({ total, byReason });
+}

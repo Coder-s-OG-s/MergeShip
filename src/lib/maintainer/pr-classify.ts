@@ -2,22 +2,34 @@ import { z } from 'zod';
 import { llmCall } from '@/lib/llm/router';
 
 /**
+ * Valid AI flag reason categories.
+ * Text enum (not Postgres enum) to allow future expansion.
+ */
+export type AiFlagReason = 'large_diff' | 'generated_msg' | 'new_account' | 'suspicious_ip';
+
+export type AiClassificationResult = {
+  flagged: boolean;
+  reason: AiFlagReason | null;
+};
+
+/**
  * Heuristic-based AI/spam PR classifier fallback.
  */
-function classifyPrHeuristic(pr: { title: string; body: string | null }): boolean {
+function classifyPrHeuristic(pr: { title: string; body: string | null }): AiClassificationResult {
   const body = pr.body ?? '';
   const title = pr.title ?? '';
-
-  // Very short title + empty/tiny body → likely noise
-  if (title.length < 20 && body.length < 30) return true;
 
   const AI_KEYWORDS_RE =
     /\b(generated[\s-]by|created[\s-]with|via[\s-]ai|copilot|chatgpt|openai|gpt-[34])\b/i;
 
   // Body mentions well-known AI tool keywords
-  if (AI_KEYWORDS_RE.test(body) || AI_KEYWORDS_RE.test(title)) return true;
+  if (AI_KEYWORDS_RE.test(body) || AI_KEYWORDS_RE.test(title))
+    return { flagged: true, reason: 'generated_msg' };
 
-  return false;
+  // Very short title + empty/tiny body → likely noise
+  if (title.length < 20 && body.length < 30) return { flagged: true, reason: 'large_diff' };
+
+  return { flagged: false, reason: null };
 }
 
 const prClassificationSchema = z.object({
@@ -32,7 +44,10 @@ export const MIN_CLASSIFICATION_CONFIDENCE = 0.7;
  * LLM-powered structured PR classification.
  * Falls back to deterministic heuristic if providers fail.
  */
-export async function classifyPrAsAi(pr: { title: string; body: string | null }): Promise<boolean> {
+export async function classifyPrAsAi(pr: {
+  title: string;
+  body: string | null;
+}): Promise<AiClassificationResult> {
   const serializedData = JSON.stringify({
     title: pr.title,
     body: pr.body ?? '(empty)',
@@ -57,7 +72,10 @@ ${serializedData}
 
   if (result.ok) {
     if (result.data.confidence >= MIN_CLASSIFICATION_CONFIDENCE) {
-      return result.data.isAiGenerated;
+      return {
+        flagged: result.data.isAiGenerated,
+        reason: result.data.isAiGenerated ? 'generated_msg' : null,
+      };
     }
     // Fallback to heuristic if LLM is not confident
     return classifyPrHeuristic(pr);

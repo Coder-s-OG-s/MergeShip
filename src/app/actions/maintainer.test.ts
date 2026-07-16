@@ -29,6 +29,7 @@ import {
   getContributorsList,
   previewMergeXp,
   getContributorStats,
+  getAiDetectionBreakdown,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -135,6 +136,8 @@ function chain(data: unknown = [], error: unknown = null) {
   c.single = vi.fn(pass);
   c.maybeSingle = vi.fn(pass);
   c.limit = vi.fn(pass);
+  c.gte = vi.fn(pass);
+  c.lte = vi.fn(pass);
   c.then = (resolve: (v: unknown) => void) => resolve({ data, error });
   return c;
 }
@@ -2006,6 +2009,70 @@ describe('maintainer actions', () => {
         const charlie = res.data.reviewers.find((r) => r.login === 'charlie')!;
         expect(charlie.xp).toBe(30);
         expect(charlie.isMentor).toBe(false);
+      }
+    });
+  });
+
+  describe('getAiDetectionBreakdown', () => {
+    it('returns error when ai_pr_detection is disabled', async () => {
+      mockFrom.mockImplementation((table) => {
+        if (table === 'installation_settings') {
+          return chain({ ai_pr_detection: false });
+        }
+        return chain(null);
+      });
+
+      const res = await getAiDetectionBreakdown(1, '30d');
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('ai_detection_disabled');
+      }
+    });
+
+    it('returns empty counts when user has no repos', async () => {
+      mockFrom.mockImplementation((table) => {
+        if (table === 'installation_settings') {
+          return chain({ ai_pr_detection: true });
+        }
+        return chain(null);
+      });
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+
+      const res = await getAiDetectionBreakdown(1, '30d');
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.total).toBe(0);
+        expect(res.data.byReason.largeDiff).toBe(0);
+      }
+    });
+
+    it('queries and aggregates ai_flag_reason counts', async () => {
+      mockFrom.mockImplementation((table) => {
+        if (table === 'installation_settings') {
+          return chain({ ai_pr_detection: true });
+        }
+        if (table === 'pull_requests') {
+          return chain([
+            { ai_flag_reason: 'large_diff' },
+            { ai_flag_reason: 'large_diff' },
+            { ai_flag_reason: 'generated_msg' },
+            { ai_flag_reason: 'new_account' },
+            { ai_flag_reason: 'suspicious_ip' },
+            { ai_flag_reason: null }, // legacy/null reason
+          ]);
+        }
+        return chain(null);
+      });
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+      const res = await getAiDetectionBreakdown(1, '30d');
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.total).toBe(6);
+        expect(res.data.byReason.largeDiff).toBe(2);
+        expect(res.data.byReason.generatedMsg).toBe(1);
+        expect(res.data.byReason.newAccount).toBe(1);
+        expect(res.data.byReason.suspiciousIp).toBe(1);
       }
     });
   });

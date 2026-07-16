@@ -172,20 +172,26 @@ async function upsertPrRow(
 
   // Run classification only when the maintainer has enabled aiPrDetection.
   let aiFlagged = false;
+  let aiFlagReason: string | null = null;
   const { data: settings } = await sb
     .from('installation_settings')
     .select('ai_pr_detection')
     .eq('installation_id', knownRepo.installation_id)
     .maybeSingle();
   if (settings?.ai_pr_detection) {
-    aiFlagged = await classifyPrAsAi({ title: pr.title, body: pr.body });
+    const classification = await classifyPrAsAi({ title: pr.title, body: pr.body });
+    aiFlagged = classification.flagged;
+    aiFlagReason = classification.reason;
   }
 
   await sb
     .from('pull_requests')
-    .upsert(buildPrRow(pr as IngestiblePr, authorProfile?.id ?? null, action, aiFlagged), {
-      onConflict: 'repo_full_name,number',
-    });
+    .upsert(
+      buildPrRow(pr as IngestiblePr, authorProfile?.id ?? null, action, aiFlagged, aiFlagReason),
+      {
+        onConflict: 'repo_full_name,number',
+      },
+    );
 }
 
 async function maybeAutoAssignMentor(
