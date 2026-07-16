@@ -44,12 +44,12 @@ export async function getFailedWebhookEvents(args: {
     return ok({ count: 0, rows: [] });
   }
 
-  // Pull all failed events, then filter client-side by repo presence
-  // in the payload. The payload shape varies by event type, so we
-  // check common locations for repo identification.
+  // Scope to the caller's installation at the DB level to avoid loading
+  // cross-org webhook payloads into memory.
   const { data: events, error: fetchError } = await service
     .from('failed_webhook_events')
     .select('id, delivery_id, event_type, source, error, retry_count, created_at, payload')
+    .eq('installation_id', args.installationId)
     .order('created_at', { ascending: false })
     .limit(200);
 

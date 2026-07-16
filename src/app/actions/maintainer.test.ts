@@ -21,6 +21,7 @@ import {
   getReviewerLoad,
   closePullRequest,
   requestChanges,
+  postPrComment,
   mergePullRequest,
   getPrActivityTimeline,
   getPrDetails,
@@ -100,6 +101,7 @@ const mockPullsCreateReview = vi.fn();
 const mockPullsMerge = vi.fn();
 const mockPullsGet = vi.fn();
 const mockIssuesListComments = vi.fn();
+const mockIssuesCreateComment = vi.fn();
 const mockPullsListReviews = vi.fn();
 const mockPullsListCommits = vi.fn();
 
@@ -115,6 +117,7 @@ vi.mock('@/lib/github/app', () => ({
     },
     issues: {
       listComments: mockIssuesListComments,
+      createComment: mockIssuesCreateComment,
     },
   })),
 }));
@@ -1282,6 +1285,93 @@ describe('maintainer actions', () => {
         pull_number: 42,
         event: 'REQUEST_CHANGES',
         body: 'Please address these issues',
+      });
+    });
+  });
+
+  // postPrComment
+
+  describe('postPrComment', () => {
+    beforeEach(() => {
+      mockIssuesCreateComment.mockClear();
+    });
+
+    it('returns rate_limited when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+      const res = await postPrComment(123, 'Looks good');
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns invalid_input when comment is empty or whitespace', async () => {
+      const res = await postPrComment(123, '   ');
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('invalid_input');
+        expect(res.error.message).toBe('Comment is required');
+      }
+      expect(mockFrom).not.toHaveBeenCalled();
+    });
+
+    it('returns not_found when PR does not exist in DB', async () => {
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await postPrComment(123, 'Looks good');
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_found');
+    });
+
+    it('returns not_found when installation not found for repo', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(null));
+
+      const res = await postPrComment(123, 'Looks good');
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('Installation not found for this repository');
+      }
+    });
+
+    it('returns not_authorised when repo not in maintainer scope', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/other']);
+
+      const res = await postPrComment(123, 'Looks good');
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+
+    it('returns github_error when GitHub API throws', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockIssuesCreateComment.mockRejectedValueOnce(new Error('GitHub error'));
+
+      const res = await postPrComment(123, 'Looks good');
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('github_error');
+    });
+
+    it('posts a trimmed PR issue comment on success', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockIssuesCreateComment.mockResolvedValueOnce({ data: { id: 987 } });
+
+      const res = await postPrComment(123, '  Looks good  ');
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data.commentId).toBe(987);
+      expect(mockIssuesCreateComment).toHaveBeenCalledWith({
+        owner: 'org',
+        repo: 'repo',
+        issue_number: 42,
+        body: 'Looks good',
       });
     });
   });

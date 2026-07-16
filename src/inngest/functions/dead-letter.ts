@@ -73,6 +73,7 @@ export const deadLetterHandler = inngest.createFunction(
       payload: originalEvent?.data ?? {},
       error: `[${functionId}] ${errorMessage}`,
       retry_count: 0,
+      installation_id: originalEvent?.data?.payload?.installation?.id ?? null,
     });
 
     if (insertError) {
