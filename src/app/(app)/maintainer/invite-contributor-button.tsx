@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { sendInvite } from '@/app/actions/maintainer';
+import { sendInvite, getMyGithubHandle } from '@/app/actions/maintainer';
 import { captureEvent } from '@/lib/posthog/helpers';
 import { EVENTS } from '@/lib/posthog/events';
+import { Check, Link } from 'lucide-react';
 
 export default function InviteContributorButton({
   installationId,
