@@ -118,7 +118,7 @@ export async function CurrentStreakCard({
 
   return (
     <div className="flex h-full flex-col justify-center border border-zinc-800 bg-[#000E12] p-5">
-      <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">CURRENT STREAK</div>
+      <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">GITHUB STREAK</div>
       <div className="flex items-end gap-2">
         <span className="font-serif text-4xl leading-none">
           {(streak ?? 0).toString().padStart(2, '0')}
@@ -132,7 +132,7 @@ export async function CurrentStreakCard({
 export function CurrentStreakSkeleton() {
   return (
     <div className="flex h-full flex-col justify-center border border-zinc-800 bg-[#000E12] p-5">
-      <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">CURRENT STREAK</div>
+      <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">GITHUB STREAK</div>
       <div className="flex items-end gap-2">
         <div className="h-9 w-16 animate-pulse rounded bg-zinc-800" />
         <div className="mb-1 h-4 w-12 animate-pulse rounded bg-zinc-800" />

@@ -269,7 +269,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     {
       id: 'streak_5',
       icon: '🔥',
-      label: '5-DAY STREAK',
+      label: '5-DAY GITHUB STREAK',
       locked: (profile.github_streak ?? 0) < 5,
     },
     {
@@ -552,7 +552,7 @@ export default async function PublicProfile({ params }: { params: Promise<{ hand
                 </div>
                 <div className="border border-[#21262d] bg-[#161b22] p-4">
                   <div className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
-                    Activity Streak
+                    MergeShip Activity Streak
                   </div>
                   <div className="font-serif text-2xl font-bold text-white">
                     {profile.streakDays}d
