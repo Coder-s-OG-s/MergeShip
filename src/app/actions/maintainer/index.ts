@@ -230,6 +230,7 @@ import { eq } from 'drizzle-orm';
 import { getInstallOctokit } from '@/lib/github/app';
 
 export async function pingReviewers(prId: number): Promise<Result<{ commented: boolean }>> {
+  'use server';
   const authRes = await requireMaintainer({
     rateLimit: { namespace: 'maint:ping-reviewers', ...RATE_LIMIT_TIERS.STANDARD },
   });
