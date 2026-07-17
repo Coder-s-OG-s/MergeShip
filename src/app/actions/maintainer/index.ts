@@ -122,6 +122,12 @@ export async function requestChanges(
   return queueActions.requestChanges(...args);
 }
 
+export async function postPrComment(
+  ...args: Parameters<typeof queueActions.postPrComment>
+): ReturnType<typeof queueActions.postPrComment> {
+  return queueActions.postPrComment(...args);
+}
+
 export async function mergePullRequest(
   ...args: Parameters<typeof queueActions.mergePullRequest>
 ): ReturnType<typeof queueActions.mergePullRequest> {
@@ -204,6 +210,18 @@ export async function getAiDetectionBreakdown(
   ...args: Parameters<typeof analyticsActions.getAiDetectionBreakdown>
 ): ReturnType<typeof analyticsActions.getAiDetectionBreakdown> {
   return analyticsActions.getAiDetectionBreakdown(...args);
+}
+
+export async function getTimeSaved(
+  ...args: Parameters<typeof analyticsActions.getTimeSaved>
+): ReturnType<typeof analyticsActions.getTimeSaved> {
+  return analyticsActions.getTimeSaved(...args);
+}
+
+export async function getRepoAnalyticsBreakdown(
+  ...args: Parameters<typeof analyticsActions.getRepoAnalyticsBreakdown>
+): ReturnType<typeof analyticsActions.getRepoAnalyticsBreakdown> {
+  return analyticsActions.getRepoAnalyticsBreakdown(...args);
 }
 
 export async function getFlaggedAccounts(

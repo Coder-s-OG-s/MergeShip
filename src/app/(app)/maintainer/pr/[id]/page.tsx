@@ -13,6 +13,7 @@ import { isOk } from '@/lib/result';
 import { VerifyButton } from '@/app/(app)/issues/verify-button';
 import { MergeDecisionPanel } from './merge-decision-panel';
 import { PipelineStepper, StepperNode } from './pipeline-stepper';
+import { PrCommentBox } from './pr-comment-box';
 import {
   GitPullRequest,
   MessageSquare,
@@ -263,13 +264,14 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
             {/* Activity Timeline Section */}
             <section className="rounded-3xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-md">
               <h2 className="mb-6 text-lg font-bold text-white">Activity Timeline</h2>
+              {pr.state === 'open' && <PrCommentBox prId={prId} />}
 
               {timelineEvents.length === 0 ? (
-                <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-8 text-center text-sm text-zinc-500">
+                <div className="mt-6 rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-8 text-center text-sm text-zinc-500">
                   No activity logs recorded for this pull request.
                 </div>
               ) : (
-                <div className="relative">
+                <div className="relative mt-6">
                   {/* Timeline Connector Line */}
                   <div className="absolute bottom-6 left-[19px] top-6 w-0.5 bg-zinc-800" />
 
