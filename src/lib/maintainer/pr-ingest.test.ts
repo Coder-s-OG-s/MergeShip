@@ -104,6 +104,7 @@ describe('buildPrRow', () => {
     expect(row.state).toBe('open');
     expect(row.url).toBe('https://github.com/acme/api/pull/12');
     expect(row.body_excerpt).toBe('Closes #5');
+    expect(row.ai_flagged).toBe(false); // default
   });
 
   it('passes through null author_user_id for non-MergeShip authors', () => {
@@ -130,5 +131,17 @@ describe('buildPrRow', () => {
       merged_at: '2026-05-12T00:00:00Z',
     };
     expect(buildPrRow(merged, null, 'closed').state).toBe('merged');
+  });
+
+  it('sets ai_flagged true when aiFlagged param is true', () => {
+    const row = buildPrRow(base, null, 'opened', true);
+    expect(row.ai_flagged).toBe(true);
+    expect(row.ai_flag_reason).toBeNull();
+  });
+
+  it('sets ai_flag_reason when aiFlagReason param is provided', () => {
+    const row = buildPrRow(base, null, 'opened', true, 'large_diff');
+    expect(row.ai_flagged).toBe(true);
+    expect(row.ai_flag_reason).toBe('large_diff');
   });
 });

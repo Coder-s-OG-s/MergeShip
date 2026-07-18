@@ -11,11 +11,26 @@ describe('Result<T>', () => {
 
   it('err carries code, message, retryable', () => {
     const r = err('rate_limited', 'too many requests', true);
+
     expect(isErr(r)).toBe(true);
+
     if (isErr(r)) {
       expect(r.error.code).toBe('rate_limited');
       expect(r.error.message).toBe('too many requests');
       expect(r.error.retryable).toBe(true);
+      expect(r.error.resetAt).toBeUndefined();
+    }
+  });
+
+  it('err carries resetAt when provided', () => {
+    const resetAt = Date.now() + 60000;
+
+    const r = err('rate_limited', 'too many requests', true, resetAt);
+
+    expect(isErr(r)).toBe(true);
+
+    if (isErr(r)) {
+      expect(r.error.resetAt).toBe(resetAt);
     }
   });
 

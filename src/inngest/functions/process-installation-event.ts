@@ -145,11 +145,36 @@ export const processInstallationEvent = inngest.createFunction(
       }
 
       if (payload.action === 'deleted') {
-        await sb
+        const { error: markError } = await sb
           .from('github_installations')
           .update({ uninstalled_at: new Date().toISOString() })
           .eq('id', install.id);
-        return { ok: true, uninstalled: true };
+
+        if (markError) {
+          throw new Error(
+            `Failed to mark install ${install.id} as uninstalled: ${markError.message}`,
+          );
+        }
+
+        const tables = [
+          'installation_repositories',
+          'github_installation_users',
+          'installation_user_repos',
+          'installation_settings',
+          'org_communities',
+          'repo_sync_cursors',
+        ] as const;
+
+        for (const table of tables) {
+          const { error } = await sb.from(table).delete().eq('installation_id', install.id);
+          if (error) {
+            throw new Error(
+              `Failed to delete from ${table} for install ${install.id}: ${error.message}`,
+            );
+          }
+        }
+
+        return { ok: true, uninstalled: true, cleanup: true };
       }
 
       if (payload.action === 'suspend') {
@@ -220,11 +245,14 @@ export const processInstallationReposEvent = inngest.createFunction(
       if (!sb) throw new Error('service role missing');
 
       if (payload.repositories_added?.length) {
-        await sb.from('installation_repositories').insert(
+        await sb.from('installation_repositories').upsert(
           payload.repositories_added.map((r) => ({
             installation_id: payload.installation.id,
             repo_full_name: r.full_name,
           })),
+          {
+            onConflict: 'installation_id,repo_full_name',
+          },
         );
         // Fan-out a per-repo backfill for each new repo so the maintainer
         // queue picks them up without waiting for the next cron tick.

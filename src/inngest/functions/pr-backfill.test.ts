@@ -1,0 +1,230 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { getInstallOctokit } from '@/lib/github/app';
+import { buildPrRow, isWithinBackfillWindow } from '@/lib/maintainer/pr-ingest';
+import { prBackfill } from './pr-backfill';
+import { sb, wire, step } from './__tests__/test-helpers';
+import { getSyncCursor, setSyncCursor, clearSyncCursor } from '@/lib/maintainer/sync-cursor';
+
+vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
+vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn() }));
+vi.mock('@/lib/maintainer/pr-ingest', () => ({
+  buildPrRow: vi.fn(),
+  isWithinBackfillWindow: vi.fn(),
+}));
+vi.mock('@/lib/maintainer/sync-cursor', () => ({
+  getSyncCursor: vi.fn(),
+  setSyncCursor: vi.fn(),
+  clearSyncCursor: vi.fn(),
+}));
+vi.mock('../client', () => ({
+  inngest: { createFunction: (_c: unknown, _t: unknown, h: Function) => h },
+}));
+
+const run = prBackfill as unknown as (ctx: {
+  event: { name: string; data: Record<string, unknown> };
+  step: typeof step;
+}) => Promise<unknown>;
+
+const evRepo = (over: Record<string, unknown> = {}) => ({
+  name: 'pr-backfill/repo',
+  data: { installationId: 1, repoFullName: 'test-org/repo-1', ...over },
+});
+
+describe('prBackfill', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('single-repo backfill skips an uninstalled installation', async () => {
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: '2026-01-01' } }),
+    });
+    wire({ github_installations: installs });
+
+    const result = await run({ event: evRepo(), step });
+    expect(result).toEqual({ skipped: true, reason: 'uninstalled' });
+    expect(getInstallOctokit).not.toHaveBeenCalled();
+  });
+
+  it('installation-wide backfill skips an uninstalled installation', async () => {
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: '2026-01-01' } }),
+    });
+    wire({ github_installations: installs });
+
+    const result = await run({
+      event: { name: 'pr-backfill/installation', data: { installationId: 1 } },
+      step,
+    });
+    expect(result).toEqual({ skipped: true, reason: 'uninstalled or empty' });
+    expect(getInstallOctokit).not.toHaveBeenCalled();
+  });
+
+  it('installation lookup database error is thrown rather than silently skipped', async () => {
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ error: { message: 'db error' } }),
+    });
+    wire({ github_installations: installs });
+
+    await expect(run({ event: evRepo(), step })).rejects.toThrow(
+      'Failed to check installation: db error',
+    );
+  });
+
+  it('backfills recent PRs within backfill window', async () => {
+    const pull_requests = sb({ upsert: vi.fn().mockResolvedValue({}) });
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: null } }),
+    });
+
+    wire({
+      pull_requests,
+      github_installations: installs,
+      profiles: sb({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'u1' } }),
+      }),
+    });
+
+    const iterator = (async function* () {
+      yield {
+        data: [
+          {
+            id: 101,
+            number: 1,
+            html_url: 'https://github.com/test-org/repo-1/pull/1',
+            title: 'Test PR',
+            state: 'open',
+            user: { login: 'alice' },
+            updated_at: new Date().toISOString(),
+          },
+        ],
+      };
+    })();
+
+    const octokit = {
+      paginate: { iterator: vi.fn().mockReturnValue(iterator) },
+      pulls: {
+        list: vi.fn(),
+        listReviews: vi.fn().mockResolvedValue({ data: [] }),
+      },
+    };
+    vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
+    vi.mocked(isWithinBackfillWindow).mockReturnValue(true);
+    vi.mocked(buildPrRow).mockReturnValue({ repo_full_name: 'test-org/repo-1', number: 1 } as any);
+    vi.mocked(getSyncCursor).mockResolvedValue(null);
+
+    const result = await run({ event: evRepo(), step });
+
+    expect(pull_requests.upsert).toHaveBeenCalledWith(
+      { repo_full_name: 'test-org/repo-1', number: 1 },
+      { onConflict: 'repo_full_name,number' },
+    );
+    expect(setSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests', 1);
+    expect(clearSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests');
+    expect(result).toEqual({ repo: 'test-org/repo-1', prs: 1, errors: [] });
+  });
+
+  it('stops pagination when encountering older PRs', async () => {
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: null } }),
+    });
+    wire({
+      github_installations: installs,
+      profiles: sb({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+      }),
+    });
+
+    const iterator = (async function* () {
+      yield {
+        data: [
+          { id: 102, updated_at: '2020-01-01T00:00:00Z' }, // Outside window
+        ],
+      };
+      // This second page should not be fetched if the loop breaks
+      yield {
+        data: [{ id: 103, updated_at: '2019-01-01T00:00:00Z' }],
+      };
+    })();
+
+    const octokit = {
+      paginate: { iterator: vi.fn().mockReturnValue(iterator) },
+      pulls: { list: vi.fn() },
+    };
+    vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
+    vi.mocked(isWithinBackfillWindow).mockReturnValue(false); // return false to break loop
+    vi.mocked(getSyncCursor).mockResolvedValue(null);
+
+    const result = await run({ event: evRepo(), step });
+
+    expect(buildPrRow).not.toHaveBeenCalled();
+    expect(clearSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests');
+    expect(result).toEqual({ repo: 'test-org/repo-1', prs: 0, errors: [] });
+  });
+
+  it('resumes from saved page cursor', async () => {
+    const pull_requests = sb({ upsert: vi.fn().mockResolvedValue({}) });
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: null } }),
+    });
+    wire({
+      pull_requests,
+      github_installations: installs,
+      profiles: sb({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+      }),
+    });
+
+    const iterator = (async function* () {
+      yield {
+        data: [
+          { id: 104, number: 2, user: { login: 'bob' }, updated_at: new Date().toISOString() },
+        ],
+      };
+    })();
+
+    const octokit = {
+      paginate: { iterator: vi.fn().mockReturnValue(iterator) },
+      pulls: {
+        list: vi.fn(),
+        listReviews: vi.fn().mockResolvedValue({ data: [] }),
+      },
+    };
+    vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
+    vi.mocked(isWithinBackfillWindow).mockReturnValue(true);
+    vi.mocked(buildPrRow).mockReturnValue({ repo_full_name: 'test-org/repo-1', number: 2 } as any);
+    vi.mocked(getSyncCursor).mockResolvedValue(3); // Last processed page was 3
+
+    const result = await run({ event: evRepo(), step });
+
+    expect(octokit.paginate.iterator).toHaveBeenCalledWith(
+      octokit.pulls.list,
+      expect.objectContaining({ page: 4 }), // Starts at page 4
+    );
+    expect(setSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests', 4);
+    expect(clearSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests');
+    expect(result).toEqual({ repo: 'test-org/repo-1', prs: 1, errors: [] });
+  });
+
+  it('handles github api errors gracefully', async () => {
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: null } }),
+    });
+    wire({ github_installations: installs });
+    vi.mocked(getInstallOctokit).mockRejectedValue(new Error('API quota exceeded'));
+
+    const result = await run({ event: evRepo(), step });
+
+    expect(result).toEqual({
+      repo: 'test-org/repo-1',
+      prs: 0,
+      errors: ['install-token: API quota exceeded'],
+    });
+  });
+});

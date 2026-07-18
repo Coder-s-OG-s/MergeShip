@@ -67,12 +67,16 @@ export type PullRequestUpsertRow = {
   merged_at: string | null;
   closed_at: string | null;
   fetched_at: string;
+  ai_flagged: boolean;
+  ai_flag_reason: string | null;
 };
 
 export function buildPrRow(
   pr: IngestiblePr,
   authorUserId: string | null,
   action: string,
+  aiFlagged = false,
+  aiFlagReason: string | null = null,
 ): PullRequestUpsertRow {
   return {
     github_pr_id: pr.id,
@@ -90,5 +94,7 @@ export function buildPrRow(
     merged_at: pr.merged_at,
     closed_at: pr.closed_at,
     fetched_at: new Date().toISOString(),
+    ai_flagged: aiFlagged,
+    ai_flag_reason: aiFlagReason,
   };
 }

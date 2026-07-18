@@ -2,6 +2,7 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { redirect } from 'next/navigation';
 import { getIssuesPage, getRepoOptions, type RepoOption } from '@/app/actions/issues';
+import { listMaintainerInstalls, listMaintainerRepos } from '@/lib/maintainer/detect';
 import { IssuesList } from './issues-list';
 import { MyWorkSection, type LinkedRec } from './my-work-section';
 
@@ -14,10 +15,16 @@ type SearchParams = {
   repo?: string;
   claimed?: string;
   page?: string;
+  sort?: string;
 };
 
-export default async function IssuesPage({ searchParams }: { searchParams: SearchParams }) {
-  const sb = getServerSupabase();
+export default async function IssuesPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const sb = await getServerSupabase();
   if (!sb)
     return (
       <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">Not configured</div>
@@ -29,17 +36,41 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
   if (!user) redirect('/');
 
   const filters = {
-    search: searchParams.q,
-    state: (searchParams.state === 'closed' ? 'closed' : 'open') as 'open' | 'closed',
-    difficulty: (['E', 'M', 'H'].includes(searchParams.difficulty ?? '')
-      ? searchParams.difficulty
+    search: resolvedSearchParams.q,
+    state: (resolvedSearchParams.state === 'closed' ? 'closed' : 'open') as 'open' | 'closed',
+    difficulty: (['E', 'M', 'H'].includes(resolvedSearchParams.difficulty ?? '')
+      ? resolvedSearchParams.difficulty
       : undefined) as 'E' | 'M' | 'H' | undefined,
-    repo: searchParams.repo,
-    showClaimed: searchParams.claimed === 'true',
-    page: Math.max(1, parseInt(searchParams.page ?? '1') || 1),
+    repo: resolvedSearchParams.repo,
+    showClaimed: resolvedSearchParams.claimed === 'true',
+    page: Math.max(1, parseInt(resolvedSearchParams.page ?? '1') || 1),
+    sort: (['newest', 'xp_desc', 'xp_asc'].includes(resolvedSearchParams.sort ?? '')
+      ? resolvedSearchParams.sort
+      : undefined) as 'newest' | 'xp_desc' | 'xp_asc' | undefined,
   };
 
   const service = getServiceSupabase();
+
+  let currentUserLevel = 0;
+  if (service) {
+    const { data: profile } = await service
+      .from('profiles')
+      .select('level')
+      .eq('id', user.id)
+      .single();
+    currentUserLevel = profile?.level ?? 0;
+  }
+
+  const maintainedRepoNames = new Set<string>();
+  if (service && currentUserLevel >= 2) {
+    const installs = await listMaintainerInstalls(user.id);
+    const repoLists = await Promise.all(
+      installs.map((install) => listMaintainerRepos(user.id, install.installationId)),
+    );
+    for (const repos of repoLists) {
+      for (const repo of repos) maintainedRepoNames.add(repo);
+    }
+  }
 
   // Step 1: fetch recs with linked PRs
   const linkedRecsRaw = service
@@ -55,14 +86,42 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
 
   // Step 2: fetch issue details separately (avoids FK detection issues)
   const issueMap = new Map<number, { title: string; repo_full_name: string; url: string }>();
+  const prMap = new Map<
+    string,
+    {
+      id: number;
+      author_user_id: string | null;
+      mentor_verified: boolean;
+      state: string;
+      can_verify: boolean;
+    }
+  >();
+
   if (linkedRecsRaw.length > 0 && service) {
     const issueIds = linkedRecsRaw.map((r: any) => r.issue_id).filter(Boolean);
-    const { data: issuesData } = await service
-      .from('issues')
-      .select('id, title, repo_full_name, url')
-      .in('id', issueIds);
+    const prUrls = linkedRecsRaw.map((r: any) => r.linked_pr_url).filter(Boolean);
+
+    const [{ data: issuesData }, { data: prsData }] = await Promise.all([
+      service.from('issues').select('id, title, repo_full_name, url').in('id', issueIds),
+      prUrls.length > 0
+        ? service
+            .from('pull_requests')
+            .select('id, url, author_user_id, mentor_verified, state, repo_full_name')
+            .in('url', prUrls)
+        : { data: [] },
+    ]);
+
     for (const issue of issuesData ?? []) {
       issueMap.set(issue.id, issue);
+    }
+    for (const pr of prsData ?? []) {
+      prMap.set(pr.url, {
+        id: pr.id,
+        author_user_id: pr.author_user_id,
+        mentor_verified: pr.mentor_verified,
+        state: pr.state,
+        can_verify: maintainedRepoNames.has(pr.repo_full_name),
+      });
     }
   }
 
@@ -73,6 +132,7 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
     xp_reward: r.xp_reward as number,
     issue_id: r.issue_id as number,
     issue: issueMap.get(r.issue_id) ?? null,
+    pr: prMap.get(r.linked_pr_url as string) ?? null,
   }));
 
   const [pageResult, repoResult] = await Promise.all([getIssuesPage(filters), getRepoOptions()]);
@@ -93,7 +153,12 @@ export default async function IssuesPage({ searchParams }: { searchParams: Searc
           <h1 className="font-serif text-4xl text-white">Browse Issues</h1>
         </header>
 
-        {linkedRecs.length > 0 && <MyWorkSection initialRecs={linkedRecs} />}
+        {linkedRecs.length > 0 && (
+          <MyWorkSection
+            initialRecs={linkedRecs}
+            currentUser={{ id: user.id, level: currentUserLevel }}
+          />
+        )}
 
         <IssuesList initialData={pageData} initialFilters={filters} repoOptions={repoOptions} />
       </div>

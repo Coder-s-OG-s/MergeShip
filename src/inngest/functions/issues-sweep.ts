@@ -1,6 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
+import { checkRateBudget } from '@/lib/github/rate-budget';
 import { scoreDifficulty, repoHealth } from '@/lib/pipeline/score';
 import { fetchRepoMetrics } from '@/lib/github/repo-meta';
 import { llmCall } from '@/lib/llm/router';
@@ -20,7 +21,7 @@ type ResolvedTarget = { target: string; via: string; isFork: boolean };
 
 export const issuesSweep = inngest.createFunction(
   { id: 'issues-sweep' },
-  { cron: '*/30 * * * *' },
+  { cron: '0 */12 * * *' },
   async ({ step }) => {
     const installs = await step.run('list-installs', async () => {
       const sb = getServiceSupabase();
@@ -46,6 +47,16 @@ export const issuesSweep = inngest.createFunction(
     }> = [];
 
     for (const install of installs) {
+      const budget = await step.run(`check-budget-install-${install.id}`, () =>
+        checkRateBudget(install.id),
+      );
+      if (!budget.ok) {
+        await step.sleepUntil(
+          `sleep-budget-install-${install.id}`,
+          new Date(budget.resetAt * 1000 + 5000),
+        );
+      }
+
       // Each install is its own checkpoint so we can see the boundary in
       // the trace if one install blows up.
       const report = await step.run(`process-install-${install.id}`, async () => {
@@ -134,6 +145,26 @@ export const issuesSweep = inngest.createFunction(
             continue;
           }
 
+          // Pre-fetch existing issues for this repository to avoid redundant LLM scoring
+          const issueNumbers = issues.filter((i) => !i.pull_request).map((i) => i.number);
+          const existingIssuesMap = new Map<
+            number,
+            { difficulty: string; difficulty_source: string; xp_reward: number }
+          >();
+          if (issueNumbers.length > 0) {
+            const { data: existingIssues } = await sb
+              .from('issues')
+              .select('github_issue_number, difficulty, difficulty_source, xp_reward')
+              .eq('repo_full_name', t.target)
+              .in('github_issue_number', issueNumbers);
+
+            if (existingIssues) {
+              for (const ex of existingIssues) {
+                existingIssuesMap.set(ex.github_issue_number, ex);
+              }
+            }
+          }
+
           for (const issue of issues) {
             if (issue.pull_request) continue;
             issuesSeen += 1;
@@ -142,21 +173,31 @@ export const issuesSweep = inngest.createFunction(
               typeof l === 'string' ? l : (l.name ?? ''),
             );
 
-            const scored = await scoreDifficulty(
-              {
-                title: issue.title,
-                body: issue.body ?? undefined,
-                labels,
-                commentCount: issue.comments,
-              },
-              {
-                llmFallback: async (i) =>
-                  llmCall({
-                    prompt: `Rate this OSS issue's difficulty as E/M/H.\nTitle: ${i.title}\nLabels: ${i.labels.join(', ')}\nBody: ${(i.body ?? '').slice(0, 800)}\n\nReturn JSON: {"difficulty":"E"|"M"|"H","confidence":0..1,"reason":"..."}`,
-                    schema: DifficultySchema,
-                  }),
-              },
-            );
+            let scored;
+            const existing = existingIssuesMap.get(issue.number);
+            if (existing?.difficulty && existing?.difficulty_source) {
+              scored = {
+                difficulty: existing.difficulty as 'E' | 'M' | 'H',
+                source: existing.difficulty_source as 'label' | 'heuristic' | 'llm' | 'maintainer',
+                xpReward: existing.xp_reward,
+              };
+            } else {
+              scored = await scoreDifficulty(
+                {
+                  title: issue.title,
+                  body: issue.body ?? undefined,
+                  labels,
+                  commentCount: issue.comments,
+                },
+                {
+                  llmFallback: async (i) =>
+                    llmCall({
+                      prompt: `Rate this OSS issue's difficulty as E/M/H.\nTitle: ${i.title}\nLabels: ${i.labels.join(', ')}\nBody: ${(i.body ?? '').slice(0, 800)}\n\nReturn JSON: {"difficulty":"E"|"M"|"H","confidence":0..1,"reason":"..."}`,
+                      schema: DifficultySchema,
+                    }),
+                },
+              );
+            }
 
             const { error } = await sb.from('issues').upsert(
               {

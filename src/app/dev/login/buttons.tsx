@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBrowserSupabase } from '@/lib/supabase/browser';
+import { clearDevSkipInstall } from '@/app/actions/dev-skip-install';
 
 type Persona = {
   email: string;
@@ -13,12 +14,19 @@ type Persona = {
 
 const DEV_PASSWORD = 'dev-password-only';
 
-export default function DevLoginButtons({ personas }: { personas: Persona[] }) {
+export default function DevLoginButtons({
+  personas,
+  next = '/dashboard',
+}: {
+  personas: Persona[];
+  next?: string;
+}) {
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function signInAs(persona: Persona) {
+    await clearDevSkipInstall();
     setPending(persona.email);
     setError(null);
     const sb = getBrowserSupabase();
@@ -37,7 +45,7 @@ export default function DevLoginButtons({ personas }: { personas: Persona[] }) {
       return;
     }
     router.refresh();
-    router.push('/dashboard');
+    router.push(next);
   }
 
   return (
