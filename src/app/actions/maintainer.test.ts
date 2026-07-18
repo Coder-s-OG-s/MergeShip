@@ -76,6 +76,9 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(),
   count: vi.fn(),
   sql: vi.fn(),
+  gte: vi.fn(),
+  lte: vi.fn(),
+  isNotNull: vi.fn(),
 }));
 
 vi.mock('@/lib/maintainer/detect', () => ({

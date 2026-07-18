@@ -6,7 +6,7 @@ import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerRepos } from '@/lib/maintainer/detect';
 import { tryGetDb } from '@/lib/db/client';
 import { profiles, xpEvents, pullRequests, githubInstallations, issues } from '@/lib/db/schema';
-import { eq, inArray, sum, desc, and, count, gte, isNotNull } from 'drizzle-orm';
+import { eq, inArray, sum, desc, and, count, gte, lte, isNotNull } from 'drizzle-orm';
 import { computeTimeSaved, type TimeSavedBreakdown } from '@/lib/maintainer/time-saved';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
@@ -243,6 +243,7 @@ export async function getTopContributors(args: {
 
 export async function getMaintainerAnalyticsTrends(args: {
   installationId: number;
+  range?: AnalyticsRange;
 }): Promise<Result<MaintainerAnalyticsTrends>> {
   const authRes = await requireMaintainer({
     rateLimit: { namespace: 'maintainer:analytics', ...RATE_LIMIT_TIERS.STANDARD },
@@ -256,7 +257,8 @@ export async function getMaintainerAnalyticsTrends(args: {
     return ok({ weekly: [], levelDistribution: [], avgReviewTimeHours: null });
   }
 
-  const cacheKey = `maint:analytics-trends:${user.id}:${args.installationId}`;
+  const activeRange = args.range ?? '30d';
+  const cacheKey = `maint:analytics-trends:${user.id}:${args.installationId}:${activeRange}`;
   const cached = await cacheGet<MaintainerAnalyticsTrends>(cacheKey);
   if (cached) return ok(cached);
 
@@ -266,13 +268,22 @@ export async function getMaintainerAnalyticsTrends(args: {
 
   if (error) return err('query_failed', error.message);
 
+  const { from, to } = rangeToDateBounds(activeRange, new Date());
+
   // Fetch average review time from pull_requests
-  const { data: prs } = await service
+  let q = service
     .from('pull_requests')
     .select('github_created_at, mentor_review_at')
     .in('repo_full_name', repos)
     .eq('mentor_verified', true)
-    .not('mentor_review_at', 'is', null);
+    .not('mentor_review_at', 'is', null)
+    .lte('github_created_at', to.toISOString());
+
+  if (activeRange !== 'all') {
+    q = q.gte('github_created_at', from.toISOString());
+  }
+
+  const { data: prs } = await q;
 
   let avgReviewTimeHours = null;
   if (prs && prs.length > 0) {
@@ -592,6 +603,7 @@ export async function getReviewerLoad(args: {
 
 export async function getNoiseBreakdown(args: {
   installationId: number;
+  range?: AnalyticsRange;
 }): Promise<Result<NoiseBreakdown>> {
   const authRes = await requireMaintainer({
     rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
@@ -609,7 +621,23 @@ export async function getNoiseBreakdown(args: {
     return err('not_configured', 'database not configured');
   }
 
+  const activeRange = args.range ?? '30d';
+  const { from, to } = rangeToDateBounds(activeRange, new Date());
+
   try {
+    let whereClause = and(
+      inArray(pullRequests.repoFullName, repos),
+      lte(pullRequests.githubCreatedAt, to),
+    );
+
+    if (activeRange !== 'all') {
+      whereClause = and(
+        inArray(pullRequests.repoFullName, repos),
+        gte(pullRequests.githubCreatedAt, from),
+        lte(pullRequests.githubCreatedAt, to),
+      );
+    }
+
     const rows = await db
       .select({
         aiFlagged: pullRequests.aiFlagged,
@@ -617,7 +645,7 @@ export async function getNoiseBreakdown(args: {
         cnt: count(pullRequests.id),
       })
       .from(pullRequests)
-      .where(inArray(pullRequests.repoFullName, repos))
+      .where(whereClause)
       .groupBy(pullRequests.aiFlagged, pullRequests.state);
 
     let spamAi = 0;

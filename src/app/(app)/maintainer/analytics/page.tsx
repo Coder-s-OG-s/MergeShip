@@ -10,7 +10,7 @@ import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { isOk } from '@/lib/result';
 import TimeSavedPanel from './time-saved-panel';
 import { RepoBreakdownTable } from './repo-breakdown-table';
-import Link from 'next/link';
+import RangeTabs from './range-tabs';
 import type { AnalyticsRange } from '@/lib/maintainer/time-saved';
 
 export const dynamic = 'force-dynamic';
@@ -86,30 +86,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <h1 className="font-display text-3xl font-bold">Analytics</h1>
           <div className="flex items-center gap-4">
-            <div className="flex gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-1 text-xs">
-              {(['7d', '30d', '90d', 'all'] as const).map((r) => {
-                const active = range === r;
-                return (
-                  <Link
-                    key={r}
-                    href={`/maintainer/analytics?install=${activeInstallId}&range=${r}`}
-                    className={`rounded px-2.5 py-1.5 transition-colors ${
-                      active
-                        ? 'bg-emerald-500 font-semibold text-zinc-950'
-                        : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    {r === '7d'
-                      ? '7 Days'
-                      : r === '30d'
-                        ? '30 Days'
-                        : r === '90d'
-                          ? '90 Days'
-                          : 'All Time'}
-                  </Link>
-                );
-              })}
-            </div>
+            <RangeTabs currentRange={range} />
           </div>
         </header>
 
