@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { extractIssueNumbers, processPrEvent } from './process-pr-event';
 import { insertXpEvent } from '@/lib/xp/events';
+import { cacheDelByPrefix } from '@/lib/cache';
 import { sb, wire, step } from './__tests__/test-helpers';
 
 // Mock external dependencies.
@@ -161,6 +162,7 @@ describe('processPrEvent - awardRecommendedMerge XP capping', () => {
         }),
       }),
     );
+    expect(cacheDelByPrefix).toHaveBeenCalledWith('profile:v3:');
   });
 
   it('clamps inflated rec.xp_reward to difficulty ceiling (Medium)', async () => {

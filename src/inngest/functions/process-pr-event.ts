@@ -414,7 +414,7 @@ async function awardRecommendedMerge(
   }
 
   await cacheDelByPrefix(`recs:${rec.user_id}`);
-  await cacheDelByPrefix(`profile:public:`);
+  await cacheDelByPrefix(`profile:v3:`);
   await cacheDelByPrefix(`leaderboard:`);
 
   if (inserted) {
