@@ -671,6 +671,91 @@ export async function getNoiseBreakdown(args: {
   }
 }
 
+export type QueueSignalQuality = {
+  signalRate: number;
+  mergedAsIs: number;
+  mergedWithEdits: number;
+  closedRejected: number;
+  total: number;
+};
+
+export async function getQueueSignalQuality(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<QueueSignalQuality>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer:analytics', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return ok({
+      signalRate: 0,
+      mergedAsIs: 0,
+      mergedWithEdits: 0,
+      closedRejected: 0,
+      total: 0,
+    });
+  }
+
+  const { from, to } = rangeToDateBounds(range, new Date());
+  const { data, error } = await service
+    .from('pull_requests')
+    .select('state, mentor_verified, ai_flagged, merged_at, closed_at')
+    .in('repo_full_name', repos)
+    .in('state', ['merged', 'closed'])
+    .gte('github_updated_at', from.toISOString())
+    .lte('github_updated_at', to.toISOString());
+
+  if (error) {
+    return err('query_failed', error.message);
+  }
+
+  type QueueSignalPr = {
+    state: 'open' | 'closed' | 'merged';
+    mentor_verified: boolean;
+    ai_flagged: boolean;
+    merged_at: string | null;
+    closed_at: string | null;
+  };
+
+  let mergedAsIs = 0;
+  let mergedWithEdits = 0;
+  let closedRejected = 0;
+
+  const isInRange = (value: string | null) => {
+    if (!value) return false;
+    const date = new Date(value);
+    return date >= from && date <= to;
+  };
+
+  for (const pr of (data ?? []) as QueueSignalPr[]) {
+    if (pr.state === 'merged' && isInRange(pr.merged_at)) {
+      if (pr.mentor_verified && !pr.ai_flagged) {
+        mergedAsIs++;
+      } else {
+        mergedWithEdits++;
+      }
+    } else if (pr.state === 'closed' && !pr.merged_at && isInRange(pr.closed_at)) {
+      closedRejected++;
+    }
+  }
+
+  const total = mergedAsIs + mergedWithEdits + closedRejected;
+  const signalRate = total > 0 ? ((mergedAsIs + mergedWithEdits) / total) * 100 : 0;
+
+  return ok({
+    signalRate,
+    mergedAsIs,
+    mergedWithEdits,
+    closedRejected,
+    total,
+  });
+}
+
 export async function getContributorFunnel(args: {
   installationId: number;
 }): Promise<Result<ContributorFunnelData>> {
