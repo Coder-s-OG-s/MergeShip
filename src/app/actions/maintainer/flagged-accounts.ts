@@ -6,6 +6,7 @@ import { requireMaintainer } from '@/lib/action-auth';
 import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerInstalls, listMaintainerRepos } from '@/lib/maintainer/detect';
 import { type FlaggedAccountRow } from './types';
+import { logMaintainerAction } from './audit';
 
 export async function getFlaggedAccounts(args?: {
   installationId?: number;
@@ -41,7 +42,8 @@ export async function getFlaggedAccounts(args?: {
     .from('flagged_accounts')
     .select('id, user_id, reason, severity, evidence, detected_at')
     .eq('status', 'open')
-    .order('detected_at', { ascending: false });
+    .order('detected_at', { ascending: false })
+    .limit(100);
 
   if (error) {
     return err('query_failed', error.message);
@@ -192,7 +194,12 @@ export async function resolveFlaggedAccount(
   const repos = await listMaintainerRepos(user.id, installationId);
   const evidence = flag.evidence as any;
   const items = Array.isArray(evidence?.items) ? evidence.items : [];
-  const isAuthorized = items.some((item: any) => {
+
+  if (items.length === 0) {
+    return err('not_authorised', 'Flag has no evidence items');
+  }
+
+  const isAuthorized = items.every((item: any) => {
     const r = item.repo || item.repoFullName;
     return typeof r === 'string' && repos.includes(r);
   });
@@ -210,8 +217,28 @@ export async function resolveFlaggedAccount(
     .eq('id', flagId);
 
   if (updateError) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'resolve_flagged_account',
+      targetType: 'flagged_account',
+      targetId: flagId.toString(),
+      status: 'failed',
+      errorMessage: updateError.message,
+      newValues: { status },
+    });
     return err('persist_failed', updateError.message);
   }
+
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId,
+    action: 'resolve_flagged_account',
+    targetType: 'flagged_account',
+    targetId: flagId.toString(),
+    status: 'success',
+    newValues: { status },
+  });
 
   return ok({ ok: true });
 }

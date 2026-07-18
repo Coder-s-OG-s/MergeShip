@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildDayOverDayStats, buildMaintainerAnalyticsTrends } from './analytics';
+import { buildMaintainerAnalyticsTrends, buildCurrentLevelSnapshot } from './analytics';
 
 describe('buildMaintainerAnalyticsTrends', () => {
   it('groups merged PRs and completed XP into the last twelve UTC weeks', () => {
@@ -181,6 +182,37 @@ describe('buildMaintainerAnalyticsTrends', () => {
       previous: null,
       delta: null,
       direction: 'flat',
+    });
+  });
+});
+
+describe('buildCurrentLevelSnapshot', () => {
+  it('correctly counts level buckets', () => {
+    const list = [
+      { level: 0 },
+      { level: 1 },
+      { level: 1 },
+      { level: 2 },
+      { level: 3 },
+      { level: 4 },
+      { level: -1 },
+    ];
+    const snapshot = buildCurrentLevelSnapshot(list);
+    expect(snapshot).toEqual({
+      l0: 2,
+      l1: 2,
+      l2: 1,
+      l3Plus: 2,
+    });
+  });
+
+  it('handles empty lists gracefully', () => {
+    const snapshot = buildCurrentLevelSnapshot([]);
+    expect(snapshot).toEqual({
+      l0: 0,
+      l1: 0,
+      l2: 0,
+      l3Plus: 0,
     });
   });
 });

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { pingReviewers } from '@/app/actions/maintainer';
 import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
@@ -8,20 +9,24 @@ import {
   getMaintainerAnalyticsTrends,
   getRepoHealthOverview,
   getStaleIssues,
+  getStalePrs,
   getFlaggedAccounts,
   getTopContributors,
   getInstallationSettings,
   getReviewerLoad,
   getNoiseBreakdown,
   getPromotionEligible,
+  getFailedWebhookEvents,
   type FlaggedAccountRow,
   type InstallationSettingsData,
   type RepoHealthRow,
   type StaleIssueRow,
+  type StalePrRow,
   type ContributorRow,
   type ReviewerLoadRow,
   type NoiseBreakdown,
   type PromotionEligibleRow,
+  type FailedWebhookEventRow,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import type { MaintainerPrRow } from '@/lib/maintainer/queue';
@@ -39,6 +44,11 @@ import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
 import QueueSettings from './queue-settings';
 import { ResolveFlagButton } from './resolve-flag-button';
+import { StalePrBanner } from './stale-pr-banner';
+import { getContributorFunnel } from '@/app/actions/maintainer/analytics';
+import type { ContributorFunnelData } from '@/app/actions/maintainer/types';
+import { ContributorFunnel } from './contributor-funnel';
+import { RetryEventButton } from './retry-event-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +61,13 @@ const TIER_LABEL: Record<'open' | 'closed' | 'merged', string> = {
 export default async function MaintainerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ install?: string; state?: string; verified?: string }>;
+  searchParams: Promise<{
+    install?: string;
+    state?: string;
+    verified?: string;
+    author?: string;
+    ai_flagged?: string;
+  }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const sb = await getServerSupabase();
@@ -81,7 +97,12 @@ export default async function MaintainerPage({
 
   const activeInstall = installs.find((i) => i.installationId === activeInstallId)!;
 
-  const filters: { state?: ('open' | 'closed' | 'merged')[]; mentorVerified?: 'yes' | 'no' } = {};
+  const filters: {
+    state?: ('open' | 'closed' | 'merged')[];
+    mentorVerified?: 'yes' | 'no';
+    authorLogin?: string;
+    aiFlagged?: 'yes' | 'no';
+  } = {};
   if (resolvedSearchParams.state) {
     const parts = resolvedSearchParams.state
       .split(',')
@@ -91,8 +112,13 @@ export default async function MaintainerPage({
   if (resolvedSearchParams.verified === 'yes' || resolvedSearchParams.verified === 'no') {
     filters.mentorVerified = resolvedSearchParams.verified;
   }
+  if (resolvedSearchParams.ai_flagged === 'yes' || resolvedSearchParams.ai_flagged === 'no') {
+    filters.aiFlagged = resolvedSearchParams.ai_flagged;
+  }
   if (!filters.state) filters.state = ['open']; // default
-
+  if (resolvedSearchParams.author) {
+    filters.authorLogin = resolvedSearchParams.author;
+  }
   const queueRes = await getMaintainerPrQueue({
     installationId: activeInstallId,
     filters,
@@ -133,6 +159,8 @@ export default async function MaintainerPage({
   const reviewerLoads: ReviewerLoadRow[] = isOk(reviewerLoadsRes) ? reviewerLoadsRes.data : [];
   const maxLoad = reviewerLoads.length > 0 ? Math.max(...reviewerLoads.map((r) => r.prCount)) : 0;
 
+  const stalePrsRes = await getStalePrs({ installationId: activeInstallId });
+  const stalePrs: StalePrRow[] = isOk(stalePrsRes) ? stalePrsRes.data : [];
   let noise: NoiseBreakdown = { valid: 0, spamAi: 0, other: 0, total: 0 };
   if (settings.aiPrDetection) {
     const noiseRes = await getNoiseBreakdown({ installationId: activeInstallId });
@@ -145,10 +173,24 @@ export default async function MaintainerPage({
   const promotionEligible: PromotionEligibleRow[] = isOk(promotionEligibleRes)
     ? promotionEligibleRes.data
     : [];
+  const funnelRes = await getContributorFunnel({ installationId: activeInstallId });
+  const funnelData: ContributorFunnelData = isOk(funnelRes)
+    ? funnelRes.data
+    : { registered: 0, firstPr: 0, l2Promoted: 0 };
+
+  const failedEventsRes = await getFailedWebhookEvents({
+    installationId: activeInstallId,
+    limit: 10,
+  });
+  const failedEvents: FailedWebhookEventRow[] = isOk(failedEventsRes)
+    ? failedEventsRes.data.rows
+    : [];
+  const failedEventsCount: number = isOk(failedEventsRes) ? failedEventsRes.data.count : 0;
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-5xl">
+        <StalePrBanner stalePrs={stalePrs} onPing={pingReviewers} />
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <h1 className="font-display text-3xl font-bold">Maintainer</h1>
           <div className="flex items-center gap-2">
@@ -207,6 +249,20 @@ export default async function MaintainerPage({
               Issue triage →
             </Link>
           </div>
+          {settings.aiPrDetection && (
+            <>
+              <span className="mx-2 text-zinc-700">|</span>
+              <FilterPill
+                label="⚠ AI Flagged"
+                href={withParam(
+                  'ai_flagged',
+                  resolvedSearchParams.ai_flagged === 'yes' ? '' : 'yes',
+                  resolvedSearchParams,
+                )}
+                active={resolvedSearchParams.ai_flagged === 'yes'}
+              />
+            </>
+          )}
           <Link
             href={`/maintainer/community?install=${activeInstallId}`}
             className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
@@ -358,6 +414,9 @@ export default async function MaintainerPage({
             </div>
           </section>
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+            <ContributorFunnel data={funnelData} />
+          </section>
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <h2 className="mb-4 text-sm font-semibold text-white">Repository Health</h2>
 
             <div className="space-y-3">
@@ -461,6 +520,42 @@ export default async function MaintainerPage({
             <NoiseDonut noise={noise} />
           </section>
         )}
+        {failedEventsCount > 0 && (
+          <section className="mb-8 rounded-2xl border border-red-900/60 bg-red-950/20 p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-red-100">Failed Webhook Events</h2>
+                <p className="mt-1 text-xs text-red-200/70">
+                  These events failed after exhausting all automatic retries.
+                </p>
+              </div>
+              <span className="rounded-full bg-red-900/50 px-2 py-1 text-xs text-red-100">
+                {failedEventsCount} event{failedEventsCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {failedEvents.map((evt) => (
+                <div key={evt.id} className="rounded-lg border border-red-900/50 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm text-red-50">
+                        {evt.eventType}
+                        <span className="ml-2 text-xs text-red-200/50">
+                          #{evt.deliveryId.slice(0, 8)}
+                        </span>
+                      </p>
+                      <p className="mt-1 truncate text-xs text-red-200/70">{evt.error}</p>
+                      <p className="mt-1 text-xs text-red-200/50">
+                        {relativeTime(evt.createdAt)} · {evt.retryCount} manual retries
+                      </p>
+                    </div>
+                    <RetryEventButton eventId={evt.id} installationId={activeInstallId} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {rows.length === 0 ? (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-zinc-400">
             No PRs match your filters. Try widening state or running a refresh.
@@ -479,20 +574,23 @@ export default async function MaintainerPage({
                       repoFullName={r.repoFullName}
                       prNumber={r.number}
                     />
-                    <a
-                      href={r.url}
-                      target="_blank"
-                      rel="noreferrer"
+                    <Link
+                      href={`/maintainer/pr/${r.id}?install=${activeInstallId}`}
                       className="font-display text-base font-semibold text-white hover:underline"
                     >
                       {r.title}
-                    </a>
+                    </Link>
                     <span className="text-xs text-zinc-500">
                       {r.repoFullName} · #{r.number}
                     </span>
                     {r.draft && (
                       <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
                         Draft
+                      </span>
+                    )}
+                    {r.aiFlagged && (
+                      <span className="rounded-full bg-rose-900/40 px-2 py-0.5 text-xs font-medium text-rose-300 ring-1 ring-rose-700/40">
+                        AI Flagged
                       </span>
                     )}
                     <span className={`rounded-full px-2 py-0.5 text-xs ${stateColor(r.state)}`}>
@@ -524,6 +622,12 @@ export default async function MaintainerPage({
                     </div>
                   )
                 )}
+                <Link
+                  href={`/maintainer/pr/${r.id}`}
+                  className="shrink-0 text-sm text-zinc-400 hover:text-white"
+                >
+                  View →
+                </Link>
               </li>
             ))}
           </ul>

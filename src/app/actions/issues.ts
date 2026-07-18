@@ -6,7 +6,7 @@ import { ok, err, type Result } from '@/lib/result';
 import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { cacheDel, cacheGet, cacheSet } from '@/lib/cache';
 import { repoFilterPattern } from './issues-helpers';
-import { getInstallationToken } from '@/lib/github/app';
+import { getInstallOctokit } from '@/lib/github/app';
 
 const PAGE_SIZE = 10;
 
@@ -17,6 +17,7 @@ export type IssueFilter = {
   repo?: string;
   showClaimed?: boolean;
   page?: number;
+  sort?: 'newest' | 'xp_desc' | 'xp_asc';
 };
 
 export type IssueWithStatus = {
@@ -98,30 +99,12 @@ export async function getRepoOptions(): Promise<Result<RepoOption[]>> {
       const options = await Promise.all(
         userRepos.map(async (repo): Promise<RepoOption> => {
           const instId = repoToInstId.get(repo);
-          let token: string | undefined;
-          if (instId) {
-            try {
-              token = await getInstallationToken(instId);
-            } catch {
-              // fall back
-            }
-          }
-          if (!token) {
-            const sessionRes = await sb.auth.getSession();
-            token = sessionRes.data.session?.provider_token ?? undefined;
-          }
-
-          if (!token) return { label: repo, value: repo };
+          if (!instId) return { label: repo, value: repo };
           try {
-            const res = await fetch(`https://api.github.com/repos/${repo}`, {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: 'application/vnd.github+json',
-                'X-GitHub-Api-Version': '2022-11-28',
-              },
-            });
-            if (!res.ok) return { label: repo, value: repo };
-            const data = (await res.json()) as { fork?: boolean; parent?: { full_name: string } };
+            const octokit = await getInstallOctokit(instId);
+            const [owner, name] = repo.split('/');
+            if (!owner || !name) return { label: repo, value: repo };
+            const { data } = await octokit.repos.get({ owner, repo: name });
             if (data.fork && data.parent?.full_name) {
               return { label: repo, value: data.parent.full_name };
             }
@@ -201,9 +184,13 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
     .in('repo_full_name', allowedRepos)
     .range(from, to);
 
-  // When searching via RPC, results are naturally ordered by rank (from the SQL function).
-  // Otherwise, we order by fetched_at descending.
-  if (!isSearch) {
+  if (filters.sort === 'xp_desc') {
+    query = query.order('xp_reward', { ascending: false, nullsFirst: false });
+  } else if (filters.sort === 'xp_asc') {
+    query = query.order('xp_reward', { ascending: true, nullsFirst: false });
+  } else if (filters.sort === 'newest') {
+    query = query.order('fetched_at', { ascending: false });
+  } else if (!isSearch) {
     query = query.order('fetched_at', { ascending: false });
   }
 
@@ -288,10 +275,18 @@ export async function claimIssue(issueId: number): Promise<Result<{ recId: numbe
 
   const { data: issue } = await service
     .from('issues')
-    .select('id, difficulty, xp_reward')
+    .select('id, difficulty, xp_reward, repo_full_name')
     .eq('id', issueId)
     .single();
   if (!issue) return err('not_found', 'issue not found');
+
+  // Validate that the issue belongs to a repo the user has access to.
+  const repoOptsRes = await getRepoOptions();
+  if (!repoOptsRes.ok) return err(repoOptsRes.error.code, repoOptsRes.error.message);
+  const allowedRepos = repoOptsRes.data.map((o) => o.value);
+  if (!allowedRepos.includes(issue.repo_full_name)) {
+    return err('forbidden', 'you do not have access to this repository');
+  }
 
   const { data: existing } = await service
     .from('recommendations')

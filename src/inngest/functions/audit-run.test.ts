@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getInstallOctokit } from '@/lib/github/app';
+import { getInstallOctokit, getInstallationToken } from '@/lib/github/app';
+import { fetchContributionCalendar } from '@/app/actions/github-sync-helpers';
 import { insertXpEvent } from '@/lib/xp/events';
 import { computeAuditScore } from '@/lib/xp/audit';
 import { clampAuditScoreToLevel } from '@/lib/xp/audit-clamp';
@@ -9,7 +10,13 @@ import { sb, wire, step } from './__tests__/test-helpers';
 
 // Mock external dependencies.
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
-vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn() }));
+vi.mock('@/lib/github/app', () => ({
+  getInstallOctokit: vi.fn(),
+  getInstallationToken: vi.fn(),
+}));
+vi.mock('@/app/actions/github-sync-helpers', () => ({
+  fetchContributionCalendar: vi.fn(),
+}));
 vi.mock('@/lib/xp/events', () => ({ insertXpEvent: vi.fn() }));
 vi.mock('@/lib/xp/audit', () => ({ computeAuditScore: vi.fn() }));
 vi.mock('@/lib/xp/audit-clamp', () => ({ clampAuditScoreToLevel: vi.fn() }));
@@ -56,6 +63,11 @@ const happy = () => {
   });
   wire({ profiles });
   vi.mocked(getInstallOctokit).mockResolvedValue(gh() as never);
+  vi.mocked(getInstallationToken).mockResolvedValue('fake-token');
+  vi.mocked(fetchContributionCalendar).mockResolvedValue([
+    { date: '2025-07-01', contributionCount: 5 },
+    { date: '2025-07-02', contributionCount: 3 },
+  ]);
   vi.mocked(computeAuditScore).mockReturnValue(500);
   vi.mocked(clampAuditScoreToLevel).mockReturnValue(400);
   vi.mocked(pickPrimaryLanguage).mockReturnValue('TypeScript');
@@ -93,5 +105,27 @@ describe('auditRun', () => {
 
     expect(insertXpEvent).toHaveBeenCalledWith(expect.objectContaining({ xpDelta: 800 }));
     expect(result).toEqual(expect.objectContaining({ rawAuditScore: 2000, auditScore: 800 }));
+  });
+
+  it('populates yearlyContributions from contribution calendar', async () => {
+    happy();
+    // happy() mocks fetchContributionCalendar → [{5}, {3}] = 8 total
+    await run({ event: ev({ installationId: 1 }), step });
+
+    expect(fetchContributionCalendar).toHaveBeenCalledWith('fake-token', 'alice');
+    expect(computeAuditScore).toHaveBeenCalledWith(
+      expect.objectContaining({ yearlyContributions: 8 }),
+    );
+  });
+
+  it('falls back to 0 when contribution calendar fetch fails', async () => {
+    happy();
+    vi.mocked(fetchContributionCalendar).mockRejectedValue(new Error('GitHub GraphQL 502'));
+
+    await run({ event: ev({ installationId: 1 }), step });
+
+    expect(computeAuditScore).toHaveBeenCalledWith(
+      expect.objectContaining({ yearlyContributions: 0 }),
+    );
   });
 });

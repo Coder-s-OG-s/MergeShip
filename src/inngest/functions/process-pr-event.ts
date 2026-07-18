@@ -3,6 +3,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_SOURCE, xpForMerge, refIds, XP_REWARDS } from '@/lib/xp/sources';
 import { cacheDelByPrefix } from '@/lib/cache';
+
 import { buildPrRow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
 import { unwrapJoin } from '@/lib/supabase/inner-join';
 import {
@@ -91,9 +92,24 @@ export const processPrEvent = inngest.createFunction(
         return { ok: true };
       });
       if (action === 'opened') {
-        await step.run('maybe-auto-assign-mentor', async () =>
+        const assignResult = await step.run('maybe-auto-assign-mentor', async () =>
           maybeAutoAssignMentor(repo, pr.number),
         );
+        if (assignResult.assigned) {
+          await step.run('notify-mentor-assigned', async () =>
+            inngest.send({
+              name: 'mentor/assigned',
+              data: {
+                mentorUserId: assignResult.mentorUserId!,
+                authorLogin: pr.user.login,
+                prUrl,
+                prTitle: pr.title,
+                repo,
+                prNumber: pr.number,
+              },
+            }),
+          );
+        }
         await step.run('increment-challenge-progress', async () => {
           try {
             const sb = getServiceSupabase();
@@ -121,23 +137,10 @@ export const processPrEvent = inngest.createFunction(
       }
       return { skipped: true, action };
     } catch (err) {
-      const sb = getServiceSupabase();
-
-      if (sb) {
-        const { error: insertError } = await sb.from('failed_webhook_events').insert({
-          delivery_id: event.data.deliveryId,
-          event_type: 'github/pull_request',
-          source: 'inngest',
-          payload: event.data,
-          error: (err as Error).message,
-          retry_count: attempt,
-        });
-        if (insertError) {
-          console.error('failed to record dead-letter event:', insertError.message);
-        }
-      }
-
-      throw err; // IMPORTANT → keeps Inngest retry working
+      // Re-throw so Inngest retries automatically. After all retries are
+      // exhausted, the centralised dead-letter handler persists the event
+      // to `failed_webhook_events` — no manual logging needed here.
+      throw err;
     }
   },
 );
@@ -169,28 +172,34 @@ async function upsertPrRow(
 
   // Run classification only when the maintainer has enabled aiPrDetection.
   let aiFlagged = false;
+  let aiFlagReason: string | null = null;
   const { data: settings } = await sb
     .from('installation_settings')
     .select('ai_pr_detection')
     .eq('installation_id', knownRepo.installation_id)
     .maybeSingle();
   if (settings?.ai_pr_detection) {
-    aiFlagged = classifyPrAsAi({ title: pr.title, body: pr.body });
+    const classification = await classifyPrAsAi({ title: pr.title, body: pr.body });
+    aiFlagged = classification.flagged;
+    aiFlagReason = classification.reason;
   }
 
   await sb
     .from('pull_requests')
-    .upsert(buildPrRow(pr as IngestiblePr, authorProfile?.id ?? null, action, aiFlagged), {
-      onConflict: 'repo_full_name,number',
-    });
+    .upsert(
+      buildPrRow(pr as IngestiblePr, authorProfile?.id ?? null, action, aiFlagged, aiFlagReason),
+      {
+        onConflict: 'repo_full_name,number',
+      },
+    );
 }
 
 async function maybeAutoAssignMentor(
   repo: string,
   prNumber: number,
-): Promise<{ assigned: boolean; handle: string | null }> {
+): Promise<{ assigned: boolean; handle: string | null; mentorUserId: string | null }> {
   const sb = getServiceSupabase();
-  if (!sb) return { assigned: false, handle: null };
+  if (!sb) return { assigned: false, handle: null, mentorUserId: null };
 
   const { data: repoRow } = await sb
     .from('installation_repositories')
@@ -198,7 +207,7 @@ async function maybeAutoAssignMentor(
     .eq('repo_full_name', repo)
     .limit(1)
     .maybeSingle();
-  if (!repoRow?.installation_id) return { assigned: false, handle: null };
+  if (!repoRow?.installation_id) return { assigned: false, handle: null, mentorUserId: null };
 
   const installationId = repoRow.installation_id as number;
   const { data: settings } = await sb
@@ -206,7 +215,8 @@ async function maybeAutoAssignMentor(
     .select('min_contributor_level, auto_assign_mentor_chain')
     .eq('installation_id', installationId)
     .maybeSingle();
-  if (!settings?.auto_assign_mentor_chain) return { assigned: false, handle: null };
+  if (!settings?.auto_assign_mentor_chain)
+    return { assigned: false, handle: null, mentorUserId: null };
 
   const minContributorLevel = settings.min_contributor_level ?? 0;
   const { data: prRow } = await sb
@@ -216,7 +226,7 @@ async function maybeAutoAssignMentor(
     .eq('number', prNumber)
     .maybeSingle();
   if (!prRow || prRow.mentor_reviewer_id || !prRow.author_user_id) {
-    return { assigned: false, handle: null };
+    return { assigned: false, handle: null, mentorUserId: null };
   }
 
   const { data: authorProfile } = await sb
@@ -225,7 +235,7 @@ async function maybeAutoAssignMentor(
     .eq('id', prRow.author_user_id)
     .maybeSingle();
   if (!shouldAutoAssignMentor(authorProfile?.level ?? null, minContributorLevel)) {
-    return { assigned: false, handle: null };
+    return { assigned: false, handle: null, mentorUserId: null };
   }
 
   // Senior = any install member at or above the mentor verification level (L2+),
@@ -256,7 +266,7 @@ async function maybeAutoAssignMentor(
     return [{ userId: row.user_id, handle: profile.github_handle }];
   });
   const chosen = pickMentor(seniors, prRow.author_user_id);
-  if (!chosen) return { assigned: false, handle: null };
+  if (!chosen) return { assigned: false, handle: null, mentorUserId: null };
 
   const { error } = await sb
     .from('pull_requests')
@@ -264,7 +274,7 @@ async function maybeAutoAssignMentor(
     .eq('id', prRow.id);
   if (error) throw new Error(error.message);
 
-  return { assigned: true, handle: chosen.handle };
+  return { assigned: true, handle: chosen.handle, mentorUserId: chosen.userId };
 }
 
 async function linkPrToClaim(
@@ -355,11 +365,14 @@ async function handleMerge(
     .eq('github_handle', pr.user.login)
     .maybeSingle();
   if (!profile) return { xpAwarded: false };
+
+  const refId = refIds.pr(repo, pr.number);
+
   await insertXpEvent({
     userId: profile.id,
     source: XP_SOURCE.UNRECOMMENDED_MERGE,
     refType: 'pr',
-    refId: refIds.pr(repo, pr.number),
+    refId,
     repo,
     xpDelta: 5,
   });
@@ -373,34 +386,38 @@ async function awardRecommendedMerge(
   pr: PrPayload['pull_request'],
 ): Promise<{ xpAwarded: boolean; recId: number }> {
   const difficulty = rec.difficulty as 'E' | 'M' | 'H';
-  const existing = await sb
-    .from('xp_events')
-    .select('id')
-    .eq('user_id', rec.user_id)
-    .eq('ref_id', refIds.pr(repo, pr.number))
-    .maybeSingle();
-  if (existing?.data) {
-    return { xpAwarded: false, recId: rec.id };
-  }
   const tierCap =
     XP_REWARDS.RECOMMENDED_MERGE[difficulty as keyof typeof XP_REWARDS.RECOMMENDED_MERGE] ??
     xpForMerge(difficulty);
   const xpDelta = Math.min(rec.xp_reward ?? tierCap, tierCap);
+  const refId = refIds.pr(repo, pr.number);
 
   const inserted = await insertXpEvent({
     userId: rec.user_id,
     source: XP_SOURCE.RECOMMENDED_MERGE,
     refType: 'pr',
-    refId: refIds.pr(repo, pr.number),
+    refId,
     repo,
     difficulty,
     xpDelta,
   });
 
-  await sb
+  // Always attempt to mark the recommendation as completed, even if XP
+  // was already awarded on a previous attempt. This fixes the case where
+  // the function crashed after insertXpEvent but before the rec update
+  // on a prior retry.
+  const { data: existingRec } = await sb
     .from('recommendations')
-    .update({ status: 'completed', completed_at: new Date().toISOString() })
-    .eq('id', rec.id);
+    .select('status')
+    .eq('id', rec.id)
+    .maybeSingle();
+
+  if (existingRec && existingRec.status !== 'completed') {
+    await sb
+      .from('recommendations')
+      .update({ status: 'completed', completed_at: new Date().toISOString() })
+      .eq('id', rec.id);
+  }
 
   await cacheDelByPrefix(`recs:${rec.user_id}`);
   await cacheDelByPrefix(`profile:public:`);

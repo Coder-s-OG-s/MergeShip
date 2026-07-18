@@ -7,19 +7,23 @@ import {
   LayoutDashboard,
   ListChecks,
   Users2,
+  Users,
   Settings,
   Activity,
   ArrowLeftRight,
   ChevronDown,
   Building2,
   User,
+  BarChart2,
 } from 'lucide-react';
 import { isActiveRoute } from '@/lib/nav-utils';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 
 const MAINTAINER_NAV = [
   { name: 'OVERVIEW', href: '/maintainer', icon: LayoutDashboard },
+  { name: 'ANALYTICS', href: '/maintainer/analytics', icon: BarChart2 },
   { name: 'ISSUE TRIAGE', href: '/maintainer/issues', icon: ListChecks },
+  { name: 'CONTRIBUTORS', href: '/maintainer/contributors', icon: Users },
   { name: 'COMMUNITY', href: '/maintainer/community', icon: Users2 },
   { name: 'SETTINGS', href: '/settings/profile', icon: Settings },
   { name: 'USAGE', href: '/settings/usage', icon: Activity },

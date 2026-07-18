@@ -1,5 +1,6 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { ok, err, type Result } from '@/lib/result';
 import { requireMaintainer } from '@/lib/action-auth';
@@ -15,8 +16,9 @@ import { classifyTriage, type IssueTriageBucket } from '@/lib/maintainer/issue-t
 import { inngest } from '@/inngest/client';
 import { getInstallOctokit } from '@/lib/github/app';
 import { cacheGet, cacheSet } from '@/lib/cache';
-import { type MaintainerIssueRow } from './types';
+import { type MaintainerIssueRow, type TimelineEvent } from './types';
 import { MIN_CONTRIBUTOR_LEVELS } from './constants';
+import { logMaintainerAction } from './audit';
 
 const PAGE_SIZE = 25;
 const ISSUE_BUCKETS = new Set<IssueTriageBucket>([
@@ -89,13 +91,14 @@ export async function getMaintainerPrQueue(args: {
     .from('pull_requests')
     .select(
       'id, repo_full_name, number, title, url, state, draft, author_login, ' +
-        'author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at',
+        'author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at, ai_flagged',
     )
     .in('repo_full_name', scopedRepos);
 
   if (filters.state.length > 0) q = q.in('state', filters.state);
   if (filters.mentorVerified === 'yes') q = q.eq('mentor_verified', true);
   else if (filters.mentorVerified === 'no') q = q.eq('mentor_verified', false);
+  if (filters.authorLogin) q = q.eq('author_login', filters.authorLogin);
 
   // Pull a generous slice; we re-sort by tier client-side.
   type RawPr = {
@@ -111,6 +114,7 @@ export async function getMaintainerPrQueue(args: {
     mentor_verified: boolean;
     mentor_reviewer_id: string | null;
     github_updated_at: string;
+    ai_flagged: boolean;
   };
   const { data: prs } = await q
     .order('github_updated_at', { ascending: false })
@@ -179,6 +183,7 @@ export async function getMaintainerPrQueue(args: {
       mentorReviewerHandle: mentor?.handle ?? null,
       mentorReviewerLevel: mentor?.level ?? null,
       githubUpdatedAt: r.github_updated_at,
+      aiFlagged: r.ai_flagged,
     };
   });
 
@@ -187,6 +192,11 @@ export async function getMaintainerPrQueue(args: {
   let filtered = rows.filter((row) => (row.authorLevel ?? 0) >= minContributorLevel);
   if (filters.authorLevel.length > 0) {
     filtered = filtered.filter((row) => filters.authorLevel.includes(row.authorLevel ?? 0));
+  }
+  if (filters.aiFlagged === 'yes') {
+    filtered = filtered.filter((row) => row.aiFlagged);
+  } else if (filters.aiFlagged === 'no') {
+    filtered = filtered.filter((row) => !row.aiFlagged);
   }
 
   filtered.sort(comparePrRows);
@@ -312,10 +322,16 @@ export async function refreshMaintainerBackfill(
   installationId: number,
 ): Promise<Result<{ ok: true }>> {
   const authRes = await requireMaintainer({
+    requireService: true,
     rateLimit: { namespace: 'maint:backfill', ...RATE_LIMIT_TIERS.HOURLY },
     rateLimitMessage: 'try again in an hour',
   });
   if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  if (!(await assertMaintainerInstall(service, user.id, installationId))) {
+    return err('not_authorised', 'not your install');
+  }
 
   await inngest.send({
     name: 'pr-backfill/installation',
@@ -329,7 +345,10 @@ export async function getPrCiStatus(
   repoFullName: string,
   prNumber: number,
 ): Promise<Result<'passing' | 'failing' | 'pending' | null>> {
-  const authRes = await requireMaintainer({ requireService: true });
+  const authRes = await requireMaintainer({
+    requireService: true,
+    rateLimit: { namespace: 'maint:pr-ci-status', ...RATE_LIMIT_TIERS.GENEROUS },
+  });
   if (!authRes.ok) return authRes;
   const { user, service } = authRes.data;
 
@@ -453,6 +472,15 @@ export async function closePullRequest(prId: number): Promise<Result<{ ok: true 
       state: 'closed',
     });
   } catch (error: any) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'close_pull_request',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'failed',
+      errorMessage: error.message || 'Failed to close PR via GitHub API',
+    });
     return err('github_error', error.message || 'Failed to close PR via GitHub API');
   }
 
@@ -463,8 +491,774 @@ export async function closePullRequest(prId: number): Promise<Result<{ ok: true 
     .eq('id', prId);
 
   if (updateErr) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'close_pull_request',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'failed',
+      errorMessage: updateErr.message,
+    });
     return err('persist_failed', updateErr.message);
   }
 
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId,
+    action: 'close_pull_request',
+    targetType: 'pull_request',
+    targetId: prId.toString(),
+    status: 'success',
+  });
+
   return ok({ ok: true });
+}
+
+// Fetch a single PR by its ID, used by the PR detail page
+export async function getMaintainerPrById(args: {
+  installationId: number;
+  prId: number;
+}): Promise<Result<MaintainerPrRow | null>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:pr:detail', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  // Verify the maintainer has access to the installation
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) return ok(null);
+
+  // Fetch the PR row
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select(
+      'id, repo_full_name, number, title, url, state, draft, author_login, author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at, ai_flagged, body_excerpt, mentor_review_at',
+    )
+    .eq('id', args.prId)
+    .maybeSingle();
+
+  if (!pr) return ok(null);
+
+  // Guard: ensure this PR belongs to a repo the maintainer actually controls.
+  // Without this check a maintainer on org A could read PRs from org B by
+  // supplying a foreign prId with their own installationId.
+  if (!repos.includes(pr.repo_full_name)) return ok(null);
+
+  // Load profiles for author and mentor if present
+  const ids: string[] = [];
+  if (pr.author_user_id) ids.push(pr.author_user_id);
+  if (pr.mentor_reviewer_id) ids.push(pr.mentor_reviewer_id);
+
+  const profilesById = new Map<
+    string,
+    { handle: string; level: number; xp: number; mergedPrs: number }
+  >();
+  if (ids.length > 0) {
+    const { data: profileRows } = await service
+      .from('profiles')
+      .select('id, github_handle, level, xp')
+      .in('id', ids);
+    const merged = await service
+      .from('xp_events')
+      .select('user_id')
+      .in('user_id', ids)
+      .eq('source', 'recommended_merge');
+    const mergedCount = new Map<string, number>();
+    for (const row of merged.data ?? []) {
+      mergedCount.set(row.user_id, (mergedCount.get(row.user_id) ?? 0) + 1);
+    }
+    for (const p of profileRows ?? []) {
+      profilesById.set(p.id, {
+        handle: p.github_handle,
+        level: p.level ?? 0,
+        xp: p.xp ?? 0,
+        mergedPrs: mergedCount.get(p.id) ?? 0,
+      });
+    }
+  }
+
+  const author = pr.author_user_id ? (profilesById.get(pr.author_user_id) ?? null) : null;
+  const mentor = pr.mentor_reviewer_id ? (profilesById.get(pr.mentor_reviewer_id) ?? null) : null;
+
+  const row: MaintainerPrRow = {
+    id: pr.id,
+    repoFullName: pr.repo_full_name,
+    number: pr.number,
+    title: pr.title,
+    url: pr.url,
+    state: pr.state as 'open' | 'closed' | 'merged',
+    draft: pr.draft,
+    authorLogin: pr.author_login,
+    authorUserId: pr.author_user_id,
+    authorLevel: author?.level ?? null,
+    authorXp: author?.xp ?? null,
+    authorMergedPrs: author?.mergedPrs ?? null,
+    mentorVerified: pr.mentor_verified,
+    mentorReviewerHandle: mentor?.handle ?? null,
+    mentorReviewerLevel: mentor?.level ?? null,
+    githubUpdatedAt: pr.github_updated_at,
+    aiFlagged: pr.ai_flagged,
+    bodyExcerpt: pr.body_excerpt,
+    mentorReviewAt: pr.mentor_review_at,
+    installationId: args.installationId,
+  };
+  return ok(row);
+}
+
+export async function requestChanges(prId: number, comment: string): Promise<Result<{ ok: true }>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:request-changes', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select('repo_full_name, number')
+    .eq('id', prId)
+    .maybeSingle();
+
+  if (!pr) return err('not_found', 'PR not found');
+
+  const { data: repoRow } = await service
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', pr.repo_full_name)
+    .maybeSingle();
+
+  if (!repoRow?.installation_id) {
+    return err('not_found', 'Installation not found for this repository');
+  }
+  const installationId = repoRow.installation_id;
+
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(pr.repo_full_name)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  if (comment.trim().length === 0) {
+    return err('invalid_input', 'Comment is required');
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    const [owner, repo] = pr.repo_full_name.split('/');
+    if (!owner || !repo) return err('invalid_input', 'Invalid repository format');
+    await octokit.pulls.createReview({
+      owner,
+      repo,
+      pull_number: pr.number,
+      event: 'REQUEST_CHANGES',
+      body: comment,
+    });
+  } catch (error: any) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'request_changes_pr',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'failed',
+      errorMessage: error.message || 'Failed to request changes via GitHub API',
+    });
+    return err('github_error', error.message || 'Failed to request changes via GitHub API');
+  }
+
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId,
+    action: 'request_changes_pr',
+    targetType: 'pull_request',
+    targetId: prId.toString(),
+    status: 'success',
+  });
+
+  return ok({ ok: true });
+}
+
+export async function postPrComment(
+  prId: number,
+  body: string,
+): Promise<Result<{ commentId: number }>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:post-pr-comment', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const commentBody = body.trim();
+  if (commentBody.length === 0) {
+    return err('invalid_input', 'Comment is required');
+  }
+
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select('repo_full_name, number')
+    .eq('id', prId)
+    .maybeSingle();
+
+  if (!pr) return err('not_found', 'PR not found');
+
+  const { data: repoRow } = await service
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', pr.repo_full_name)
+    .maybeSingle();
+
+  if (!repoRow?.installation_id) {
+    return err('not_found', 'Installation not found for this repository');
+  }
+  const installationId = repoRow.installation_id;
+
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(pr.repo_full_name)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    const [owner, repo] = pr.repo_full_name.split('/');
+    if (!owner || !repo) return err('invalid_input', 'Invalid repository format');
+
+    const res = await octokit.issues.createComment({
+      owner,
+      repo,
+      issue_number: pr.number,
+      body: commentBody,
+    });
+
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'post_pr_comment',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'success',
+    });
+
+    revalidatePath(`/maintainer/pr/${prId}`);
+    return ok({ commentId: res.data.id });
+  } catch (error: any) {
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'post_pr_comment',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'failed',
+      errorMessage: error.message || 'Failed to post PR comment via GitHub API',
+    });
+    return err('github_error', error.message || 'Failed to post PR comment via GitHub API');
+  }
+}
+
+export async function mergePullRequest(
+  prId: number,
+  options?: { mergeMethod?: 'merge' | 'squash' | 'rebase'; expectedHeadSha?: string },
+): Promise<Result<{ ok: true }>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:merge-pr', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select('repo_full_name, number, state')
+    .eq('id', prId)
+    .maybeSingle();
+
+  if (!pr) return err('not_found', 'PR not found');
+
+  if (pr.state !== 'open') return err('invalid_input', 'PR is not open');
+
+  const { data: repoRow } = await service
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', pr.repo_full_name)
+    .maybeSingle();
+
+  if (!repoRow?.installation_id) {
+    return err('not_found', 'Installation not found for this repository');
+  }
+  const installationId = repoRow.installation_id;
+
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(pr.repo_full_name)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    const [owner, repo] = pr.repo_full_name.split('/');
+    if (!owner || !repo) return err('invalid_input', 'Invalid repository format');
+    await octokit.pulls.merge({
+      owner,
+      repo,
+      pull_number: pr.number,
+      merge_method: options?.mergeMethod || 'squash',
+      sha: options?.expectedHeadSha,
+    });
+  } catch (error: any) {
+    const errorMsg = error.message || 'Failed to merge PR via GitHub API';
+
+    // 1. Log the failure first before any early returns
+    await logMaintainerAction({
+      actorUserId: user.id,
+      installationId,
+      action: 'merge_pull_request',
+      targetType: 'pull_request',
+      targetId: prId.toString(),
+      status: 'failed',
+      errorMessage: errorMsg,
+    });
+
+    // 2. Check statuses and return corresponding error results
+    if (error.status === 403) return err('github_error', 'Permission denied on GitHub (403)');
+    if (error.status === 404) return err('not_found', 'PR or Repository not found on GitHub');
+    if (error.status === 405)
+      return err('github_error', 'Merge rejected (e.g. branch protection or not mergeable)');
+    if (error.status === 409)
+      return err('github_error', 'Merge conflict or stale PR (head SHA changed)');
+    if (error.status === 422)
+      return err('invalid_input', 'PR is already merged or cannot be merged');
+
+    return err('github_error', errorMsg);
+  }
+
+  await service.from('pull_requests').update({ state: 'merged' }).eq('id', prId);
+
+  // 3. Log success
+  await logMaintainerAction({
+    actorUserId: user.id,
+    installationId,
+    action: 'merge_pull_request',
+    targetType: 'pull_request',
+    targetId: prId.toString(),
+    status: 'success',
+  });
+
+  // 4. Revalidate paths to update UI
+  revalidatePath(`/maintainer/pr/${prId}`);
+  revalidatePath('/maintainer');
+
+  return ok({ ok: true });
+}
+
+export async function getPrActivityTimeline(prId: number): Promise<Result<TimelineEvent[]>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:timeline', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  // Retrieve the PR from the DB using prId
+  const { data: pr } = await service
+    .from('pull_requests')
+    .select('repo_full_name, number, author_login')
+    .eq('id', prId)
+    .maybeSingle();
+
+  if (!pr) {
+    return err('not_found', 'PR not found');
+  }
+
+  // Find the installation ID for the repo
+  const { data: repoRow } = await service
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', pr.repo_full_name)
+    .maybeSingle();
+
+  if (!repoRow?.installation_id) {
+    return err('not_found', 'Installation not found for this repository');
+  }
+  const installationId = repoRow.installation_id;
+
+  // Verify the maintainer has access to this repo under the installation
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(pr.repo_full_name)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  const [owner, repo] = pr.repo_full_name.split('/');
+  if (!owner || !repo) {
+    return err('invalid_input', 'Invalid repository format');
+  }
+
+  // Fallback for local development using mock/demo repositories or if GITHUB_APP_ID is missing
+  if (pr.repo_full_name.startsWith('demo/') || !process.env.GITHUB_APP_ID) {
+    const mockEvents: TimelineEvent[] = [
+      {
+        id: 'mock-opened',
+        type: 'opened',
+        timestamp: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+        actor: {
+          login: pr.author_login || 'contributor',
+          avatarUrl: 'https://avatars.githubusercontent.com/u/9919?v=4',
+        },
+        details: {},
+      },
+      {
+        id: 'mock-commit-1',
+        type: 'commit',
+        timestamp: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+        actor: {
+          login: pr.author_login || 'contributor',
+          avatarUrl: 'https://avatars.githubusercontent.com/u/9919?v=4',
+        },
+        details: {
+          message: 'feat: initial commit for requested feature',
+          sha: 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0',
+        },
+      },
+      {
+        id: 'mock-comment-1',
+        type: 'comment',
+        timestamp: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
+        actor: {
+          login: 'mentor-guy',
+          avatarUrl: 'https://avatars.githubusercontent.com/u/9920?v=4',
+        },
+        details: {
+          body: 'Thanks for the contribution! Could you clean up the code formatting and check the failing test cases?',
+        },
+      },
+      {
+        id: 'mock-review-1',
+        type: 'review',
+        timestamp: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
+        actor: {
+          login: 'mentor-guy',
+          avatarUrl: 'https://avatars.githubusercontent.com/u/9920?v=4',
+        },
+        details: {
+          state: 'changes_requested',
+          body: 'Please make the requested modifications to proceed.',
+        },
+      },
+    ];
+    return ok(mockEvents);
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+
+    // Fetch live data in parallel to reduce latency
+    const [prRes, commentsRes, reviewsRes, commitsRes] = await Promise.all([
+      octokit.pulls.get({
+        owner,
+        repo,
+        pull_number: pr.number,
+      }),
+      octokit.issues.listComments({
+        owner,
+        repo,
+        issue_number: pr.number,
+      }),
+      octokit.pulls.listReviews({
+        owner,
+        repo,
+        pull_number: pr.number,
+      }),
+      octokit.pulls.listCommits({
+        owner,
+        repo,
+        pull_number: pr.number,
+      }),
+    ]);
+
+    const prData = prRes.data;
+    const commentsData = commentsRes.data || [];
+    const reviewsData = reviewsRes.data || [];
+    const commitsData = commitsRes.data || [];
+
+    // 1. Process PR Opened Event
+    const events: TimelineEvent[] = [
+      {
+        id: 'opened',
+        type: 'opened',
+        timestamp: prData.created_at,
+        actor: {
+          login: prData.user?.login ?? 'unknown',
+          avatarUrl: prData.user?.avatar_url ?? null,
+        },
+        details: {},
+      },
+    ];
+
+    // 2. Process Comments
+    for (const c of commentsData) {
+      events.push({
+        id: c.id.toString(),
+        type: 'comment',
+        timestamp: c.created_at,
+        actor: {
+          login: c.user?.login ?? 'unknown',
+          avatarUrl: c.user?.avatar_url ?? null,
+        },
+        details: {
+          body: c.body ?? '',
+        },
+      });
+    }
+
+    // 3. Process Reviews
+    for (const r of reviewsData) {
+      let state: TimelineEvent['details']['state'] = 'commented';
+      if (r.state === 'APPROVED') {
+        state = 'approved';
+      } else if (r.state === 'CHANGES_REQUESTED') {
+        state = 'changes_requested';
+      } else if (r.state === 'DISMISSED') {
+        state = 'dismissed';
+      }
+
+      if (r.submitted_at) {
+        events.push({
+          id: r.id.toString(),
+          type: 'review',
+          timestamp: r.submitted_at,
+          actor: {
+            login: r.user?.login ?? 'unknown',
+            avatarUrl: r.user?.avatar_url ?? null,
+          },
+          details: {
+            state,
+            body: r.body ?? '',
+          },
+        });
+      }
+    }
+
+    // 4. Process Commits
+    for (const c of commitsData) {
+      const timestamp = c.commit.committer?.date ?? c.commit.author?.date ?? prData.created_at;
+      events.push({
+        id: c.sha,
+        type: 'commit',
+        timestamp,
+        actor: {
+          login: c.author?.login ?? c.commit.author?.name ?? 'unknown',
+          avatarUrl: c.author?.avatar_url ?? null,
+        },
+        details: {
+          message: c.commit.message,
+          sha: c.sha,
+        },
+      });
+    }
+
+    // Sort chronologically (ascending)
+    events.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+
+    return ok(events);
+  } catch (error: any) {
+    return err('github_error', error.message || 'Failed to fetch timeline data from GitHub API');
+  }
+}
+
+export async function getPrDetails(prId: number): Promise<Result<MaintainerPrRow>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:pr-details', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  // Retrieve the PR from the DB using prId
+  const { data: rawPr, error: rawPrErr } = await service
+    .from('pull_requests')
+    .select(
+      'id, repo_full_name, number, title, url, state, draft, author_login, author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at, ai_flagged',
+    )
+    .eq('id', prId)
+    .maybeSingle();
+
+  if (rawPrErr) return err('db_error', rawPrErr.message);
+  if (!rawPr) {
+    return err('not_found', 'PR not found');
+  }
+
+  // Find the installation ID for the repo
+  const { data: repoRow, error: repoErr } = await service
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', rawPr.repo_full_name)
+    .maybeSingle();
+
+  if (repoErr) return err('db_error', repoErr.message);
+  if (!repoRow?.installation_id) {
+    return err('not_found', 'Installation not found for this repository');
+  }
+  const installationId = repoRow.installation_id;
+
+  // Verify the maintainer has access to this repo under the installation
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(rawPr.repo_full_name)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  // Fetch profile lookup for author & mentor
+  let authorLevel: number | null = null;
+  let authorXp: number | null = null;
+  let authorMergedPrs: number | null = null;
+
+  if (rawPr.author_user_id) {
+    const { data: authorProfile, error: authorProfileErr } = await service
+      .from('profiles')
+      .select('level, xp')
+      .eq('id', rawPr.author_user_id)
+      .maybeSingle();
+    if (authorProfile && !authorProfileErr) {
+      authorLevel = authorProfile.level;
+      authorXp = authorProfile.xp;
+    }
+    const { data: mergedEvents } = await service
+      .from('xp_events')
+      .select('id')
+      .eq('user_id', rawPr.author_user_id)
+      .eq('source', 'recommended_merge');
+    authorMergedPrs = mergedEvents?.length ?? 0;
+  }
+
+  let mentorReviewerHandle: string | null = null;
+  let mentorReviewerLevel: number | null = null;
+
+  if (rawPr.mentor_reviewer_id) {
+    const { data: mentorProfile, error: mentorProfileErr } = await service
+      .from('profiles')
+      .select('github_handle, level')
+      .eq('id', rawPr.mentor_reviewer_id)
+      .maybeSingle();
+    if (mentorProfile && !mentorProfileErr) {
+      mentorReviewerHandle = mentorProfile.github_handle;
+      mentorReviewerLevel = mentorProfile.level;
+    }
+  }
+
+  const { data: stagesData } = await service
+    .from('pull_request_pipeline_stages')
+    .select('stage_type, status, reviewer_level_snapshot')
+    .eq('pr_id', rawPr.id);
+
+  const pipelineStages =
+    stagesData?.map((s) => ({
+      stageType: s.stage_type,
+      status: s.status,
+      reviewerLevelSnapshot: s.reviewer_level_snapshot,
+    })) || [];
+
+  let headSha: string | undefined = undefined;
+  if (rawPr.state === 'open') {
+    try {
+      const octokit = await getInstallOctokit(installationId);
+      const [owner, repo] = rawPr.repo_full_name.split('/');
+      if (owner && repo) {
+        const githubPr = await octokit.pulls.get({
+          owner,
+          repo,
+          pull_number: rawPr.number,
+        });
+        headSha = githubPr.data.head.sha;
+      }
+    } catch (e) {
+      // Ignore GitHub API errors when just viewing PR details
+    }
+  }
+  const row: MaintainerPrRow = {
+    id: rawPr.id,
+    repoFullName: rawPr.repo_full_name,
+    number: rawPr.number,
+    title: rawPr.title,
+    url: rawPr.url,
+    state: rawPr.state as 'open' | 'closed' | 'merged',
+    draft: rawPr.draft,
+    authorLogin: rawPr.author_login,
+    authorUserId: rawPr.author_user_id,
+    authorLevel,
+    authorXp,
+    authorMergedPrs,
+    mentorVerified: rawPr.mentor_verified,
+    mentorReviewerHandle,
+    mentorReviewerLevel,
+    githubUpdatedAt: rawPr.github_updated_at,
+    aiFlagged: rawPr.ai_flagged,
+    installationId,
+    pipelineStages,
+    headSha,
+  };
+
+  return ok(row);
+}
+
+export async function getPrDiff(
+  installationId: number,
+  repoFullName: string,
+  prNumber: number,
+): Promise<Result<string | null>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:pr-diff', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const scoped = await listMaintainerRepos(user.id, installationId);
+  if (!scoped.includes(repoFullName)) {
+    return err('not_authorised', 'You do not maintain this repository');
+  }
+
+  const cacheKey = `pr:diff:${repoFullName}:${prNumber}`;
+  const cached = await cacheGet<string | null>(cacheKey);
+  if (cached !== undefined && cached !== null) {
+    if (cached === '__EMPTY__') return ok(null);
+    return ok(cached);
+  }
+
+  if (repoFullName.startsWith('demo/') || !process.env.GITHUB_APP_ID) {
+    const mockDiff = `diff --git a/demo.ts b/demo.ts
+index e69de29..d95f3ad 100644
+--- a/demo.ts
++++ b/demo.ts
+@@ -1,3 +1,4 @@
+ function demo() {
+-  console.log('old');
++  console.log('new');
+ }`;
+    await cacheSet(cacheKey, mockDiff, 300);
+    return ok(mockDiff);
+  }
+
+  try {
+    const octokit = await getInstallOctokit(installationId);
+    const [owner, repo] = repoFullName.split('/');
+    if (!owner || !repo) {
+      return ok(null);
+    }
+
+    const diffRes = await octokit.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
+      mediaType: { format: 'diff' },
+    });
+
+    const diff = typeof diffRes.data === 'string' ? diffRes.data : null;
+    if (diff) {
+      await cacheSet(cacheKey, diff, 300);
+    } else {
+      await cacheSet(cacheKey, '__EMPTY__', 300);
+    }
+    return ok(diff);
+  } catch (error) {
+    return ok(null);
+  }
 }
