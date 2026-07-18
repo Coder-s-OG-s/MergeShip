@@ -5,6 +5,23 @@ export type { FailedWebhookEventRow } from './failed-events';
 export type { XpPreviewBreakdown } from './xp-preview';
 export type { InviteRow } from './invites';
 
+import * as settingsActions from './settings';
+import * as queueActions from './queue';
+import * as communityActions from './community';
+import * as analyticsActions from './analytics';
+import * as flaggedAccountsActions from './flagged-accounts';
+import * as contributorsActions from './contributors';
+
+export { sendInvite, getMyGithubHandle, listPendingInvites, resendInvite } from './invites';
+export {
+  removeContributorFromOrg,
+  getContributorStats,
+  exportContributorsCsv,
+} from './contributors';
+export { getFailedWebhookEvents, retryFailedWebhookEvent } from './failed-events';
+export { previewMergeXp } from './xp-preview';
+export { pingReviewers } from './ping-reviewers';
+
 export async function getMaintainerInstalls(
   ...args: Parameters<typeof settingsActions.getMaintainerInstalls>
 ): ReturnType<typeof settingsActions.getMaintainerInstalls> {
@@ -219,48 +236,4 @@ export async function getContributorsList(
   ...args: Parameters<typeof contributorsActions.getContributorsList>
 ): ReturnType<typeof contributorsActions.getContributorsList> {
   return contributorsActions.getContributorsList(...args);
-}
-
-import { ok, err, type Result } from '@/lib/result';
-import { requireMaintainer } from '@/lib/action-auth';
-import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
-import { getDb } from '@/lib/db/client';
-import { pullRequests, installationRepositories } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
-import { getInstallOctokit } from '@/lib/github/app';
-
-export async function pingReviewers(prId: number): Promise<Result<{ commented: boolean }>> {
-  'use server';
-  const authRes = await requireMaintainer({
-    rateLimit: { namespace: 'maint:ping-reviewers', ...RATE_LIMIT_TIERS.STANDARD },
-  });
-  if (!authRes.ok) return authRes;
-
-  const db = getDb();
-  const [pr] = await db.select().from(pullRequests).where(eq(pullRequests.id, prId));
-
-  if (!pr) return err('not_found', 'PR not found');
-
-  const [owner, repo] = pr.repoFullName.split('/');
-  if (!owner || !repo) return err('invalid_data', 'Could not parse repo name');
-
-  const [repoRow] = await db
-    .select({ installationId: installationRepositories.installationId })
-    .from(installationRepositories)
-    .where(eq(installationRepositories.repoFullName, pr.repoFullName));
-
-  if (!repoRow) {
-    return err('not_found', 'Installation not found for this repository');
-  }
-
-  const octokit = await getInstallOctokit(repoRow.installationId);
-
-  await octokit.issues.createComment({
-    owner,
-    repo,
-    issue_number: pr.number,
-    body: 'Gentle reminder: this pull request is awaiting review. Could the reviewers please take a look?',
-  });
-
-  return ok({ commented: true });
 }
