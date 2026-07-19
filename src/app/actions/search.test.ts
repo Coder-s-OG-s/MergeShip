@@ -54,6 +54,7 @@ vi.mock('@/lib/db/schema', () => ({
 }));
 
 vi.mock('drizzle-orm', () => ({
+  and: vi.fn((...conds) => ({ conds })),
   ilike: vi.fn((col, pat) => ({ col, pat })),
   desc: vi.fn((col) => ({ col, dir: 'desc' })),
   inArray: vi.fn((col, vals) => ({ col, vals })),
