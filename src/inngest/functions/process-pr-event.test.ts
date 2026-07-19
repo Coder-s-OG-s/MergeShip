@@ -431,6 +431,14 @@ describe('processPrEvent - auto-assign mentor chain', () => {
         },
       }),
     });
+    // Mock the active assignments query which terminates on .eq('mentor_verified', false)
+    const originalEq = pullRequestsMock.eq;
+    pullRequestsMock.eq = vi.fn((col, val) => {
+      if (col === 'mentor_verified' && val === false) {
+        return Promise.resolve({ data: [] });
+      }
+      return originalEq(col, val);
+    });
     const installationSettingsMock = sb({
       maybeSingle: vi
         .fn()

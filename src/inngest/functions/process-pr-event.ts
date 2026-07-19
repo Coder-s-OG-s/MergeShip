@@ -263,8 +263,31 @@ async function maybeAutoAssignMentor(
     // Guard against the foreign filter not being applied (defensive — keeps the
     // L2+ invariant even if the join shape surprises us).
     if (!profile || profile.level < MENTOR_MIN_LEVEL) return [];
-    return [{ userId: row.user_id, handle: profile.github_handle }];
+    return [{ userId: row.user_id, handle: profile.github_handle, activeReviewCount: 0 }];
   });
+
+  const candidateIds = seniors.map((s) => s.userId);
+  if (candidateIds.length > 0) {
+    const { data: activeAssignments } = await sb
+      .from('pull_requests')
+      .select('mentor_reviewer_id')
+      .in('mentor_reviewer_id', candidateIds)
+      .eq('state', 'open')
+      .eq('mentor_verified', false);
+
+    if (activeAssignments) {
+      const counts: Record<string, number> = {};
+      for (const row of activeAssignments) {
+        if (row.mentor_reviewer_id) {
+          counts[row.mentor_reviewer_id] = (counts[row.mentor_reviewer_id] || 0) + 1;
+        }
+      }
+      for (const senior of seniors) {
+        senior.activeReviewCount = counts[senior.userId] || 0;
+      }
+    }
+  }
+
   const chosen = pickMentor(seniors, prRow.author_user_id);
   if (!chosen) return { assigned: false, handle: null, mentorUserId: null };
 
