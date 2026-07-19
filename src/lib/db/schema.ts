@@ -125,6 +125,22 @@ export const installationRepositories = pgTable(
   }),
 );
 
+export const repoSyncCursors = pgTable(
+  'repo_sync_cursors',
+  {
+    installationId: bigint('installation_id', { mode: 'number' })
+      .notNull()
+      .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+    repoFullName: text('repo_full_name').notNull(),
+    syncType: text('sync_type').notNull(),
+    page: integer('page').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.installationId, t.repoFullName, t.syncType] }),
+  }),
+);
+
 // ---------- issues (computed cache, forever) ----------
 
 export const issues = pgTable(
@@ -180,7 +196,7 @@ export const recommendations = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
     issueId: bigint('issue_id', { mode: 'number' })
       .notNull()
-      .references(() => issues.id),
+      .references(() => issues.id, { onDelete: 'cascade' }),
     difficulty: text('difficulty', { enum: ['E', 'M', 'H'] }).notNull(),
     xpReward: integer('xp_reward').notNull(),
     linkedPrUrl: text('linked_pr_url'),
@@ -276,6 +292,7 @@ export const helpRequests = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
     recommendationId: bigint('recommendation_id', { mode: 'number' }).references(
       () => recommendations.id,
+      { onDelete: 'cascade' },
     ),
     prUrl: text('pr_url').notNull(),
     reason: text('reason'),
@@ -422,6 +439,7 @@ export const pullRequests = pgTable(
     mentorCommentId: bigint('mentor_comment_id', { mode: 'number' }),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
     aiFlagged: boolean('ai_flagged').notNull().default(false),
+    aiFlagReason: text('ai_flag_reason'),
   },
   (t) => ({
     uniqRepoNumber: uniqueIndex('pull_requests_repo_number_unique').on(t.repoFullName, t.number),
@@ -584,11 +602,16 @@ export const failedWebhookEvents = pgTable(
 
     retryCount: integer('retry_count').notNull().default(0),
 
+    installationId: bigint('installation_id', { mode: 'number' }).references(
+      () => githubInstallations.id,
+    ),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     deliveryIdx: index('failed_webhook_delivery_idx').on(t.deliveryId),
     eventTypeIdx: index('failed_webhook_event_type_idx').on(t.eventType),
+    installationIdx: index('failed_webhook_events_installation_idx').on(t.installationId),
   }),
 );
 

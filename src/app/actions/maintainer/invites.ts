@@ -179,14 +179,19 @@ export async function revokeInvite(inviteId: number): Promise<Result<void>> {
     return { success: false, error: error.message || 'Failed to revoke invite' };
   }
 
+
+import { z } from 'zod';
+
 import { ok, err, type Result } from '@/lib/result';
 import { requireMaintainer } from '@/lib/action-auth';
-import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
+import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerRepos } from '@/lib/maintainer/detect';
 import { getDb } from '@/lib/db/client';
 import { organizationInvites, githubInstallations, profiles } from '@/lib/db/schema';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import { sendOrganizationInviteEmail } from '@/lib/email';
+
+const emailSchema = z.string().email('Invalid email address');
 
 export type InviteRow = {
   id: string;
@@ -231,11 +236,27 @@ export async function sendInvite(
   installationId: number,
   email: string,
 ): Promise<Result<InviteRow>> {
+  const parsed = emailSchema.safeParse(email.trim());
+  if (!parsed.success) {
+    return err('invalid_email', 'Please provide a valid email address');
+  }
+  const normalizedEmail = parsed.data.toLowerCase();
+
   const authRes = await requireMaintainer({
     rateLimit: { namespace: 'maint:send-invite', ...RATE_LIMIT_TIERS.STANDARD },
   });
   if (!authRes.ok) return authRes;
   const { user } = authRes.data;
+
+  const recipientLimit = await rateLimit({
+    namespace: 'maint:send-invite:recipient',
+    key: normalizedEmail,
+    limit: 3,
+    windowSec: 86400,
+  });
+  if (!recipientLimit.ok) {
+    return err('rate_limited', 'Too many invites sent to this email', true, recipientLimit.resetAt);
+  }
 
   const repos = await listMaintainerRepos(user.id, installationId);
   if (repos.length === 0) return err('not_authorised', 'Not your install');
@@ -260,7 +281,7 @@ export async function sendInvite(
     .insert(organizationInvites)
     .values({
       installationId,
-      email,
+      email: normalizedEmail,
       expiresAt,
     })
     .returning();
@@ -270,7 +291,7 @@ export async function sendInvite(
   const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/invite/${invite.id}`;
 
   await sendOrganizationInviteEmail({
-    to: email,
+    to: normalizedEmail,
     inviteLink,
     inviterHandle: profile?.githubHandle || 'A maintainer',
     organizationName: org.accountLogin,
@@ -282,6 +303,23 @@ export async function sendInvite(
     sent_at: invite.sentAt.toISOString(),
     expires_at: invite.expiresAt.toISOString(),
   });
+}
+
+export async function getMyGithubHandle(): Promise<Result<string>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:my-handle', ...RATE_LIMIT_TIERS.GENEROUS },
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const db = getDb();
+  const [profile] = await db
+    .select({ githubHandle: profiles.githubHandle })
+    .from(profiles)
+    .where(eq(profiles.id, user.id));
+
+  if (!profile) return err('not_found', 'Profile not found');
+  return ok(profile.githubHandle);
 }
 
 export async function resendInvite(inviteId: string): Promise<Result<void>> {

@@ -12,7 +12,13 @@ export type LinkedRec = {
   xp_reward: number;
   issue_id: number;
   issue: { title: string; repo_full_name: string; url: string } | null;
-  pr: { id: number; author_user_id: string | null; mentor_verified: boolean; state: string } | null;
+  pr: {
+    id: number;
+    author_user_id: string | null;
+    mentor_verified: boolean;
+    state: string;
+    can_verify: boolean;
+  } | null;
 };
 
 const STATUS_CLS: Record<string, string> = {
@@ -21,6 +27,20 @@ const STATUS_CLS: Record<string, string> = {
   expired: 'border-zinc-700 text-zinc-500',
   reassigned: 'border-zinc-700 text-zinc-500',
 };
+
+export function canVerifyLinkedPr(
+  rec: LinkedRec,
+  currentUser: { id: string; level: number },
+): boolean {
+  return Boolean(
+    rec.pr &&
+    !rec.pr.mentor_verified &&
+    rec.pr.author_user_id !== currentUser.id &&
+    currentUser.level >= 2 &&
+    rec.pr.state === 'open' &&
+    rec.pr.can_verify,
+  );
+}
 
 export function MyWorkSection({
   initialRecs,
@@ -190,15 +210,11 @@ function WorkItem({
             <Pencil className="h-3 w-3" /> EDIT
           </button>
 
-          {rec.pr &&
-            !rec.pr.mentor_verified &&
-            rec.pr.author_user_id !== currentUser.id &&
-            currentUser.level >= 2 &&
-            rec.pr.state === 'open' && (
-              <div className="ml-2">
-                <VerifyButton prId={rec.pr.id} />
-              </div>
-            )}
+          {canVerifyLinkedPr(rec, currentUser) && (
+            <div className="ml-2">
+              <VerifyButton prId={rec.pr!.id} />
+            </div>
+          )}
           {rec.pr?.mentor_verified && (
             <span className="ml-2 rounded-full bg-emerald-900/40 px-2 py-0.5 text-[10px] uppercase tracking-widest text-emerald-400 ring-1 ring-emerald-700/40">
               Verified

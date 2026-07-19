@@ -1,8 +1,10 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
+import { checkRateBudget } from '@/lib/github/rate-budget';
 import { buildPrRow, isWithinBackfillWindow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
 import { classifyPrAsAi } from '@/lib/maintainer/pr-classify';
+import { getSyncCursor, setSyncCursor, clearSyncCursor } from '@/lib/maintainer/sync-cursor';
 
 /**
  * Backfill historic PRs for a newly-installed App or for a newly-added repo
@@ -32,6 +34,32 @@ export const prBackfill = inngest.createFunction(
   async ({ event, step }) => {
     if (event.name === 'pr-backfill/repo') {
       const data = (event as RepoEvent).data;
+
+      const isActive = await step.run(`check-active-${data.installationId}`, async () => {
+        const sb = getServiceSupabase();
+        if (!sb) throw new Error('service role missing');
+        const { data: install, error } = await sb
+          .from('github_installations')
+          .select('uninstalled_at')
+          .eq('id', data.installationId)
+          .maybeSingle();
+
+        if (error) throw new Error(`Failed to check installation: ${error.message}`);
+        return !!install && !install.uninstalled_at;
+      });
+
+      if (!isActive) return { skipped: true, reason: 'uninstalled' };
+
+      const budget = await step.run(
+        `check-budget-repo-${data.repoFullName.replace('/', '-')}`,
+        () => checkRateBudget(data.installationId),
+      );
+      if (!budget.ok) {
+        await step.sleepUntil(
+          `sleep-budget-repo-${data.repoFullName.replace('/', '-')}`,
+          new Date(budget.resetAt * 1000 + 5000),
+        );
+      }
       return await step.run(`backfill-${data.repoFullName.replace('/', '-')}`, async () =>
         backfillSingleRepo(data.installationId, data.repoFullName),
       );
@@ -46,15 +74,41 @@ export const prBackfill = inngest.createFunction(
     const repos = await step.run('list-repos', async () => {
       const sb = getServiceSupabase();
       if (!sb) throw new Error('service role missing');
-      const { data: rows } = await sb
+
+      const { data: install, error: installError } = await sb
+        .from('github_installations')
+        .select('uninstalled_at')
+        .eq('id', installationId)
+        .maybeSingle();
+
+      if (installError) throw new Error(`Failed to check installation: ${installError.message}`);
+      if (!install || install.uninstalled_at) return [];
+
+      const { data: rows, error: reposError } = await sb
         .from('installation_repositories')
         .select('repo_full_name')
         .eq('installation_id', installationId);
+
+      if (reposError) throw new Error(`Failed to list repos: ${reposError.message}`);
       return (rows ?? []).map((r) => r.repo_full_name);
     });
 
+    if (repos.length === 0) {
+      return { skipped: true, reason: 'uninstalled or empty' };
+    }
+
     const reports: Array<{ repo: string; prs: number; errors: string[] }> = [];
     for (const repo of repos) {
+      const budget = await step.run(`check-budget-repo-${repo.replace('/', '-')}`, () =>
+        checkRateBudget(installationId),
+      );
+      if (!budget.ok) {
+        await step.sleepUntil(
+          `sleep-budget-repo-${repo.replace('/', '-')}`,
+          new Date(budget.resetAt * 1000 + 5000),
+        );
+      }
+
       const report = await step.run(`backfill-${repo.replace('/', '-')}`, async () =>
         backfillSingleRepo(installationId, repo),
       );
@@ -104,6 +158,10 @@ async function backfillSingleRepo(
   const now = Date.now();
   let totalUpserts = 0;
 
+  const lastProcessedPage = await getSyncCursor(installationId, repoFullName, 'pull_requests');
+  const startingPage = (lastProcessedPage ?? 0) + 1;
+  let currentPage = startingPage;
+
   try {
     const pageIterator = octokit.paginate.iterator(octokit.pulls.list, {
       owner,
@@ -112,12 +170,14 @@ async function backfillSingleRepo(
       sort: 'updated',
       direction: 'desc',
       per_page: 100,
+      page: startingPage,
     });
 
     outer: for await (const page of pageIterator) {
       for (const pr of page.data) {
         // Stop walking once we pass the window — list is sorted updated desc.
         if (!isWithinBackfillWindow(pr.updated_at, now, BACKFILL_WINDOW_DAYS)) {
+          await clearSyncCursor(installationId, repoFullName, 'pull_requests');
           break outer;
         }
 
@@ -155,11 +215,17 @@ async function backfillSingleRepo(
           base: { repo: { full_name: repoFullName } },
         };
 
-        const aiFlagged = aiDetectionEnabled
-          ? classifyPrAsAi({ title: ingestible.title, body: ingestible.body })
-          : false;
+        const classification = aiDetectionEnabled
+          ? await classifyPrAsAi({ title: ingestible.title, body: ingestible.body })
+          : { flagged: false, reason: null };
 
-        const row = buildPrRow(ingestible, authorUserId, 'backfill', aiFlagged);
+        const row = buildPrRow(
+          ingestible,
+          authorUserId,
+          'backfill',
+          classification.flagged,
+          classification.reason,
+        );
         const { error: upsertErr } = await sb
           .from('pull_requests')
           .upsert(row, { onConflict: 'repo_full_name,number' });
@@ -182,7 +248,14 @@ async function backfillSingleRepo(
           errors.push(`reviews #${pr.number}: ${(e as Error).message}`);
         }
       }
+
+      // All items in the page processed successfully. Update the cursor.
+      await setSyncCursor(installationId, repoFullName, 'pull_requests', currentPage);
+      currentPage++;
     }
+
+    // Finished processing all pages (or exited the loop naturally before hitting the window limit).
+    await clearSyncCursor(installationId, repoFullName, 'pull_requests');
   } catch (e) {
     errors.push(`pulls.list: ${(e as Error).message}`);
   }

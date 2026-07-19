@@ -68,7 +68,7 @@ type Achievement = {
 
 type TimelineEvent = {
   id: string;
-  type: 'PR_MERGED' | 'ISSUE_CLAIMED' | 'LEVEL_UP' | 'XP_EARNED' | 'MENTORED';
+  type: 'PR_MERGED' | 'PR_OPENED' | 'ISSUE_CLAIMED' | 'LEVEL_UP' | 'XP_EARNED' | 'MENTORED';
   title: string;
   subtitle: string;
   timestamp: string;
@@ -227,7 +227,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     } else if (pr.state === 'open') {
       timelineEvents.push({
         id: `pr-open-${pr.id}`,
-        type: 'XP_EARNED',
+        type: 'PR_OPENED',
         title: pr.title,
         subtitle: `${pr.repo_full_name} #${pr.number}`,
         timestamp: pr.github_created_at,
@@ -317,6 +317,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
 
 const EVENT_COLOR: Record<string, string> = {
   PR_MERGED: 'bg-emerald-500/20 text-emerald-400 border border-emerald-700/50',
+  PR_OPENED: 'bg-zinc-500/20 text-zinc-400 border border-zinc-700/50',
   ISSUE_CLAIMED: 'bg-blue-500/20 text-blue-400 border border-blue-700/50',
   LEVEL_UP: 'bg-purple-500/20 text-purple-400 border border-purple-700/50',
   XP_EARNED: 'bg-yellow-500/20 text-yellow-400 border border-yellow-700/50',
@@ -325,6 +326,7 @@ const EVENT_COLOR: Record<string, string> = {
 
 const EVENT_DOT: Record<string, string> = {
   PR_MERGED: 'bg-emerald-400',
+  PR_OPENED: 'bg-zinc-400',
   ISSUE_CLAIMED: 'bg-blue-400',
   LEVEL_UP: 'bg-purple-400',
   XP_EARNED: 'bg-yellow-400',

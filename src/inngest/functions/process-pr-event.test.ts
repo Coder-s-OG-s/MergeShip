@@ -523,7 +523,7 @@ describe('processPrEvent - ai_flagged classification', () => {
     });
 
     expect(pullRequestsMock.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ ai_flagged: true }),
+      expect.objectContaining({ ai_flagged: true, ai_flag_reason: 'generated_msg' }),
       expect.anything(),
     );
   });
@@ -540,7 +540,7 @@ describe('processPrEvent - ai_flagged classification', () => {
     });
 
     expect(pullRequestsMock.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ ai_flagged: false }),
+      expect.objectContaining({ ai_flagged: false, ai_flag_reason: null }),
       expect.anything(),
     );
   });
@@ -554,7 +554,7 @@ describe('processPrEvent - ai_flagged classification', () => {
     });
 
     expect(pullRequestsMock.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ ai_flagged: false }),
+      expect.objectContaining({ ai_flagged: false, ai_flag_reason: null }),
       expect.anything(),
     );
   });

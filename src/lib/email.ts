@@ -1,11 +1,30 @@
 import { Resend } from 'resend';
 
+export function htmlEscape(raw: string | null | undefined): string {
+  if (!raw) return '';
+  return raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 type SendHelpDispatchEmailArgs = {
   to: string;
   mentorHandle: string;
   menteeHandle: string;
   prUrl: string;
   helpReason?: string | null;
+};
+
+type SendMentorAssignedEmailArgs = {
+  to: string;
+  mentorHandle: string;
+  authorHandle: string;
+  prUrl: string;
+  prTitle: string;
+  repo: string;
 };
 
 const resendApiKey = process.env.RESEND_API_KEY;
@@ -31,13 +50,13 @@ export async function sendHelpDispatchEmail({
     html: `
       <h2>Someone needs your help on a PR</h2>
 
-      <p>Hello ${mentorHandle},</p>
+      <p>Hello ${htmlEscape(mentorHandle)},</p>
 
-      <p>${menteeHandle} has requested help on a pull request.</p>
+      <p>${htmlEscape(menteeHandle)} has requested help on a pull request.</p>
 
       <p>
         <strong>Pull Request:</strong><br />
-        <a href="${prUrl}">${prUrl}</a>
+        <a href="${htmlEscape(prUrl)}">${htmlEscape(prUrl)}</a>
       </p>
 
       ${
@@ -45,7 +64,7 @@ export async function sendHelpDispatchEmail({
           ? `
         <p>
           <strong>Help Request:</strong><br />
-          ${helpReason}
+          ${htmlEscape(helpReason)}
         </p>
       `
           : ''
@@ -53,6 +72,47 @@ export async function sendHelpDispatchEmail({
 
       <p>
         Visit the Help Inbox to respond and assist the contributor.
+      </p>
+    `,
+  });
+}
+
+export async function sendMentorAssignedEmail({
+  to,
+  mentorHandle,
+  authorHandle,
+  prUrl,
+  prTitle,
+  repo,
+}: SendMentorAssignedEmailArgs) {
+  if (!resend) {
+    console.warn('RESEND_API_KEY missing, skipping email send');
+    return { skipped: true };
+  }
+
+  return resend.emails.send({
+    from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
+    to,
+    subject: `[MergeShip] You've been assigned as mentor on ${repo}#${prTitle.slice(0, 60)}`,
+    html: `
+      <h2>You've been assigned as a mentor</h2>
+
+      <p>Hello ${htmlEscape(mentorHandle)},</p>
+
+      <p>
+        MergeShip's auto assign chain has matched you as the mentor reviewer for
+        a new pull request by <strong>${htmlEscape(authorHandle)}</strong>.
+      </p>
+
+      <p>
+        <strong>PR:</strong> ${htmlEscape(prTitle)}<br />
+        <strong>Repo:</strong> ${htmlEscape(repo)}<br />
+        <a href="${htmlEscape(prUrl)}">View on GitHub →</a>
+      </p>
+
+      <p>
+        Please review the PR at your earliest convenience. Your feedback helps
+        contributors to level up!
       </p>
     `,
   });
@@ -91,7 +151,7 @@ export async function sendWeeklyDigestEmail({
       ? `
       <h3>Recommended for you:</h3>
       <ul>
-        ${recommendations.map((r) => `<li><a href="${r.url}">${r.title}</a> (+${r.xpReward} XP)</li>`).join('')}
+        ${recommendations.map((r) => `<li><a href="${htmlEscape(r.url)}">${htmlEscape(r.title)}</a> (+${r.xpReward} XP)</li>`).join('')}
       </ul>
     `
       : '';
@@ -103,7 +163,7 @@ export async function sendWeeklyDigestEmail({
     html: `
       <h2>Your Weekly Progress Digest</h2>
 
-      <p>Hello ${githubHandle}, here's what you achieved this week on MergeShip!</p>
+      <p>Hello ${htmlEscape(githubHandle)}, here's what you achieved this week on MergeShip!</p>
 
       <h3>Progress</h3>
       <ul>
@@ -175,9 +235,9 @@ export async function sendOrganizationInviteEmail({
     subject: `[MergeShip] ${inviterHandle} invited you to join ${organizationName}`,
     html: `
       <h2>You've been invited!</h2>
-      <p>${inviterHandle} invited you to join <strong>${organizationName}</strong> on MergeShip.</p>
+      <p>${htmlEscape(inviterHandle)} invited you to join <strong>${htmlEscape(organizationName)}</strong> on MergeShip.</p>
       <p>Click the link below to accept the invitation:</p>
-      <p><a href="${inviteLink}">${inviteLink}</a></p>
+      <p><a href="${htmlEscape(inviteLink)}">${htmlEscape(inviteLink)}</a></p>
     `,
 
   });

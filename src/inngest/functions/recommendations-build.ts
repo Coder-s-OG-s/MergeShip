@@ -1,179 +1,43 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
-import { filterAndRank, type ScoredIssue, type SkipCounts } from '@/lib/pipeline/recommend';
-import { unwrapJoin } from '@/lib/supabase/inner-join';
-import { SKIP_HISTORY_WINDOW_DAYS } from '@/lib/pipeline/constants';
 
-/**
- * For every active user, derive a fresh set of recommendation rows from the
- * pre-scored `issues` table. Idempotent via UNIQUE(user_id, issue_id) on
- * `recommendations` — replays just no-op on existing picks.
- *
- * Triggered after each issues-sweep and on its own slow cron as a backstop.
- */
-
-const REC_TTL_DAYS = 7;
-
-type IssueRow = {
-  id: number;
-  repo_full_name: string;
-  github_issue_number: number;
-  title: string;
-  difficulty: 'E' | 'M' | 'H';
-  xp_reward: number;
-  repo_health_score: number | null;
-  repo_language: string | null;
-  scored_at: string;
-};
+const BATCH_SIZE = 50;
 
 export const recommendationsBuild = inngest.createFunction(
   { id: 'recommendations-build', concurrency: { limit: 1 } },
   [{ event: 'recommendations/build' }],
   async ({ step }) => {
-    const built = await step.run('build-all', async () => {
-      const sb = getServiceSupabase();
-      if (!sb) throw new Error('service role missing');
+    const sb = getServiceSupabase();
+    if (!sb) throw new Error('service role missing');
 
-      // All scored, open issues form the candidate pool. Cap to a sane size
-      // — at 10k users the pool is bounded by repo count, not user count.
-      const { data: pool } = await sb
-        .from('issues')
-        .select(
-          'id, repo_full_name, github_issue_number, title, difficulty, xp_reward, repo_health_score, repo_language, scored_at',
-        )
-        .eq('state', 'open')
-        .order('scored_at', { ascending: false })
-        .limit(500);
-
-      const rawPool = (pool ?? []) as unknown as IssueRow[];
-
-      if (rawPool.length === 0) return { users: 0, inserted: 0 };
-
+    const users = await step.run('fetch-users', async () => {
       // Pull every user with an active install — these are the only users
       // who pass the gate and have a dashboard worth populating.
-      const { data: users } = await sb
+      const { data } = await sb
         .from('github_installations')
-        .select('user_id, profiles!inner(id, level, primary_language)')
+        .select('user_id')
         .is('uninstalled_at', null)
         .not('user_id', 'is', null);
 
-      type UserRow = {
-        user_id: string;
-        profiles: { level: number | null; primary_language: string | null };
-      };
-      const userList = (users ?? []) as unknown as UserRow[];
-
-      // Fetch skip history in bulk to avoid N+1 queries inside the user loop.
-      const cutoffDate = new Date(
-        Date.now() - SKIP_HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000,
-      ).toISOString();
-      const { data: skipsData } = await sb
-        .from('recommendations')
-        .select('user_id, issues!inner(repo_full_name, repo_language)')
-        .eq('status', 'reassigned')
-        .gte('recommended_at', cutoffDate);
-
-      const skipHistoryMap: Record<string, SkipCounts> = {};
-      for (const row of skipsData ?? []) {
-        const userId = row.user_id;
-        const issue = unwrapJoin<{
-          repo_full_name: string;
-          repo_language: string | null;
-        }>((row as unknown as { issues: unknown }).issues);
-
-        if (!issue?.repo_full_name) continue;
-
-        if (!skipHistoryMap[userId]) {
-          skipHistoryMap[userId] = { byRepo: {}, byLanguage: {} };
-        }
-
-        const counts = skipHistoryMap[userId];
-        counts.byRepo[issue.repo_full_name] = (counts.byRepo[issue.repo_full_name] ?? 0) + 1;
-
-        if (issue.repo_language) {
-          counts.byLanguage[issue.repo_language] =
-            (counts.byLanguage[issue.repo_language] ?? 0) + 1;
-        }
-      }
-
-      // Bulk-fetch all seen recommendation issue_ids to avoid N+1 per-user queries.
-      const allUserIds = userList.map((u) => u.user_id);
-      const seenByUser = new Map<string, Set<number>>();
-      for (let i = 0; i < allUserIds.length; i += 100) {
-        const chunk = allUserIds.slice(i, i + 100);
-        for (let from = 0; ; from += 1000) {
-          const { data: seenPage } = await sb
-            .from('recommendations')
-            .select('user_id, issue_id')
-            .in('user_id', chunk)
-            .order('user_id')
-            .order('issue_id')
-            .range(from, from + 999);
-          for (const row of seenPage ?? []) {
-            if (!seenByUser.has(row.user_id)) {
-              seenByUser.set(row.user_id, new Set());
-            }
-            seenByUser.get(row.user_id)!.add(row.issue_id);
-          }
-          if (!seenPage || seenPage.length < 1000) break;
-        }
-      }
-
-      let totalInserted = 0;
-      for (const u of userList) {
-        const level = u.profiles?.level ?? 0;
-        const userLang = u.profiles?.primary_language ?? null;
-
-        // Build per-user candidates so languageMatch reflects this user's
-        // primary_language. Pool is shared; only the language flag varies.
-        const candidates: ScoredIssue[] = rawPool.map((i) => ({
-          repoLanguage: i.repo_language,
-          id: i.id,
-          repoFullName: i.repo_full_name,
-          number: i.github_issue_number,
-          title: i.title,
-          difficulty: i.difficulty,
-          xpReward: i.xp_reward,
-          repoHealthScore: i.repo_health_score ?? 50,
-          freshnessHours: Math.max(0, (Date.now() - new Date(i.scored_at).getTime()) / 36e5),
-          languageMatch:
-            userLang !== null && i.repo_language !== null && i.repo_language === userLang,
-        }));
-
-        // Use bulk-fetched seen set instead of per-user query.
-        const excludeIds = seenByUser.get(u.user_id) ?? new Set<number>();
-        const skipCounts = skipHistoryMap[u.user_id];
-
-        const picks = filterAndRank(candidates, {
-          level,
-          excludeIssueIds: excludeIds,
-          allowFallback: true,
-          skipCounts,
-        });
-
-        if (picks.length === 0) continue;
-
-        const expiresAt = new Date(Date.now() + REC_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
-        const rows = picks.map((p) => ({
-          user_id: u.user_id,
-          issue_id: p.id,
-          difficulty: p.difficulty,
-          xp_reward: p.xpReward,
-          recommended_at: new Date().toISOString(),
-          expires_at: expiresAt,
-          status: 'open' as const,
-        }));
-
-        const { error } = await sb
-          .from('recommendations')
-          .upsert(rows, { onConflict: 'user_id,issue_id', ignoreDuplicates: true });
-        if (!error) totalInserted += rows.length;
-      }
-
-      return { users: userList.length, inserted: totalInserted };
+      return (data ?? []).map((row) => row.user_id);
     });
 
-    return built;
+    if (users.length === 0) {
+      return { activeUsers: 0, batchesDispatched: 0 };
+    }
+
+    const batches = [];
+    for (let i = 0; i < users.length; i += BATCH_SIZE) {
+      batches.push(users.slice(i, i + BATCH_SIZE));
+    }
+
+    const events = batches.map((batch) => ({
+      name: 'recommendations/build.worker',
+      data: { userIds: batch },
+    }));
+
+    await step.sendEvent('dispatch-workers', events);
+
+    return { activeUsers: users.length, batchesDispatched: batches.length };
   },
 );

@@ -201,19 +201,15 @@ export default async function OnboardingCompletePage() {
   );
 }
 
-function SummaryRow({
-  icon,
-  label,
-  badge,
-  last,
-  children,
-}: {
+type SummaryRowProps = {
   icon: React.ReactNode;
   label: string;
   badge?: string;
   last?: boolean;
   children: React.ReactNode;
-}) {
+};
+
+function SummaryRow({ icon, label, badge, last, children }: SummaryRowProps) {
   return (
     <div
       className={`flex items-center justify-between gap-4 px-5 py-4 ${
