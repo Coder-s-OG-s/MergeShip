@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildDayOverDayStats, buildMaintainerAnalyticsTrends } from './analytics';
-import { buildMaintainerAnalyticsTrends, buildCurrentLevelSnapshot } from './analytics';
+import {
+  buildCurrentLevelSnapshot,
+  buildDayOverDayStats,
+  buildMaintainerAnalyticsTrends,
+} from './analytics';
 
 describe('buildMaintainerAnalyticsTrends', () => {
   it('groups merged PRs and completed XP into the last twelve UTC weeks', () => {

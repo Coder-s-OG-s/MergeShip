@@ -279,22 +279,22 @@ export async function getMaintainerAnalyticsTrends(args: {
   if (error) return err('query_failed', error.message);
 
   // Fetch review stats and day-over-day deltas from timestamped PR rows.
-  
+
   const { from, to } = rangeToDateBounds(activeRange, new Date());
 
-// Fetch review stats and day-over-day deltas from timestamped PR rows.
-let q = service
-  .from('pull_requests')
-  .select('github_created_at, merged_at, mentor_review_at')
-  .in('repo_full_name', repos)
-  .not('github_created_at', 'is', null)
-  .lte('github_created_at', to.toISOString());
+  // Fetch review stats and day-over-day deltas from timestamped PR rows.
+  let q = service
+    .from('pull_requests')
+    .select('github_created_at, merged_at, mentor_review_at')
+    .in('repo_full_name', repos)
+    .not('github_created_at', 'is', null)
+    .lte('github_created_at', to.toISOString());
 
-if (activeRange !== 'all') {
-  q = q.gte('github_created_at', from.toISOString());
-}
+  if (activeRange !== 'all') {
+    q = q.gte('github_created_at', from.toISOString());
+  }
 
-const { data: prs } = await q;
+  const { data: prs } = await q;
   let avgReviewTimeHours = null;
   const reviewRows = (
     (prs ?? []) as {
