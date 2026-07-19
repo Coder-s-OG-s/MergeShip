@@ -1,6 +1,6 @@
 'use server';
 
-import { ilike, desc, inArray } from 'drizzle-orm';
+import { and, ilike, desc, inArray } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { issues, profiles } from '@/lib/db/schema';
 import { getServerSupabase } from '@/lib/supabase/server';
@@ -86,7 +86,9 @@ export async function searchGlobal(query: string): Promise<Result<SearchResult>>
               url: issues.url,
             })
             .from(issues)
-            .where(ilike(issues.title, searchPattern) && inArray(issues.repoFullName, allowedRepos))
+            .where(
+              and(ilike(issues.title, searchPattern), inArray(issues.repoFullName, allowedRepos)),
+            )
             .orderBy(desc(issues.id))
             .limit(5)
         : Promise.resolve([]),
