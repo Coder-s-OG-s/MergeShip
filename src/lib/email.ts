@@ -193,6 +193,26 @@ export async function sendWeeklyDigestEmail({
   });
 }
 
+export async function sendInviteEmail({ to, inviteUrl }: { to: string; inviteUrl: string }) {
+  if (!resend) {
+    console.warn('Resend email client not configured. Invite URL:', inviteUrl);
+    return;
+  }
+
+  await resend.emails.send({
+    from: 'MergeShip <noreply@mergeship.com>',
+    to,
+    subject: 'You have been invited to join MergeShip!',
+    html: `
+      <h2>You have been invited as a contributor!</h2>
+      <p>Click the link below to accept the invitation and link your account:</p>
+      <p><a href="${inviteUrl}">${inviteUrl}</a></p>
+      <br />
+      <p style="font-size: 12px; color: #666;">This invitation link will expire in 7 days.</p>
+    `,
+    text: `You have been invited as a contributor!\n\nJoin the project by opening this link: ${inviteUrl}\n\nThis invitation link will expire in 7 days.`,
+
+
 export async function sendOrganizationInviteEmail({
   to,
   inviteLink,
@@ -219,5 +239,6 @@ export async function sendOrganizationInviteEmail({
       <p>Click the link below to accept the invitation:</p>
       <p><a href="${htmlEscape(inviteLink)}">${htmlEscape(inviteLink)}</a></p>
     `,
+
   });
 }
