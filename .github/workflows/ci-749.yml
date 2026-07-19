@@ -1,0 +1,109 @@
+name: "CI/CD: Fix #749 — searchGlobal data leak"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/app/actions/search.ts"
+      - "src/app/actions/search.test.ts"
+  push:
+    branches: [fix/749-search-global-data-leak]
+
+concurrency:
+  group: ci-749-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-check:
+    name: Verify repo scoping
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify getServiceSupabase is imported in search.ts
+        run: |
+          if ! grep -q "getServiceSupabase" src/app/actions/search.ts; then
+            echo "::error::getServiceSupabase not found in search.ts"
+            exit 1
+          fi
+          echo "PASS: getServiceSupabase is imported"
+
+      - name: Verify inArray is imported from drizzle-orm
+        run: |
+          if ! grep -q "inArray" src/app/actions/search.ts; then
+            echo "::error::inArray not found in search.ts"
+            exit 1
+          fi
+          echo "PASS: inArray is imported"
+
+      - name: Verify issues query is scoped to allowed repos
+        run: |
+          if ! grep -q "inArray(issues.repoFullName" src/app/actions/search.ts; then
+            echo "::error::Issues query is not scoped by repo full name"
+            exit 1
+          fi
+          echo "PASS: Issues query is scoped to allowed repos"
+
+      - name: Verify installation_repositories is queried
+        run: |
+          if ! grep -q "installation_repositories" src/app/actions/search.ts; then
+            echo "::error::installation_repositories table not queried"
+            exit 1
+          fi
+          echo "PASS: installation_repositories is queried for repo scoping"
+
+  ci:
+    name: Tests & Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Run search tests
+        run: npx vitest run src/app/actions/search.test.ts
+
+      - name: Run all tests with coverage
+        run: npm run test:coverage
+
+  notify-failure:
+    needs: [security-check, ci]
+    if: failure() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post failure comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              '## ❌ CI failed on fix/749-search-global-data-leak',
+              '',
+              'One or more checks failed. Please review the logs and fix before merging.',
+              '',
+              `[Full CI log](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
