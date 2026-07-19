@@ -1,5 +1,5 @@
 export type * from './types';
-export type { StalePrRow, AiDetectionBreakdown } from './analytics';
+export type { StalePrRow, AiDetectionBreakdown, QueueSignalQuality } from './analytics';
 export type { ContributorListRow, ContributorStats } from './contributors';
 export type { FailedWebhookEventRow } from './failed-events';
 export type { XpPreviewBreakdown } from './xp-preview';
@@ -200,6 +200,12 @@ export async function getNoiseBreakdown(
   ...args: Parameters<typeof analyticsActions.getNoiseBreakdown>
 ): ReturnType<typeof analyticsActions.getNoiseBreakdown> {
   return analyticsActions.getNoiseBreakdown(...args);
+}
+
+export async function getQueueSignalQuality(
+  ...args: Parameters<typeof analyticsActions.getQueueSignalQuality>
+): ReturnType<typeof analyticsActions.getQueueSignalQuality> {
+  return analyticsActions.getQueueSignalQuality(...args);
 }
 
 export async function getPromotionEligible(

@@ -3,6 +3,7 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
+  getQueueSignalQuality,
   getTimeSaved,
   getRepoAnalyticsBreakdown,
 } from '@/app/actions/maintainer';
@@ -11,6 +12,7 @@ import { isOk } from '@/lib/result';
 import TimeSavedPanel from './time-saved-panel';
 import { RepoBreakdownTable } from './repo-breakdown-table';
 import RangeTabs from './range-tabs';
+import QueueSignalPanel from './queue-signal-panel';
 import type { AnalyticsRange } from '@/lib/maintainer/time-saved';
 
 export const dynamic = 'force-dynamic';
@@ -63,9 +65,10 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       ? rawRange
       : '30d';
 
-  const [timeSavedRes, repoAnalyticsRes] = await Promise.all([
+  const [timeSavedRes, repoAnalyticsRes, queueSignalRes] = await Promise.all([
     getTimeSaved(activeInstallId, range),
     getRepoAnalyticsBreakdown(activeInstallId, range),
+    getQueueSignalQuality(activeInstallId, range),
   ]);
 
   const timeSaved = isOk(timeSavedRes)
@@ -79,6 +82,15 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       };
 
   const repoAnalytics = isOk(repoAnalyticsRes) ? repoAnalyticsRes.data : [];
+  const queueSignalQuality = isOk(queueSignalRes)
+    ? queueSignalRes.data
+    : {
+        signalRate: 0,
+        mergedAsIs: 0,
+        mergedWithEdits: 0,
+        closedRejected: 0,
+        total: 0,
+      };
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -93,6 +105,9 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         <div className="grid gap-8 lg:grid-cols-3">
           <div className="lg:col-span-1">
             <TimeSavedPanel breakdown={timeSaved} installationId={activeInstallId} range={range} />
+          </div>
+          <div className="lg:col-span-1">
+            <QueueSignalPanel data={queueSignalQuality} />
           </div>
           <div className="lg:col-span-2">
             <div className="rounded-xl border border-zinc-800 bg-[#161b22] p-5">

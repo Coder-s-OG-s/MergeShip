@@ -26,6 +26,7 @@ import {
   getPrActivityTimeline,
   getPrDetails,
   getNoiseBreakdown,
+  getQueueSignalQuality,
   getPromotionEligible,
   getContributorsList,
   previewMergeXp,
@@ -135,6 +136,8 @@ function chain(data: unknown = [], error: unknown = null) {
   c.eq = vi.fn(pass);
   c.order = vi.fn(pass);
   c.range = vi.fn(pass);
+  c.gte = vi.fn(pass);
+  c.lte = vi.fn(pass);
   c.not = vi.fn(pass);
   c.update = vi.fn(pass);
   c.delete = vi.fn(pass);
@@ -1527,6 +1530,76 @@ describe('maintainer actions', () => {
           other: 5, // 5
           valid: 14, // 10 + 4
           total: 24,
+        });
+      }
+    });
+  });
+
+  // getQueueSignalQuality
+
+  describe('getQueueSignalQuality', () => {
+    it('returns all zeros if maintainer has no repos in install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+
+      const res = await getQueueSignalQuality(1, '30d');
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({
+          signalRate: 0,
+          mergedAsIs: 0,
+          mergedWithEdits: 0,
+          closedRejected: 0,
+          total: 0,
+        });
+      }
+    });
+
+    it('aggregates closed PR outcomes into signal quality segments', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+      const now = new Date().toISOString();
+      const rows = [
+        {
+          state: 'merged',
+          mentor_verified: true,
+          ai_flagged: false,
+          merged_at: now,
+          closed_at: now,
+        },
+        {
+          state: 'merged',
+          mentor_verified: false,
+          ai_flagged: false,
+          merged_at: now,
+          closed_at: now,
+        },
+        {
+          state: 'merged',
+          mentor_verified: true,
+          ai_flagged: true,
+          merged_at: now,
+          closed_at: now,
+        },
+        {
+          state: 'closed',
+          mentor_verified: false,
+          ai_flagged: false,
+          merged_at: null,
+          closed_at: now,
+        },
+      ];
+      mockFrom.mockReturnValueOnce(chain(rows));
+
+      const res = await getQueueSignalQuality(1, '30d');
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({
+          signalRate: 75,
+          mergedAsIs: 1,
+          mergedWithEdits: 2,
+          closedRejected: 1,
+          total: 4,
         });
       }
     });
