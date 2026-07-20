@@ -15,19 +15,20 @@ type Props = {
 
 type Filter = 'open' | 'closed' | 'merged';
 
-function getPrStats(prNumber: number) {
+export function getPrStats(prNumber: number) {
   // Deterministic line change stats generator
   const additions = ((prNumber * 17) % 480) + 12;
   const deletions = ((prNumber * 7) % 220) + 3;
   return { additions, deletions };
 }
 
-function getDaysElapsed(createdAt: string): number {
-  const diffMs = Date.now() - new Date(createdAt).getTime();
+export function getDaysElapsed(createdAt: string, nowMs?: number): number {
+  const referenceTime = nowMs !== undefined ? nowMs : Date.now();
+  const diffMs = referenceTime - new Date(createdAt).getTime();
   return Math.max(0, Math.floor(diffMs / 86400000));
 }
 
-function getReviewState(
+export function getReviewState(
   state: 'open' | 'closed' | 'merged',
   reviews?: { state: string }[],
 ): 'REVIEW REQUESTED' | 'CHANGES APPROVED' | 'CHANGES REQUESTED' | null {
@@ -93,7 +94,9 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
                     <span>·</span>
                     <span>{formatDate(pr.github_created_at)}</span>
                     <span>·</span>
-                    <span className="text-zinc-400">{daysElapsed}d elapsed</span>
+                    <span className="text-zinc-400" suppressHydrationWarning>
+                      {daysElapsed}d elapsed
+                    </span>
                     <span>·</span>
                     <span className="font-semibold">
                       <span className="text-emerald-400">+{additions}</span>{' '}

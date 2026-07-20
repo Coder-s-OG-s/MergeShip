@@ -21,14 +21,17 @@ import {
   getReviewerLoad,
   closePullRequest,
   requestChanges,
+  postPrComment,
   mergePullRequest,
   getPrActivityTimeline,
   getPrDetails,
   getNoiseBreakdown,
+  getQueueSignalQuality,
   getPromotionEligible,
   getContributorsList,
   previewMergeXp,
   getContributorStats,
+  getAiDetectionBreakdown,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -75,6 +78,9 @@ vi.mock('drizzle-orm', () => ({
   and: vi.fn(),
   count: vi.fn(),
   sql: vi.fn(),
+  gte: vi.fn(),
+  lte: vi.fn(),
+  isNotNull: vi.fn(),
 }));
 
 vi.mock('@/lib/maintainer/detect', () => ({
@@ -100,6 +106,7 @@ const mockPullsCreateReview = vi.fn();
 const mockPullsMerge = vi.fn();
 const mockPullsGet = vi.fn();
 const mockIssuesListComments = vi.fn();
+const mockIssuesCreateComment = vi.fn();
 const mockPullsListReviews = vi.fn();
 const mockPullsListCommits = vi.fn();
 
@@ -115,6 +122,7 @@ vi.mock('@/lib/github/app', () => ({
     },
     issues: {
       listComments: mockIssuesListComments,
+      createComment: mockIssuesCreateComment,
     },
   })),
 }));
@@ -128,6 +136,8 @@ function chain(data: unknown = [], error: unknown = null) {
   c.eq = vi.fn(pass);
   c.order = vi.fn(pass);
   c.range = vi.fn(pass);
+  c.gte = vi.fn(pass);
+  c.lte = vi.fn(pass);
   c.not = vi.fn(pass);
   c.update = vi.fn(pass);
   c.delete = vi.fn(pass);
@@ -135,6 +145,8 @@ function chain(data: unknown = [], error: unknown = null) {
   c.single = vi.fn(pass);
   c.maybeSingle = vi.fn(pass);
   c.limit = vi.fn(pass);
+  c.gte = vi.fn(pass);
+  c.lte = vi.fn(pass);
   c.then = (resolve: (v: unknown) => void) => resolve({ data, error });
   return c;
 }
@@ -1286,6 +1298,93 @@ describe('maintainer actions', () => {
     });
   });
 
+  // postPrComment
+
+  describe('postPrComment', () => {
+    beforeEach(() => {
+      mockIssuesCreateComment.mockClear();
+    });
+
+    it('returns rate_limited when rate limit exceeded', async () => {
+      vi.mocked(rateLimitLib.rateLimit).mockResolvedValue({ ok: false } as never);
+
+      const res = await postPrComment(123, 'Looks good');
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('rate_limited');
+    });
+
+    it('returns invalid_input when comment is empty or whitespace', async () => {
+      const res = await postPrComment(123, '   ');
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('invalid_input');
+        expect(res.error.message).toBe('Comment is required');
+      }
+      expect(mockFrom).not.toHaveBeenCalled();
+    });
+
+    it('returns not_found when PR does not exist in DB', async () => {
+      mockFrom.mockReturnValueOnce(chain(null));
+
+      const res = await postPrComment(123, 'Looks good');
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_found');
+    });
+
+    it('returns not_found when installation not found for repo', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(null));
+
+      const res = await postPrComment(123, 'Looks good');
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('not_found');
+        expect(res.error.message).toBe('Installation not found for this repository');
+      }
+    });
+
+    it('returns not_authorised when repo not in maintainer scope', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/other']);
+
+      const res = await postPrComment(123, 'Looks good');
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+
+    it('returns github_error when GitHub API throws', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockIssuesCreateComment.mockRejectedValueOnce(new Error('GitHub error'));
+
+      const res = await postPrComment(123, 'Looks good');
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('github_error');
+    });
+
+    it('posts a trimmed PR issue comment on success', async () => {
+      const mockPr = { repo_full_name: 'org/repo', number: 42 };
+      const mockRepo = { installation_id: 1 };
+      mockFrom.mockReturnValueOnce(chain(mockPr)).mockReturnValueOnce(chain(mockRepo));
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockIssuesCreateComment.mockResolvedValueOnce({ data: { id: 987 } });
+
+      const res = await postPrComment(123, '  Looks good  ');
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.data.commentId).toBe(987);
+      expect(mockIssuesCreateComment).toHaveBeenCalledWith({
+        owner: 'org',
+        repo: 'repo',
+        issue_number: 42,
+        body: 'Looks good',
+      });
+    });
+  });
+
   // mergePullRequest
 
   describe('mergePullRequest', () => {
@@ -1431,6 +1530,76 @@ describe('maintainer actions', () => {
           other: 5, // 5
           valid: 14, // 10 + 4
           total: 24,
+        });
+      }
+    });
+  });
+
+  // getQueueSignalQuality
+
+  describe('getQueueSignalQuality', () => {
+    it('returns all zeros if maintainer has no repos in install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+
+      const res = await getQueueSignalQuality(1, '30d');
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({
+          signalRate: 0,
+          mergedAsIs: 0,
+          mergedWithEdits: 0,
+          closedRejected: 0,
+          total: 0,
+        });
+      }
+    });
+
+    it('aggregates closed PR outcomes into signal quality segments', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+      const now = new Date().toISOString();
+      const rows = [
+        {
+          state: 'merged',
+          mentor_verified: true,
+          ai_flagged: false,
+          merged_at: now,
+          closed_at: now,
+        },
+        {
+          state: 'merged',
+          mentor_verified: false,
+          ai_flagged: false,
+          merged_at: now,
+          closed_at: now,
+        },
+        {
+          state: 'merged',
+          mentor_verified: true,
+          ai_flagged: true,
+          merged_at: now,
+          closed_at: now,
+        },
+        {
+          state: 'closed',
+          mentor_verified: false,
+          ai_flagged: false,
+          merged_at: null,
+          closed_at: now,
+        },
+      ];
+      mockFrom.mockReturnValueOnce(chain(rows));
+
+      const res = await getQueueSignalQuality(1, '30d');
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({
+          signalRate: 75,
+          mergedAsIs: 1,
+          mergedWithEdits: 2,
+          closedRejected: 1,
+          total: 4,
         });
       }
     });
@@ -2006,6 +2175,70 @@ describe('maintainer actions', () => {
         const charlie = res.data.reviewers.find((r) => r.login === 'charlie')!;
         expect(charlie.xp).toBe(30);
         expect(charlie.isMentor).toBe(false);
+      }
+    });
+  });
+
+  describe('getAiDetectionBreakdown', () => {
+    it('returns error when ai_pr_detection is disabled', async () => {
+      mockFrom.mockImplementation((table) => {
+        if (table === 'installation_settings') {
+          return chain({ ai_pr_detection: false });
+        }
+        return chain(null);
+      });
+
+      const res = await getAiDetectionBreakdown(1, '30d');
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('ai_detection_disabled');
+      }
+    });
+
+    it('returns empty counts when user has no repos', async () => {
+      mockFrom.mockImplementation((table) => {
+        if (table === 'installation_settings') {
+          return chain({ ai_pr_detection: true });
+        }
+        return chain(null);
+      });
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+
+      const res = await getAiDetectionBreakdown(1, '30d');
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.total).toBe(0);
+        expect(res.data.byReason.largeDiff).toBe(0);
+      }
+    });
+
+    it('queries and aggregates ai_flag_reason counts', async () => {
+      mockFrom.mockImplementation((table) => {
+        if (table === 'installation_settings') {
+          return chain({ ai_pr_detection: true });
+        }
+        if (table === 'pull_requests') {
+          return chain([
+            { ai_flag_reason: 'large_diff' },
+            { ai_flag_reason: 'large_diff' },
+            { ai_flag_reason: 'generated_msg' },
+            { ai_flag_reason: 'new_account' },
+            { ai_flag_reason: 'suspicious_ip' },
+            { ai_flag_reason: null }, // legacy/null reason
+          ]);
+        }
+        return chain(null);
+      });
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+
+      const res = await getAiDetectionBreakdown(1, '30d');
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.total).toBe(6);
+        expect(res.data.byReason.largeDiff).toBe(2);
+        expect(res.data.byReason.generatedMsg).toBe(1);
+        expect(res.data.byReason.newAccount).toBe(1);
+        expect(res.data.byReason.suspiciousIp).toBe(1);
       }
     });
   });

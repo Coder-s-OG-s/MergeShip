@@ -1,6 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
+import { checkRateBudget } from '@/lib/github/rate-budget';
 import {
   decideOrgGrant,
   decideRepoGrant,
@@ -32,7 +33,7 @@ const DEDUP_TTL_S = 60 * 60; // 1h
 export const maintainerDiscover = inngest.createFunction(
   { id: 'maintainer-discover', concurrency: { key: 'event.data.userId', limit: 1 } },
   [{ event: 'maintainer/discover' }, { cron: '0 2 * * *' }],
-  async ({ event }) => {
+  async ({ event, step }) => {
     // Cron tick fires with empty event.data — run a sweep across all
     // recently-active users with a junction row. For point-in-time
     // triggers, event.data carries the specific user.
@@ -41,11 +42,12 @@ export const maintainerDiscover = inngest.createFunction(
     }
     const e = event as DiscoverEvent;
     if (!e.data.userId) return await sweep();
-    return await discoverForUser(e.data.userId, e.data.githubHandle, e.data.force === true);
+    return await discoverForUser(step, e.data.userId, e.data.githubHandle, e.data.force === true);
   },
 );
 
 async function discoverForUser(
+  step: any,
   userId: string,
   githubHandle: string,
   force: boolean,
@@ -69,6 +71,16 @@ async function discoverForUser(
   const proposed: ProposedGrant[] = [];
 
   for (const install of installRows) {
+    const budget = await step.run(`check-budget-install-${install.id}`, () =>
+      checkRateBudget(install.id),
+    );
+    if (!budget.ok) {
+      await step.sleepUntil(
+        `sleep-budget-install-${install.id}`,
+        new Date(budget.resetAt * 1000 + 5000),
+      );
+    }
+
     let octokit;
     try {
       octokit = await getInstallOctokit(install.id);

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { pingReviewers } from '@/app/actions/maintainer';
 import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
@@ -8,6 +9,7 @@ import {
   getMaintainerAnalyticsTrends,
   getRepoHealthOverview,
   getStaleIssues,
+  getStalePrs,
   getFlaggedAccounts,
   getTopContributors,
   getInstallationSettings,
@@ -19,6 +21,7 @@ import {
   type InstallationSettingsData,
   type RepoHealthRow,
   type StaleIssueRow,
+  type StalePrRow,
   type ContributorRow,
   type ReviewerLoadRow,
   type NoiseBreakdown,
@@ -27,7 +30,11 @@ import {
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import type { MaintainerPrRow } from '@/lib/maintainer/queue';
-import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
+import {
+  emptyMaintainerDayOverDayStats,
+  type MaintainerAnalyticsTrends,
+  type MaintainerDayOverDayMetric,
+} from '@/lib/maintainer/analytics';
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
 import InviteContributorButton from './invite-contributor-button';
@@ -37,6 +44,7 @@ import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
 import QueueSettings from './queue-settings';
 import { ResolveFlagButton } from './resolve-flag-button';
+import { StalePrBanner } from './stale-pr-banner';
 import { getContributorFunnel } from '@/app/actions/maintainer/analytics';
 import type { ContributorFunnelData } from '@/app/actions/maintainer/types';
 import { ContributorFunnel } from './contributor-funnel';
@@ -119,7 +127,12 @@ export default async function MaintainerPage({
   const trendsRes = await getMaintainerAnalyticsTrends({ installationId: activeInstallId });
   const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
     ? trendsRes.data
-    : { weekly: [], levelDistribution: [], avgReviewTimeHours: null };
+    : {
+        weekly: [],
+        levelDistribution: [],
+        avgReviewTimeHours: null,
+        dayOverDay: emptyMaintainerDayOverDayStats(),
+      };
   const repoHealthRes = await getRepoHealthOverview({ installationId: activeInstallId });
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
@@ -146,6 +159,8 @@ export default async function MaintainerPage({
   const reviewerLoads: ReviewerLoadRow[] = isOk(reviewerLoadsRes) ? reviewerLoadsRes.data : [];
   const maxLoad = reviewerLoads.length > 0 ? Math.max(...reviewerLoads.map((r) => r.prCount)) : 0;
 
+  const stalePrsRes = await getStalePrs({ installationId: activeInstallId });
+  const stalePrs: StalePrRow[] = isOk(stalePrsRes) ? stalePrsRes.data : [];
   let noise: NoiseBreakdown = { valid: 0, spamAi: 0, other: 0, total: 0 };
   if (settings.aiPrDetection) {
     const noiseRes = await getNoiseBreakdown({ installationId: activeInstallId });
@@ -175,6 +190,7 @@ export default async function MaintainerPage({
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-5xl">
+        <StalePrBanner stalePrs={stalePrs} onPing={pingReviewers} />
         <header className="mb-8 flex items-baseline justify-between gap-4">
           <h1 className="font-display text-3xl font-bold">Maintainer</h1>
           <div className="flex items-center gap-2">
@@ -259,6 +275,37 @@ export default async function MaintainerPage({
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
         <QueueSettings settings={settings} />
+        <section className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <StatTile
+            label="PRs Opened"
+            value={formatCount(analyticsTrends.dayOverDay.openedPrs.current)}
+            detail="today"
+            delta={analyticsTrends.dayOverDay.openedPrs}
+          />
+          <StatTile
+            label="PRs Merged"
+            value={formatCount(analyticsTrends.dayOverDay.mergedPrs.current)}
+            detail="today"
+            delta={analyticsTrends.dayOverDay.mergedPrs}
+          />
+          <StatTile
+            label="Mentor Reviews"
+            value={formatCount(analyticsTrends.dayOverDay.mentorReviews.current)}
+            detail="today"
+            delta={analyticsTrends.dayOverDay.mentorReviews}
+          />
+          <StatTile
+            label="Average Review Time"
+            value={
+              analyticsTrends.avgReviewTimeHours !== null
+                ? `${analyticsTrends.avgReviewTimeHours.toFixed(1)}h`
+                : '-'
+            }
+            detail="all verified PRs"
+            delta={analyticsTrends.dayOverDay.avgReviewTimeHours}
+            deltaUnit="h"
+          />
+        </section>
         <AnalyticsTrends data={analyticsTrends} />
         {promotionEligible.length > 0 && (
           <section className="mb-8 rounded-2xl border border-emerald-900/60 bg-emerald-950/20 p-5">
@@ -588,6 +635,62 @@ export default async function MaintainerPage({
       </div>
     </div>
   );
+}
+
+function StatTile({
+  label,
+  value,
+  detail,
+  delta,
+  deltaUnit,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  delta: MaintainerDayOverDayMetric;
+  deltaUnit?: 'h';
+}) {
+  return (
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-sm font-semibold text-white">{label}</h2>
+        <DeltaBadge metric={delta} unit={deltaUnit} />
+      </div>
+      <div className="mt-4 flex items-baseline gap-2">
+        <span className="text-4xl font-bold text-white">{value}</span>
+        <span className="text-xs text-zinc-500">{detail}</span>
+      </div>
+    </section>
+  );
+}
+
+function DeltaBadge({ metric, unit }: { metric: MaintainerDayOverDayMetric; unit?: 'h' }) {
+  const label = formatDelta(metric, unit);
+  const tone =
+    metric.direction === 'up'
+      ? 'border-emerald-800/70 bg-emerald-950/60 text-emerald-300'
+      : metric.direction === 'down'
+        ? 'border-red-800/70 bg-red-950/60 text-red-300'
+        : 'border-zinc-700 bg-zinc-800/70 text-zinc-400';
+
+  return (
+    <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>{label}</span>
+  );
+}
+
+function formatCount(value: number | null): string {
+  return value === null ? '-' : value.toLocaleString();
+}
+
+function formatDelta(metric: MaintainerDayOverDayMetric, unit?: 'h'): string {
+  if (metric.delta === null) {
+    return metric.current && metric.current > 0 ? 'new today' : 'no data';
+  }
+  if (metric.delta === 0) return 'no change';
+
+  const sign = metric.delta > 0 ? '+' : '';
+  const value = unit === 'h' ? `${sign}${metric.delta.toFixed(1)}h` : `${sign}${metric.delta}`;
+  return `${value} vs yesterday`;
 }
 
 function FilterPill({ label, href, active }: { label: string; href: string; active: boolean }) {

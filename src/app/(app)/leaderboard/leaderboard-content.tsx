@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import type { LeaderboardEntry } from '@/app/actions/leaderboard';
 import { useSeasonCountdown } from '@/hooks/useSeasonCountdown';
+import { captureEvent } from '@/lib/posthog/helpers';
+import { EVENTS } from '@/lib/posthog/events';
 
 type Tab = 'global' | 'monthly' | 'organization' | 'friends';
 
@@ -62,6 +64,10 @@ export function LeaderboardContent({
   pageSize,
   paginationEnabled,
 }: Props) {
+  useEffect(() => {
+    captureEvent(EVENTS.LEADERBOARD_VIEWED, { activeTab, userLevel, userXp });
+  }, [activeTab, userLevel, userXp]);
+
   const displayEntries = useMemo(
     () => (paginationEnabled ? entries : entries.slice(0, 50)),
     [entries, paginationEnabled],

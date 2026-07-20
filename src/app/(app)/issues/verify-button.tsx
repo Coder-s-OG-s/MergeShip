@@ -3,6 +3,8 @@
 import { useState, useTransition } from 'react';
 import { verifyPrAction } from '@/app/actions/mentor';
 import { CheckCircle } from 'lucide-react';
+import { captureEvent } from '@/lib/posthog/helpers';
+import { EVENTS } from '@/lib/posthog/events';
 
 export function VerifyButton({ prId, prUrl }: { prId?: number; prUrl?: string }) {
   const [pending, startTransition] = useTransition();
@@ -16,6 +18,7 @@ export function VerifyButton({ prId, prUrl }: { prId?: number; prUrl?: string })
       const res = await verifyPrAction({ prId, prUrl });
       if (res.ok) {
         setSuccess(`Verified! +${res.data.xpAwarded} XP`);
+        captureEvent(EVENTS.PR_VERIFIED_BY_MENTOR, { prId, xpAwarded: res.data.xpAwarded });
       } else {
         setError(res.error.message);
       }
