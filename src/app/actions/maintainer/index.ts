@@ -1,5 +1,11 @@
 export type * from './types';
-export type { StalePrRow, AiDetectionBreakdown, QueueSignalQuality } from './analytics';
+export type {
+  StalePrRow,
+  AiDetectionBreakdown,
+  QueueSignalQuality,
+  AnalyticsStat,
+  AnalyticsStats,
+} from './analytics';
 export type { ContributorListRow, ContributorStats } from './contributors';
 export type { FailedWebhookEventRow } from './failed-events';
 export type { XpPreviewBreakdown } from './xp-preview';
@@ -248,4 +254,10 @@ export async function getContributorsList(
   ...args: Parameters<typeof contributorsActions.getContributorsList>
 ): ReturnType<typeof contributorsActions.getContributorsList> {
   return contributorsActions.getContributorsList(...args);
+}
+
+export async function getAnalyticsStats(
+  ...args: Parameters<typeof analyticsActions.getAnalyticsStats>
+): ReturnType<typeof analyticsActions.getAnalyticsStats> {
+  return analyticsActions.getAnalyticsStats(...args);
 }

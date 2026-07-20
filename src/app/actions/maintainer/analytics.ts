@@ -1169,3 +1169,193 @@ export async function getAiDetectionBreakdown(
   const total = (rows ?? []).length;
   return ok({ total, byReason });
 }
+
+export type AnalyticsStat = {
+  value: number;
+  delta: number;
+  deltaPositiveIsGood: boolean;
+};
+
+export type AnalyticsStats = {
+  prsMerged: AnalyticsStat;
+  avgReviewTimeHours: AnalyticsStat;
+  queueSignalRate: AnalyticsStat;
+  aiPrsBlocked: AnalyticsStat;
+  contributorsLeveledUp: AnalyticsStat;
+  maintainerTimeSavedHours: AnalyticsStat;
+};
+
+export async function getAnalyticsStats(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<AnalyticsStats>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer:analytics', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  const emptyStats: AnalyticsStats = {
+    prsMerged: { value: 0, delta: 0, deltaPositiveIsGood: true },
+    avgReviewTimeHours: { value: 0, delta: 0, deltaPositiveIsGood: false },
+    queueSignalRate: { value: 0, delta: 0, deltaPositiveIsGood: true },
+    aiPrsBlocked: { value: 0, delta: 0, deltaPositiveIsGood: true },
+    contributorsLeveledUp: { value: 0, delta: 0, deltaPositiveIsGood: true },
+    maintainerTimeSavedHours: { value: 0, delta: 0, deltaPositiveIsGood: true },
+  };
+  if (repos.length === 0) {
+    return ok(emptyStats);
+  }
+
+  const { from: currentFrom, to: currentTo } = rangeToDateBounds(range, new Date());
+
+  // To get the previous window, we subtract the exact duration
+  const prevTo = new Date(currentFrom.getTime());
+  const durationMs = currentTo.getTime() - currentFrom.getTime();
+  const prevFrom = new Date(prevTo.getTime() - durationMs);
+
+  const isAll = range === 'all';
+  const queryStart = isAll ? currentFrom : prevFrom;
+
+  // We need PRs and level_ups in the queried range
+  const { data: prsData, error: prsError } = await service
+    .from('pull_requests')
+    .select('github_created_at, mentor_review_at, merged_at, state, ai_flagged, mentor_verified')
+    .in('repo_full_name', repos)
+    .gte('github_created_at', queryStart.toISOString())
+    .lte('github_created_at', currentTo.toISOString());
+
+  if (prsError) return err('query_failed', prsError.message);
+
+  const { data: xpEventsData, error: xpEventsError } = await service
+    .from('xp_events')
+    .select('user_id')
+    .in('repo', repos);
+
+  let leveledUpCurrent = 0;
+  let leveledUpPrev = 0;
+
+  if (!xpEventsError && xpEventsData && xpEventsData.length > 0) {
+    const userIds = Array.from(new Set(xpEventsData.map((e) => e.user_id).filter((id) => !!id)));
+    if (userIds.length > 0) {
+      const { data: levelUpsData } = await service
+        .from('level_ups')
+        .select('occurred_at')
+        .in('user_id', userIds)
+        .gte('occurred_at', queryStart.toISOString())
+        .lte('occurred_at', currentTo.toISOString());
+
+      for (const row of levelUpsData ?? []) {
+        const occurredAt = new Date(row.occurred_at).getTime();
+        if (occurredAt >= currentFrom.getTime() && occurredAt <= currentTo.getTime()) {
+          leveledUpCurrent++;
+        } else if (!isAll && occurredAt >= prevFrom.getTime() && occurredAt < prevTo.getTime()) {
+          leveledUpPrev++;
+        }
+      }
+    }
+  }
+
+  const currentPrs = [];
+  const prevPrs = [];
+
+  for (const pr of prsData ?? []) {
+    const created = new Date(pr.github_created_at).getTime();
+    if (created >= currentFrom.getTime() && created <= currentTo.getTime()) {
+      currentPrs.push(pr);
+    } else if (!isAll && created >= prevFrom.getTime() && created < prevTo.getTime()) {
+      prevPrs.push(pr);
+    }
+  }
+
+  const calcPrStats = (prs: typeof currentPrs) => {
+    let merged = 0;
+    let aiBlocked = 0;
+    let totalReviewTimeMs = 0;
+    let reviewsCount = 0;
+
+    for (const pr of prs) {
+      if (pr.state === 'merged') merged++;
+      if (pr.ai_flagged) aiBlocked++;
+      if (pr.mentor_review_at) {
+        const reviewed = new Date(pr.mentor_review_at).getTime();
+        const created = new Date(pr.github_created_at).getTime();
+        if (reviewed > created) {
+          totalReviewTimeMs += reviewed - created;
+          reviewsCount++;
+        }
+      }
+    }
+
+    const avgReviewTimeHours = reviewsCount > 0 ? totalReviewTimeMs / reviewsCount / 3600000 : 0;
+    const queueSignalRate = prs.length > 0 ? ((prs.length - aiBlocked) / prs.length) * 100 : 0;
+
+    return {
+      prsMerged: merged,
+      aiPrsBlocked: aiBlocked,
+      avgReviewTimeHours,
+      queueSignalRate,
+    };
+  };
+
+  const currStats = calcPrStats(currentPrs);
+  const prevStats = calcPrStats(prevPrs);
+
+  let maintainerTimeSavedHours = 0;
+  let prevMaintainerTimeSavedHours = 0;
+
+  try {
+    const currTimeSaved = await getTimeSaved(installationId, range);
+    if (currTimeSaved.ok) {
+      maintainerTimeSavedHours = currTimeSaved.data.totalHours;
+    }
+
+    if (!isAll) {
+      let prevMentorVerified = 0;
+      for (const pr of prevPrs) {
+        if (pr.state === 'merged' && pr.mentor_verified) prevMentorVerified++;
+      }
+
+      const { data: prevIssuesData } = await service
+        .from('issues')
+        .select('id')
+        .in('repo_full_name', repos)
+        .eq('ai_triaged', true)
+        .gte('github_created_at', prevFrom.toISOString())
+        .lt('github_created_at', prevTo.toISOString());
+
+      const prevAutoTriaged = prevIssuesData?.length ?? 0;
+
+      const prevTimeSavedObj = computeTimeSaved({
+        aiBlockedPrs: prevStats.aiPrsBlocked,
+        mentorVerifiedPrs: prevMentorVerified,
+        autoTriagedIssues: prevAutoTriaged,
+        daysInRange: Math.round(durationMs / 86400000),
+      });
+      prevMaintainerTimeSavedHours = prevTimeSavedObj.totalHours;
+    }
+  } catch (e) {
+    // hide or ignore
+  }
+
+  const makeStat = (curr: number, prev: number, positiveIsGood: boolean): AnalyticsStat => ({
+    value: curr,
+    delta: isAll ? 0 : curr - prev,
+    deltaPositiveIsGood: positiveIsGood,
+  });
+
+  return ok({
+    prsMerged: makeStat(currStats.prsMerged, prevStats.prsMerged, true),
+    avgReviewTimeHours: makeStat(currStats.avgReviewTimeHours, prevStats.avgReviewTimeHours, false),
+    queueSignalRate: makeStat(currStats.queueSignalRate, prevStats.queueSignalRate, true),
+    aiPrsBlocked: makeStat(currStats.aiPrsBlocked, prevStats.aiPrsBlocked, true),
+    contributorsLeveledUp: makeStat(leveledUpCurrent, leveledUpPrev, true),
+    maintainerTimeSavedHours: makeStat(
+      maintainerTimeSavedHours,
+      prevMaintainerTimeSavedHours,
+      true,
+    ),
+  });
+}
