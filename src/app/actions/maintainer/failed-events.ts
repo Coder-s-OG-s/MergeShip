@@ -5,6 +5,7 @@ import { requireMaintainer } from '@/lib/action-auth';
 import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { inngest } from '@/inngest/client';
 import { listMaintainerRepos } from '@/lib/maintainer/detect';
+import { revalidatePath } from 'next/cache';
 
 /** Maximum number of manual retries allowed per dead-lettered event. */
 const MAX_RETRIES = 5;
@@ -154,6 +155,8 @@ export async function retryFailedWebhookEvent(args: {
 
   // Clean up the dead-letter row after successful dispatch.
   await service.from('failed_webhook_events').delete().eq('id', args.eventId);
+
+  revalidatePath('/maintainer');
 
   return ok({ ok: true });
 }

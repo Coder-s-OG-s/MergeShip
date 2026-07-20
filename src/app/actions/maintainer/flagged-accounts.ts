@@ -7,6 +7,7 @@ import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerInstalls, listMaintainerRepos } from '@/lib/maintainer/detect';
 import { type FlaggedAccountRow } from './types';
 import { logMaintainerAction } from './audit';
+import { revalidatePath } from 'next/cache';
 
 export async function getFlaggedAccounts(args?: {
   installationId?: number;
@@ -239,6 +240,8 @@ export async function resolveFlaggedAccount(
     status: 'success',
     newValues: { status },
   });
+
+  revalidatePath('/maintainer');
 
   return ok({ ok: true });
 }
