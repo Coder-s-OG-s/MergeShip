@@ -512,6 +512,9 @@ export async function closePullRequest(prId: number): Promise<Result<{ ok: true 
     status: 'success',
   });
 
+  revalidatePath(`/maintainer/pr/${prId}`);
+  revalidatePath('/maintainer');
+
   return ok({ ok: true });
 }
 
@@ -676,6 +679,9 @@ export async function requestChanges(prId: number, comment: string): Promise<Res
     targetId: prId.toString(),
     status: 'success',
   });
+
+  revalidatePath(`/maintainer/pr/${prId}`);
+  revalidatePath('/maintainer');
 
   return ok({ ok: true });
 }

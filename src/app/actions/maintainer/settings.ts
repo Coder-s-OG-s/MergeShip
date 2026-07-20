@@ -9,6 +9,7 @@ import {
   listMaintainerRepos,
   type MaintainerInstall,
 } from '@/lib/maintainer/detect';
+import { revalidatePath } from 'next/cache';
 import { type InstallationSettingsData, type RepoPickerRow } from './types';
 import { MIN_CONTRIBUTOR_LEVELS } from './constants';
 import { tryGetDb } from '@/lib/db/client';
@@ -168,6 +169,8 @@ export async function setMinContributorLevel(opts: {
     newValues: { minContributorLevel },
   });
 
+  revalidatePath('/maintainer');
+
   return ok({
     installationId: opts.installationId,
     minContributorLevel,
@@ -230,6 +233,8 @@ export async function setAutoAssignMentorChain(opts: {
     newValues: { autoAssignMentorChain: opts.enabled },
   });
 
+  revalidatePath('/maintainer');
+
   return ok({
     installationId: opts.installationId,
     minContributorLevel: current.minContributorLevel,
@@ -291,6 +296,8 @@ export async function setAiPrDetection(opts: {
     oldValues: { aiPrDetection: current.aiPrDetection },
     newValues: { aiPrDetection: opts.enabled },
   });
+
+  revalidatePath('/maintainer');
 
   return ok({
     installationId: opts.installationId,
