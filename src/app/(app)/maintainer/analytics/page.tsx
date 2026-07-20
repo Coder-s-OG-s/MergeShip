@@ -95,6 +95,17 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         total: 0,
       };
 
+  const stats = isOk(statsRes)
+    ? statsRes.data
+    : {
+        prsMerged: { value: 0, delta: 0, deltaPositiveIsGood: true },
+        avgReviewTimeHours: { value: 0, delta: 0, deltaPositiveIsGood: false },
+        queueSignalRate: { value: 0, delta: 0, deltaPositiveIsGood: true },
+        aiPrsBlocked: { value: 0, delta: 0, deltaPositiveIsGood: true },
+        contributorsLeveledUp: { value: 0, delta: 0, deltaPositiveIsGood: true },
+        maintainerTimeSavedHours: { value: 0, delta: 0, deltaPositiveIsGood: true },
+      };
+
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-6xl">

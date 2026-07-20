@@ -1258,8 +1258,8 @@ export async function getAnalyticsStats(
     }
   }
 
-  const currentPrs = [];
-  const prevPrs = [];
+  const currentPrs: any[] = [];
+  const prevPrs: any[] = [];
 
   for (const pr of prsData ?? []) {
     const created = new Date(pr.github_created_at).getTime();
