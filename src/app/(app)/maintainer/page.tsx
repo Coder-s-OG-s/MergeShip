@@ -72,7 +72,7 @@ export default async function MaintainerPage({
   const resolvedSearchParams = await searchParams;
   const sb = await getServerSupabase();
   if (!sb) {
-    return <NotConfigured />;
+    redirect('/');
   }
   const {
     data: { user },
@@ -851,12 +851,4 @@ function formatFlagReason(reason: string) {
   };
 
   return labels[reason] ?? 'Suspicious activity';
-}
-
-function NotConfigured() {
-  return (
-    <div className="min-h-screen px-6 py-20 text-white">
-      <p className="text-gray-400">Auth not configured.</p>
-    </div>
-  );
 }

@@ -48,7 +48,12 @@ export async function middleware(req: NextRequest) {
     if (process.env.NODE_ENV === 'production') {
       return new NextResponse('Service temporarily unavailable', { status: 503 });
     }
-    // Dev mode: allow through for landing page
+    // Dev mode: allow through only for bypassable pages, otherwise redirect to landing page (/)
+    if (!shouldBypassGate(pathname)) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/';
+      return NextResponse.redirect(url);
+    }
     return res;
   }
 
