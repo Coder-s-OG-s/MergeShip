@@ -28,13 +28,6 @@ export { getFailedWebhookEvents, retryFailedWebhookEvent } from './failed-events
 export { previewMergeXp } from './xp-preview';
 export { pingReviewers } from './ping-reviewers';
 
-export type * from './types';
-export type { StalePrRow, AiDetectionBreakdown } from './analytics';
-export type { ContributorListRow, ContributorStats } from './contributors';
-export type { FailedWebhookEventRow } from './failed-events';
-export type { XpPreviewBreakdown } from './xp-preview';
-export type { InviteRow } from './invites';
-
 export async function getMaintainerInstalls(
   ...args: Parameters<typeof settingsActions.getMaintainerInstalls>
 ): ReturnType<typeof settingsActions.getMaintainerInstalls> {
@@ -243,12 +236,6 @@ export async function getRepoAnalyticsBreakdown(
   ...args: Parameters<typeof analyticsActions.getRepoAnalyticsBreakdown>
 ): ReturnType<typeof analyticsActions.getRepoAnalyticsBreakdown> {
   return analyticsActions.getRepoAnalyticsBreakdown(...args);
-}
-
-export async function getAiDetectionBreakdown(
-  ...args: Parameters<typeof analyticsActions.getAiDetectionBreakdown>
-): ReturnType<typeof analyticsActions.getAiDetectionBreakdown> {
-  return analyticsActions.getAiDetectionBreakdown(...args);
 }
 
 export async function getFlaggedAccounts(
