@@ -30,11 +30,9 @@ export async function rateLimit(opts: RateLimitOptions): Promise<RateLimitResult
   const now = Date.now();
 
   if (process.env.NODE_ENV === 'production' && !isSharedCacheAvailable()) {
-    console.error(
-      '[rate-limit] no shared cache configured in production — blocking request. Set KV_REST_API_URL/KV_REST_API_TOKEN or REDIS_URL.',
+    console.warn(
+      '[rate-limit] no shared cache configured in production — falling back to memory-based rate limiting. Set KV_REST_API_URL/KV_REST_API_TOKEN or REDIS_URL.',
     );
-    const blocked = blockedRateLimitBucket(opts.windowSec, now);
-    return { ok: false, remaining: 0, resetAt: blocked.resetAt };
   }
 
   const next = await cacheRateLimitHit(bucketKey, opts.windowSec, now);
