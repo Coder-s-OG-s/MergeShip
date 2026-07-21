@@ -83,7 +83,8 @@ export default function RootLayout({
     >
 <body className="bg-dark-900 text-white antialiased">
         <CustomCursor />
-        {children}        <Analytics />
+        {children}
+        <Analytics />
         <SpeedInsights />
       </body>
     </html>
