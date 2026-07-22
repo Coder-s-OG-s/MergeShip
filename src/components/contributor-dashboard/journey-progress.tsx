@@ -9,7 +9,7 @@ export function levelProgressPct(xp: number, level: number): number {
 }
 
 export function journeyHeading(level: number, next: number | null): string {
-  return next === null ? `L${level} \xb7 MAX LEVEL` : `L${level} \u2192 L${next} JOURNEY`;
+  return next === null ? `L${level} · MAX LEVEL` : `L${level} → L${next} JOURNEY`;
 }
 
 export function journeyFooter(needed: number, next: number | null): string {
