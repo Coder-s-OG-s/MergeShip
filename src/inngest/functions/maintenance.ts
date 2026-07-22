@@ -268,15 +268,53 @@ export const flagSuspiciousXpAccounts = inngest.createFunction(
       );
 
       const existing = new Set(existingRows.map((row) => `${row.user_id}:${row.reason}`));
+
+      const repoToInstallation = new Map<string, number>();
+      const candidateRepos = Array.from(
+        new Set(
+          candidates.flatMap((c) =>
+            (Array.isArray((c.evidence as any)?.items) ? (c.evidence as any).items : [])
+              .map((item: any) => item.repo || item.repoFullName)
+              .filter(Boolean),
+          ),
+        ),
+      );
+
+      if (candidateRepos.length > 0) {
+        const { data: repoRows } = await service
+          .from('installation_repositories')
+          .select('installation_id, repo_full_name')
+          .in('repo_full_name', candidateRepos);
+
+        for (const row of repoRows ?? []) {
+          if (row.repo_full_name && row.installation_id) {
+            repoToInstallation.set(row.repo_full_name, row.installation_id);
+          }
+        }
+      }
+
       const rowsToInsert = candidates
         .filter((candidate) => !existing.has(`${candidate.userId}:${candidate.reason}`))
-        .map((candidate) => ({
-          user_id: candidate.userId,
-          reason: candidate.reason,
-          severity: candidate.severity,
-          status: 'open',
-          evidence: candidate.evidence,
-        }));
+        .map((candidate) => {
+          const evidence = candidate.evidence as any;
+          const items = Array.isArray(evidence?.items) ? evidence.items : [];
+          let installationId: number | null = null;
+          for (const item of items) {
+            const repo = item.repo || item.repoFullName;
+            if (repo && repoToInstallation.has(repo)) {
+              installationId = repoToInstallation.get(repo)!;
+              break;
+            }
+          }
+          return {
+            user_id: candidate.userId,
+            installation_id: installationId,
+            reason: candidate.reason,
+            severity: candidate.severity,
+            status: 'open',
+            evidence: candidate.evidence,
+          };
+        });
 
       if (rowsToInsert.length === 0) {
         return { scanned: true, inserted: 0, candidates: candidates.length };
