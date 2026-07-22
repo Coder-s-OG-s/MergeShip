@@ -385,6 +385,7 @@ export const flaggedAccounts = pgTable(
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     userId: uuid('user_id').references(() => profiles.id, { onDelete: 'cascade' }),
+    installationId: bigint('installation_id', { mode: 'number' }),
     reason: text('reason', {
       enum: ['daily_xp_event_spike', 'rapid_merge_spike', 'reviewer_approval_concentration'],
     }).notNull(),
@@ -406,6 +407,7 @@ export const flaggedAccounts = pgTable(
     ),
     statusDetectedIdx: index('flagged_accounts_status_detected_idx').on(t.status, t.detectedAt),
     userIdx: index('flagged_accounts_user_idx').on(t.userId),
+    installationIdx: index('flagged_accounts_installation_idx').on(t.installationId),
   }),
 );
 
