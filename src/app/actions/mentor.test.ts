@@ -126,4 +126,39 @@ describe('verifyPrAction', () => {
       expect(res.error.message).toBe('slow down');
     }
   });
+
+  it('fails with already_verified if atomic update returns null (concurrent verification race condition)', async () => {
+    let maybeSingleCalls = 0;
+    mockFrom.mockImplementation((table) => {
+      if (table === 'profiles') {
+        return chain({ id: USER.id, level: 2, github_handle: 'mentor' });
+      }
+      if (table === 'pull_requests') {
+        const prData = {
+          id: 100,
+          author_user_id: 'user-2',
+          repo_full_name: 'org/repo',
+          number: 1,
+          mentor_verified: false,
+          author_login: 'mentee',
+        };
+        const c = chain(prData);
+        c.maybeSingle = vi.fn().mockImplementation(() => {
+          maybeSingleCalls++;
+          if (maybeSingleCalls === 1) {
+            return Promise.resolve({ data: prData, error: null });
+          }
+          return Promise.resolve({ data: null, error: null });
+        });
+        return c;
+      }
+      return chain();
+    });
+
+    const res = await verifyPrAction({ prId: 100 });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.code).toBe('already_verified');
+    }
+  });
 });
