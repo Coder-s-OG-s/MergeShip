@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
+  Folder,
   CheckCircle2,
   GitPullRequest,
+  PlayCircle,
+  Shield,
   User,
   Trophy,
   Inbox,
-  Shield,
   Activity,
   Settings,
 } from 'lucide-react';
@@ -17,8 +19,11 @@ import { isActiveRoute } from '@/lib/nav-utils';
 
 const CORE_NAV = [
   { name: 'DASHBOARD', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'REPOSITORIES', href: '/repositories', icon: Folder },
   { name: 'ISSUES', href: '/issues', icon: CheckCircle2 },
-  { name: 'MY PRS', href: '/my-prs', icon: GitPullRequest },
+  { name: 'PULL REQUESTS', href: '/my-prs', icon: GitPullRequest },
+  { name: 'PIPELINES', href: '/pipelines', icon: PlayCircle },
+  { name: 'SECURITY', href: '/security', icon: Shield },
 ];
 
 export function NavItems({
