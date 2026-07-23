@@ -3,13 +3,7 @@
  */
 import { render, cleanup } from '@testing-library/react';
 import { describe, it, expect, afterEach } from 'vitest';
-import {
-  Skeleton,
-  SkeletonText,
-  SkeletonCard,
-  SkeletonTableRow,
-  SkeletonStat,
-} from './skeleton';
+import { Skeleton, SkeletonText, SkeletonCard, SkeletonTableRow, SkeletonStat } from './skeleton';
 
 describe('skeleton primitives', () => {
   afterEach(() => {

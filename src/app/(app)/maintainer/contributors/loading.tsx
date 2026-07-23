@@ -1,4 +1,10 @@
-import { Skeleton, SkeletonText, SkeletonCard, SkeletonTableRow, SkeletonStat } from '@/components/skeleton';
+import {
+  Skeleton,
+  SkeletonText,
+  SkeletonCard,
+  SkeletonTableRow,
+  SkeletonStat,
+} from '@/components/skeleton';
 
 export default function ContributorsLoading() {
   return (

@@ -31,11 +31,7 @@ export function SkeletonText({ className, ...props }: ComponentPropsWithoutRef<'
  * Renders three placeholder lines by default; pass `children` to shape it to a
  * specific panel's contents.
  */
-export function SkeletonCard({
-  className,
-  children,
-  ...props
-}: ComponentPropsWithoutRef<'div'>) {
+export function SkeletonCard({ className, children, ...props }: ComponentPropsWithoutRef<'div'>) {
   return (
     <div
       className={cn('rounded-xl border border-zinc-800 bg-zinc-900/50 p-4', className)}
