@@ -6,10 +6,10 @@ import {
   LayoutDashboard,
   CheckCircle2,
   GitPullRequest,
+  Shield,
   User,
   Trophy,
   Inbox,
-  Shield,
   Activity,
   Settings,
   Bell,
@@ -19,7 +19,7 @@ import { isActiveRoute } from '@/lib/nav-utils';
 const CORE_NAV = [
   { name: 'DASHBOARD', href: '/dashboard', icon: LayoutDashboard },
   { name: 'ISSUES', href: '/issues', icon: CheckCircle2 },
-  { name: 'MY PRS', href: '/my-prs', icon: GitPullRequest },
+  { name: 'PULL REQUESTS', href: '/my-prs', icon: GitPullRequest },
 ];
 
 export function NavItems({

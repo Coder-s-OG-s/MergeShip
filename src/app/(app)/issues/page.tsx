@@ -16,6 +16,7 @@ type SearchParams = {
   claimed?: string;
   page?: string;
   sort?: string;
+  category?: string;
 };
 
 export default async function IssuesPage({
@@ -27,7 +28,7 @@ export default async function IssuesPage({
   const sb = await getServerSupabase();
   if (!sb)
     return (
-      <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">Not configured</div>
+      <div className="min-h-screen bg-[#0D0E12] p-12 font-mono text-white">Not configured</div>
     );
 
   const {
@@ -38,27 +39,35 @@ export default async function IssuesPage({
   const filters = {
     search: resolvedSearchParams.q,
     state: (resolvedSearchParams.state === 'closed' ? 'closed' : 'open') as 'open' | 'closed',
-    difficulty: (['E', 'M', 'H'].includes(resolvedSearchParams.difficulty ?? '')
-      ? resolvedSearchParams.difficulty
-      : undefined) as 'E' | 'M' | 'H' | undefined,
+    difficulty: resolvedSearchParams.difficulty,
     repo: resolvedSearchParams.repo,
     showClaimed: resolvedSearchParams.claimed === 'true',
     page: Math.max(1, parseInt(resolvedSearchParams.page ?? '1') || 1),
     sort: (['newest', 'xp_desc', 'xp_asc'].includes(resolvedSearchParams.sort ?? '')
       ? resolvedSearchParams.sort
       : undefined) as 'newest' | 'xp_desc' | 'xp_asc' | undefined,
+    category: (['all', 'bugs', 'docs', 'feature', 'tests'].includes(
+      resolvedSearchParams.category ?? '',
+    )
+      ? resolvedSearchParams.category
+      : 'all') as 'all' | 'bugs' | 'docs' | 'feature' | 'tests',
   };
 
   const service = getServiceSupabase();
 
   let currentUserLevel = 0;
+  let completedCount = 0;
   if (service) {
-    const { data: profile } = await service
-      .from('profiles')
-      .select('level')
-      .eq('id', user.id)
-      .single();
+    const [{ data: profile }, { count }] = await Promise.all([
+      service.from('profiles').select('level').eq('id', user.id).single(),
+      service
+        .from('recommendations')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('status', 'completed'),
+    ]);
     currentUserLevel = profile?.level ?? 0;
+    completedCount = count ?? 0;
   }
 
   const maintainedRepoNames = new Set<string>();
@@ -144,10 +153,10 @@ export default async function IssuesPage({
   const repoOptions: RepoOption[] = repoResult.ok ? repoResult.data : [];
 
   return (
-    <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-12 border-b border-[#2d333b] pb-6">
-          <div className="mb-4 text-[11px] uppercase tracking-widest text-zinc-500">
+    <div className="min-h-screen bg-[#0D0E12] p-8 font-mono text-white lg:p-12">
+      <div className="mx-auto max-w-7xl">
+        <header className="mb-12 border-b border-zinc-800 pb-6">
+          <div className="mb-4 text-[11px] uppercase tracking-widest text-[#00FF87]">
             02 / ISSUES
           </div>
           <h1 className="font-serif text-4xl text-white">Browse Issues</h1>
@@ -160,7 +169,13 @@ export default async function IssuesPage({
           />
         )}
 
-        <IssuesList initialData={pageData} initialFilters={filters} repoOptions={repoOptions} />
+        <IssuesList
+          initialData={pageData}
+          initialFilters={filters}
+          repoOptions={repoOptions}
+          completedCount={completedCount}
+          currentUserLevel={currentUserLevel}
+        />
       </div>
     </div>
   );
