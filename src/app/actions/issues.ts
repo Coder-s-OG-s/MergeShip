@@ -9,6 +9,12 @@ import { repoFilterPattern } from './issues-helpers';
 import { getInstallOctokit } from '@/lib/github/app';
 
 const PAGE_SIZE = 10;
+const DIFFICULTY_VALUES = ['E', 'M', 'H'] as const;
+type DifficultyValue = (typeof DIFFICULTY_VALUES)[number];
+
+function isDifficultyValue(value: string): value is DifficultyValue {
+  return (DIFFICULTY_VALUES as readonly string[]).includes(value);
+}
 
 export type IssueFilter = {
   search?: string;
@@ -204,7 +210,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
 
   if (filters.difficulty) {
     const diffs = filters.difficulty.split(',').filter(Boolean);
-    const standardDiffs = diffs.filter((d) => d !== 'L0');
+    const standardDiffs = diffs.filter(isDifficultyValue);
     const diffParts: string[] = [];
     if (standardDiffs.length > 0) {
       diffParts.push(`difficulty.in.(${standardDiffs.join(',')})`);

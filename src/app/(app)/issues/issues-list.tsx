@@ -353,18 +353,9 @@ function IssueCard({
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-zinc-800/50 pt-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-800 text-[9px] font-bold text-zinc-400">
-            MS
-          </div>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
-            Assigned Mentor
-          </span>
-        </div>
-
         <button
           onClick={() => onOpenDetail(issue)}
-          className="flex items-center gap-1 text-[11px] font-bold text-[#00FF87] hover:underline"
+          className="ml-auto flex items-center gap-1 text-[11px] font-bold text-[#00FF87] hover:underline"
         >
           View Issue <ArrowRight className="h-3 w-3" />
         </button>
