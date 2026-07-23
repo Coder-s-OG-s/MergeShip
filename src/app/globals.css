@@ -343,3 +343,60 @@ html[data-ms-theme="light"] [class*="bg-134e2a"] { filter: invert(1) hue-rotate(
 .animate-toast-out {
   animation: toast-fade-out 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Custom cursor (dot + trailing ring) */
+.custom-cursor-dot,
+.custom-cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 9999;
+  border-radius: 9999px;
+  will-change: transform;
+}
+
+.custom-cursor-dot {
+  width: 6px;
+  height: 6px;
+  background: #7c3aed;
+  transition: opacity 0.2s ease;
+}
+
+.custom-cursor-ring {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(124, 58, 237, 0.6);
+  transition:
+    width 0.2s ease,
+    height 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.custom-cursor-ring.cursor-hovering {
+  width: 48px;
+  height: 48px;
+  border-color: #7c3aed;
+  background: rgba(124, 58, 237, 0.08);
+}
+
+.custom-cursor-ring.cursor-clicking {
+  width: 24px;
+  height: 24px;
+}
+
+/* Hide the native cursor only once the custom one has taken over (desktop mouse users) */
+body.custom-cursor-active,
+body.custom-cursor-active * {
+  cursor: none !important;
+}
+
+/* Safety net: never show the custom cursor on touch/coarse-pointer devices */
+@media (pointer: coarse) {
+  .custom-cursor-dot,
+  .custom-cursor-ring {
+    display: none !important;
+  }
+}
