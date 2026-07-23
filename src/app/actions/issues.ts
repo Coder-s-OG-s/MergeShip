@@ -35,6 +35,15 @@ export type IssueWithStatus = {
   userRecStatus: 'open' | 'claimed' | 'completed' | 'expired' | 'reassigned' | null;
 };
 
+export type IssueDetail = IssueWithStatus & {
+  bodyExcerpt: string | null;
+  authorLogin: string | null;
+  assigneeLogin: string | null;
+  commentsCount: number;
+  githubCreatedAt: string | null;
+  summary: string | null;
+};
+
 export type IssuesPageResult = {
   issues: IssueWithStatus[];
   total: number;
@@ -372,4 +381,170 @@ export async function unclaimIssue(recId: number): Promise<Result<void>> {
 
   await cacheDel(`recs:${user.id}`);
   return ok(undefined);
+}
+
+export async function getIssueById(issueId: number): Promise<Result<IssueDetail>> {
+  const sb = await getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const { data: issue, error: issueErr } = await service
+    .from('issues')
+    .select(
+      'id, repo_full_name, github_issue_number, title, difficulty, xp_reward, labels, state, url, fetched_at, body_excerpt, author_login, assignee_login, comments_count, github_created_at, summary',
+    )
+    .eq('id', issueId)
+    .single();
+
+  if (issueErr || !issue) return err('not_found', 'issue not found');
+
+  // Check user's recommendation for this issue
+  const { data: rec } = await service
+    .from('recommendations')
+    .select('id, status')
+    .eq('user_id', user.id)
+    .eq('issue_id', issueId)
+    .maybeSingle();
+
+  return ok({
+    id: issue.id,
+    repoFullName: issue.repo_full_name,
+    githubIssueNumber: issue.github_issue_number,
+    title: issue.title,
+    difficulty: issue.difficulty as 'E' | 'M' | 'H' | null,
+    xpReward: issue.xp_reward,
+    labels: issue.labels,
+    state: issue.state as 'open' | 'closed',
+    url: issue.url,
+    fetchedAt: issue.fetched_at,
+    userRecId: rec?.id ?? null,
+    userRecStatus: (rec?.status ?? null) as IssueWithStatus['userRecStatus'],
+    bodyExcerpt: issue.body_excerpt ?? null,
+    authorLogin: issue.author_login ?? null,
+    assigneeLogin: issue.assignee_login ?? null,
+    commentsCount: issue.comments_count ?? 0,
+    githubCreatedAt: issue.github_created_at ?? null,
+    summary: issue.summary ?? null,
+  });
+}
+
+/** Sanitise an issue title into a short, git-safe slug */
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40);
+}
+
+export async function createBranchForIssue(
+  issueId: number,
+): Promise<Result<{ branchName: string }>> {
+  const sb = await getServerSupabase();
+  if (!sb) return err('not_configured', 'auth not configured');
+  const service = getServiceSupabase();
+  if (!service) return err('not_configured', 'service role missing');
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) return err('not_authenticated', 'sign in first');
+
+  const rateRes = await rateLimit({
+    namespace: 'issues:branch',
+    key: user.id,
+    ...RATE_LIMIT_TIERS.STRICT,
+  });
+  if (!rateRes.ok) return err('rate_limited', 'slow down', true);
+
+  // Fetch the issue
+  const { data: issue } = await service
+    .from('issues')
+    .select('id, repo_full_name, github_issue_number, title')
+    .eq('id', issueId)
+    .single();
+  if (!issue) return err('not_found', 'issue not found');
+
+  // Validate repo access
+  const repoOptsRes = await getRepoOptions();
+  if (!repoOptsRes.ok) return err(repoOptsRes.error.code, repoOptsRes.error.message);
+  const allowedRepos = repoOptsRes.data.map((o) => o.value);
+  if (!allowedRepos.includes(issue.repo_full_name)) {
+    return err('forbidden', 'you do not have access to this repository');
+  }
+
+  // Get installation Octokit for this repo
+  const { data: repoInst } = await service
+    .from('installation_repositories')
+    .select('installation_id')
+    .eq('repo_full_name', issue.repo_full_name)
+    .limit(1)
+    .single();
+  if (!repoInst) return err('no_installation', 'no installation found for this repository');
+
+  const octokit = await getInstallOctokit(repoInst.installation_id);
+  const [owner, repo] = issue.repo_full_name.split('/');
+  if (!owner || !repo) return err('invalid_repo', 'invalid repository name');
+
+  // Get default branch SHA
+  const { data: repoData } = await octokit.repos.get({ owner, repo });
+  const defaultBranch = repoData.default_branch;
+  const { data: refData } = await octokit.git.getRef({
+    owner,
+    repo,
+    ref: `heads/${defaultBranch}`,
+  });
+
+  const branchName = `mergeship/${issue.github_issue_number}-${slugify(issue.title)}`;
+
+  try {
+    await octokit.git.createRef({
+      owner,
+      repo,
+      ref: `refs/heads/${branchName}`,
+      sha: refData.object.sha,
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'branch creation failed';
+    if (msg.includes('Reference already exists')) {
+      // Branch already exists — that's fine, return it
+      return ok({ branchName });
+    }
+    return err('github_error', msg);
+  }
+
+  // Auto-claim the issue if not already claimed
+  const { data: existing } = await service
+    .from('recommendations')
+    .select('id, status')
+    .eq('user_id', user.id)
+    .eq('issue_id', issueId)
+    .maybeSingle();
+
+  if (!existing) {
+    const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+    const now = new Date().toISOString();
+    await service.from('recommendations').insert({
+      user_id: user.id,
+      issue_id: issueId,
+      difficulty: 'E',
+      xp_reward: 50,
+      recommended_at: now,
+      expires_at: expiresAt,
+      claimed_at: now,
+      status: 'claimed',
+    });
+  } else if (existing.status === 'open') {
+    await service
+      .from('recommendations')
+      .update({ status: 'claimed', claimed_at: new Date().toISOString() })
+      .eq('id', existing.id);
+  }
+
+  await cacheDel(`recs:${user.id}`);
+  return ok({ branchName });
 }
