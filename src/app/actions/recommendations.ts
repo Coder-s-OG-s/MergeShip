@@ -305,6 +305,14 @@ export async function skipRecommendation(
 
   // Insert a replacement pick. Same difficulty if possible. Excludes
   // anything the user has already seen (any status).
+  const { data: profile, error: profileErr } = await service
+    .from('profiles')
+    .select('level')
+    .eq('id', user.id)
+    .single();
+
+  if (profileErr) return err('persist_failed', profileErr.message);
+
   const { data: profile } = await service
     .from('profiles')
     .select('level')
@@ -338,6 +346,14 @@ async function pickReplacement(args: {
     .eq('user_id', userId);
   const excludeIds = new Set((seen ?? []).map((r) => r.issue_id));
 
+  const allowedDifficulties = new Set<string>();
+  if (userLevel >= 0) allowedDifficulties.add('E');
+  if (userLevel >= 1) allowedDifficulties.add('M');
+  if (userLevel >= 2) allowedDifficulties.add('H');
+
+  // Try same tier first, then any allowed tier
+  for (const fallback of [false, true]) {
+    let q = service
   // Try same tier first, then any tier. Health >= 40 filter mirrors filterAndRank.
   for (const where of [{ difficulty: preferDifficulty }, null]) {
     const q = service
@@ -348,6 +364,11 @@ async function pickReplacement(args: {
       .in('difficulty', where ? [where.difficulty] : allowedDifficulties)
       .order('scored_at', { ascending: false })
       .limit(50);
+    if (!fallback) {
+      q = q.eq('difficulty', preferDifficulty);
+    } else {
+      q = q.in('difficulty', Array.from(allowedDifficulties));
+    }
     const { data: pool } = await q;
     const pick = (pool ?? []).find((i) => !excludeIds.has(i.id));
     if (!pick) continue;

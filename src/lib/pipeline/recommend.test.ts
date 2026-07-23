@@ -105,6 +105,21 @@ describe('filterAndRank', () => {
     expect(result).toEqual([]);
   });
 
+  it('falls back to other allowed tiers but respects max difficulty cap', () => {
+    const issues = [
+      issue({ id: 1, difficulty: 'H' }),
+      issue({ id: 2, difficulty: 'M' }),
+      issue({ id: 3, difficulty: 'E' }),
+    ];
+    const result = filterAndRank(issues, {
+      level: 1,
+      excludeIssueIds: new Set(),
+      allowFallback: true,
+    });
+    expect(result).toHaveLength(2);
+    expect(result.map((r) => r.difficulty).sort()).toEqual(['E', 'M']);
+  });
+
   it('does not fallback to higher difficulty tiers', () => {
     const issues = [issue({ id: 1, difficulty: 'M' }), issue({ id: 2, difficulty: 'M' })];
 
