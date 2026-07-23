@@ -98,7 +98,9 @@ export default async function AppLayout({
 
   return (
     <ToastProvider initialXp={xp} initialLevel={level}>
-      <div className="flex h-screen overflow-hidden bg-[var(--shell-bg)] font-mono text-[var(--shell-text)]">
+     <div
+  className="flex h-screen overflow-hidden bg-[var(--shell-bg)] font-mono text-[var(--shell-text)]"
+>
         <Sidebar
           handle={handle}
           profileHref={`/@${handle}`}
