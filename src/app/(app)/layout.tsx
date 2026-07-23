@@ -34,7 +34,9 @@ export default async function AppLayout({
   if (service) {
     const { data: profile } = await service
       .from('profiles')
-      .select('github_handle, level, xp, github_total_merges, github_streak')
+      .select(
+        'github_handle, level, xp, github_total_merges, github_streak',
+      )
       .eq('id', user.id)
       .maybeSingle();
     handle = profile?.github_handle ?? null;
