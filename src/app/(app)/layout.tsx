@@ -9,7 +9,11 @@ import { getMaintainerInstalls } from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 import { ToastProvider } from '@/components/toast';
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const sb = await getServerSupabase();
   if (!sb) {
     return <>{children}</>;
@@ -109,8 +113,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           installs={installs}
         />
 
-{/* Main Content Area */}
-        <MainScrollArea>{children}</MainScrollArea>      </div>
+        {/* Main Content Area */}
+        <MainScrollArea>{children}</MainScrollArea>
+      </div>
     </ToastProvider>
   );
 }
