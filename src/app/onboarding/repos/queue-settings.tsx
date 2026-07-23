@@ -40,7 +40,7 @@ export function QueueSettings({
   }
 
   function changeMinLevel(e: React.ChangeEvent<HTMLSelectElement>) {
-    const next = parseInt(e.target.value, 10);
+    const next = parseInt(e.target.value, 10) as 0 | 1 | 2 | 3;
     const prev = settings.minContributorLevel;
     setSettings((s) => ({ ...s, minContributorLevel: next }));
     startTransition(async () => {
@@ -64,14 +64,14 @@ export function QueueSettings({
           <label htmlFor="min-level" className="text-sm font-medium text-white">
             Minimum Contributor Level
           </label>
-          <p className="text-xs text-zinc-500 mb-2">
+          <p className="mb-2 text-xs text-zinc-500">
             The minimum trust level required to open PRs in these repositories.
           </p>
           <select
             id="min-level"
             value={settings.minContributorLevel}
             onChange={changeMinLevel}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900 py-2.5 px-3 text-sm text-white focus:border-neon-green/50 focus:outline-none"
+            className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-sm text-white focus:border-neon-green/50 focus:outline-none"
           >
             <option value={0}>Level 0 (All Contributors)</option>
             <option value={1}>Level 1 (Verified)</option>
