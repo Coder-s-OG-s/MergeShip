@@ -186,6 +186,6 @@ describe('getUsage', () => {
     const result = await getUsage();
 
     expect(result.entries).toHaveLength(1);
-    expect(result.entries[0].detail).toBeNull();
+    expect(result.entries[0]?.detail).toBeNull();
   });
 });
