@@ -36,8 +36,9 @@ export function Sidebar({
   const inMaintainerSection = isMaintainer && pathname.startsWith('/maintainer');
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col justify-between border-r border-[var(--shell-border)] bg-[var(--shell-bg)]">
-      <div className="min-h-0 flex-1 overflow-y-auto">
+<aside
+  className="flex w-64 shrink-0 flex-col justify-between border-r border-[var(--shell-border)] bg-[var(--shell-bg)]"
+>      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="p-8 pb-12">
           <Link
             href="/"
