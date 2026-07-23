@@ -1359,3 +1359,109 @@ export async function getAnalyticsStats(
     ),
   });
 }
+
+export type PrVolumeBucket = {
+  date: string;
+  dateIso: string;
+  merged: number;
+  aiBlocked: number;
+  stalled: number;
+};
+
+export async function getPrVolumeTimeSeries(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<PrVolumeBucket[]>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) return ok([]);
+
+  const now = new Date();
+  const { from, to } = rangeToDateBounds(range, now);
+
+  const db = tryGetDb();
+  if (!db) return err('db_error', 'No database connection');
+
+  const prs = await db
+    .select({
+      id: pullRequests.id,
+      state: pullRequests.state,
+      mergedAt: pullRequests.mergedAt,
+      aiFlagged: pullRequests.aiFlagged,
+      githubUpdatedAt: pullRequests.githubUpdatedAt,
+      githubCreatedAt: pullRequests.githubCreatedAt,
+    })
+    .from(pullRequests)
+    .where(and(inArray(pullRequests.repoFullName, repos), gte(pullRequests.githubCreatedAt, from)));
+
+  const buckets: Record<string, PrVolumeBucket> = {};
+  let current = new Date(from.getTime());
+
+  const getNextBucket = (d: Date) => {
+    const next = new Date(d.getTime());
+    if (range === '7d' || range === '30d') {
+      next.setDate(next.getDate() + 1);
+    } else if (range === '90d') {
+      next.setDate(next.getDate() + 7);
+    } else {
+      next.setMonth(next.getMonth() + 1);
+    }
+    return next;
+  };
+
+  const getBucketKey = (d: Date) => {
+    if (range === '7d' || range === '30d' || range === '90d') {
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  };
+
+  const getIsoDate = (d: Date) => d.toISOString().split('T')[0]!;
+
+  const bucketBoundaries: { start: Date; end: Date; key: string; iso: string }[] = [];
+
+  while (current < to) {
+    const next = getNextBucket(current);
+    const end = next > to ? to : next;
+    const key = getBucketKey(current);
+    const iso = getIsoDate(current);
+
+    bucketBoundaries.push({ start: current, end, key, iso });
+    buckets[iso] = {
+      date: key,
+      dateIso: iso,
+      merged: 0,
+      aiBlocked: 0,
+      stalled: 0,
+    };
+    current = next;
+  }
+
+  for (const pr of prs) {
+    for (const b of bucketBoundaries) {
+      if (pr.mergedAt && pr.mergedAt >= b.start && pr.mergedAt < b.end) {
+        buckets[b.iso]!.merged++;
+      }
+
+      if (pr.aiFlagged && pr.githubCreatedAt >= b.start && pr.githubCreatedAt < b.end) {
+        buckets[b.iso]!.aiBlocked++;
+      }
+
+      if (pr.state === 'open') {
+        const stallThreshold = new Date(b.end.getTime());
+        stallThreshold.setDate(stallThreshold.getDate() - 7);
+        if (pr.githubUpdatedAt < stallThreshold) {
+          buckets[b.iso]!.stalled++;
+        }
+      }
+    }
+  }
+
+  return ok(Object.values(buckets));
+}
