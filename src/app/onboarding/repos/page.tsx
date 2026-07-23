@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { listMaintainerInstalls } from '@/lib/maintainer/detect';
-import { getRepoPicker } from '@/app/actions/maintainer';
+import { getRepoPicker, getInstallationSettings } from '@/app/actions/maintainer';
 import { RepoPicker } from './repo-picker';
+import { QueueSettings } from './queue-settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,9 +32,20 @@ export default async function OnboardingReposPage() {
   if (!res.ok) throw new Error(`Failed to load repos: ${res.error.message}`);
   const repos = res.data;
 
+  const settingsRes = await getInstallationSettings(install.installationId);
+  if (!settingsRes.ok) throw new Error(`Failed to load queue settings: ${settingsRes.error.message}`);
+  const settings = settingsRes.data;
+
   return (
     <main className="flex min-h-screen justify-center bg-[#0D0E12] px-6 py-16 text-white">
-      <RepoPicker installationId={install.installationId} initialRepos={repos} />
+      <div className="flex w-full max-w-5xl flex-col lg:flex-row gap-12">
+        <div className="flex-1">
+          <RepoPicker installationId={install.installationId} initialRepos={repos} />
+        </div>
+        <div className="flex-1">
+          <QueueSettings installationId={install.installationId} initialSettings={settings} />
+        </div>
+      </div>
     </main>
   );
 }
