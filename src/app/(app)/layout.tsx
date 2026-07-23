@@ -2,13 +2,18 @@ import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { Sidebar } from './sidebar';
+import { MainScrollArea } from './main-scroll-area';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { getMaintainerInstalls } from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 import { ToastProvider } from '@/components/toast';
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const sb = await getServerSupabase();
   if (!sb) {
     redirect('/');
@@ -29,7 +34,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (service) {
     const { data: profile } = await service
       .from('profiles')
-      .select('github_handle, level, xp, github_total_merges, github_streak')
+      .select(
+        'github_handle, level, xp, github_total_merges, github_streak',
+      )
       .eq('id', user.id)
       .maybeSingle();
     handle = profile?.github_handle ?? null;
@@ -109,7 +116,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <MainScrollArea>{children}</MainScrollArea>
       </div>
     </ToastProvider>
   );
