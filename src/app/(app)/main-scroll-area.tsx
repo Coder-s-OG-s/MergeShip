@@ -31,7 +31,7 @@ export function MainScrollArea({ children }: { children: React.ReactNode }) {
         onClick={scrollToTop}
         aria-label="Scroll to top"
         tabIndex={showButton ? 0 : -1}
-        className={`fixed bottom-6 right-6 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-[#2d333b] bg-[#161b22] text-white shadow-lg transition-all duration-300 ease-out ${
+        className={`fixed bottom-6 right-6 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-[#2d333b] bg-[#161b22] text-white shadow-lg transition-all duration-300 ${
           showButton
             ? 'translate-y-0 opacity-100'
             : 'pointer-events-none translate-y-4 opacity-0'
