@@ -8,7 +8,11 @@ import { getMaintainerInstalls } from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 import { ToastProvider } from '@/components/toast';
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const sb = await getServerSupabase();
   if (!sb) {
     redirect('/');
@@ -94,7 +98,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <ToastProvider initialXp={xp} initialLevel={level}>
-      <div className="flex h-screen overflow-hidden bg-[#111318] font-mono text-white">
+     <div
+  className="flex h-screen overflow-hidden bg-[var(--shell-bg)] font-mono text-[var(--shell-text)]"
+>
         <Sidebar
           handle={handle}
           profileHref={`/@${handle}`}
