@@ -1,44 +1,123 @@
-'use client';
+import { redirect } from 'next/navigation';
+import { getServerSupabase } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/service';
+import { Sidebar } from './sidebar';
+import { MainScrollArea } from './main-scroll-area';
+import { isUserMaintainer } from '@/lib/maintainer/detect';
+import type { MaintainerInstall } from '@/lib/maintainer/detect';
+import { getMaintainerInstalls } from '@/app/actions/maintainer';
+import { isOk } from '@/lib/result';
+import { ToastProvider } from '@/components/toast';
 
-import { useEffect, useRef, useState } from 'react';
-import { ArrowUp } from 'lucide-react';
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const sb = await getServerSupabase();
+  if (!sb) {
+    return <>{children}</>;
+  }
+  const {
+    data: { user },
+  } = await sb.auth.getUser();
+  if (!user) redirect('/');
 
-const SHOW_AFTER_PX = 300;
+  let handle: string | null = null;
+  let level = 0;
+  let xp = 0;
+  let githubTotalMerges = 0;
+  let githubStreak = 0;
+  let openIssuesCount = 0;
+  let mentorHandle: string | null = null;
+  const service = getServiceSupabase();
+  if (service) {
+    const { data: profile } = await service
+      .from('profiles')
+      .select(
+        'github_handle, level, xp, github_total_merges, github_streak',
+      )
+      .eq('id', user.id)
+      .maybeSingle();
+    handle = profile?.github_handle ?? null;
+    level = profile?.level ?? 0;
+    xp = profile?.xp ?? 0;
+    githubTotalMerges = (profile?.github_total_merges as number | null) ?? 0;
+    githubStreak = (profile?.github_streak as number | null) ?? 0;
 
-export function MainScrollArea({ children }: { children: React.ReactNode }) {
-  const mainRef = useRef<HTMLElement>(null);
-  const [showButton, setShowButton] = useState(false);
+    // Count active issues
+    const { count } = await service
+      .from('recommendations')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .in('status', ['open', 'claimed']);
+    openIssuesCount = count ?? 0;
 
-  useEffect(() => {
-    const el = mainRef.current;
-    if (!el) return;
+    // Find assigned mentor
+    const { data: activeHelp } = await service
+      .from('help_requests')
+      .select('resolved_by')
+      .eq('user_id', user.id)
+      .in('status', ['open', 'escalated'])
+      .not('resolved_by', 'is', null)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    const onScroll = () => setShowButton(el.scrollTop > SHOW_AFTER_PX);
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
+    if (activeHelp?.resolved_by) {
+      const { data: mentorProfile } = await service
+        .from('profiles')
+        .select('github_handle')
+        .eq('id', activeHelp.resolved_by)
+        .maybeSingle();
+      mentorHandle = mentorProfile?.github_handle ?? null;
+    }
 
-  const scrollToTop = () => {
-    mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+    if (!mentorHandle) {
+      const { data: session } = await service
+        .from('mentor_sessions')
+        .select('mentor_login')
+        .eq('user_id', user.id)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      mentorHandle = session?.mentor_login ?? 'priya.codes';
+    }
+  }
+
+  let isMaintainer = false;
+  let installs: MaintainerInstall[] = [];
+  try {
+    isMaintainer = await isUserMaintainer(user.id);
+    if (isMaintainer) {
+      const installsRes = await getMaintainerInstalls();
+      if (isOk(installsRes)) {
+        installs = installsRes.data;
+      }
+    }
+  } catch {
+    // never break the layout
+  }
 
   return (
-    <main ref={mainRef} className="relative flex-1 overflow-y-auto">
-      {children}
+    <ToastProvider initialXp={xp} initialLevel={level}>
+      <div className="flex h-screen overflow-hidden bg-[#111318] font-mono text-white">
+        <Sidebar
+          handle={handle}
+          profileHref={`/@${handle}`}
+          level={level}
+          xp={xp}
+          githubTotalMerges={githubTotalMerges}
+          githubStreak={githubStreak}
+          openIssuesCount={openIssuesCount}
+          isMaintainer={isMaintainer}
+          mentorHandle={mentorHandle}
+          installs={installs}
+        />
 
-      <button
-        type="button"
-        onClick={scrollToTop}
-        aria-label="Scroll to top"
-        tabIndex={showButton ? 0 : -1}
-        className={`fixed bottom-6 right-6 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-[#2d333b] bg-[#161b22] text-white shadow-lg transition-all duration-300 ${
-          showButton
-            ? 'translate-y-0 opacity-100'
-            : 'pointer-events-none translate-y-4 opacity-0'
-        }`}
-      >
-        <ArrowUp className="h-4 w-4" />
-      </button>
-    </main>
+        {/* Main Content Area */}
+        <MainScrollArea>{children}</MainScrollArea>
+      </div>
+    </ToastProvider>
   );
 }
