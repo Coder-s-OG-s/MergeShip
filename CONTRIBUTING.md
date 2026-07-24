@@ -162,6 +162,37 @@ If you already have 3 open issues assigned or 3 open PRs, you must get them merg
 
 ---
 
+## 6a. Label guide for multi-program contributions
+
+MergeShip runs across GSSoC, NSoC, SSoC, and ECSoC. Use this table when opening or labeling issues:
+
+| Category                           | Labels                                                                                                      | Rule                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **Type** (always set one)          | `type:bug`, `type:feature`, `type:docs`, `type:security`, `type:testing`, `type:performance`, `type:design` | Every issue needs exactly one primary type.                                             |
+| **Area** (set when obvious)        | `frontend`, `backend`, `ui/ux`, `infrastructure`                                                            | Helps contributors find work in their stack.                                            |
+| **Difficulty** (one system only)   | `level:beginner`, `level:intermediate`, `level:advanced`, `level:critical`                                  | Use these for claimable work. For ECSoC-only issues, use ECSoC L1/L2/L3 labels instead. |
+| **Program** (only when applicable) | `GSSOC26`, `nsoc26`, `SSoC26`, `ECSoC26`                                                                    | Only add if the issue targets that specific program.                                    |
+| **Process** (PRs only)             | `CI CD pending`, `Merge conflict`, `Needs author reply`, `Needs Second Approval`                            | Never add these to product issues.                                                      |
+| **Quality** (review only)          | `quality:clean`, `good pr`                                                                                  | Use for review outcomes, not when opening issues.                                       |
+
+### Quick examples
+
+**Security bug:**
+
+> `type:security` `backend` `level:advanced` `priority`
+
+**Beginner UI task:**
+
+> `type:feature` `frontend` `ui/ux` `level:beginner` `GSSOC26`
+
+**Common mistakes to avoid:**
+
+- Stacking multiple difficulty systems (`Easy` + `level1` + `level:beginner`). Pick one.
+- Leaving `type:security` bugs without the `priority` label.
+- Adding program labels to issues meant for all contributors.
+
+---
+
 ## 7. PR workflow
 
 ```bash
