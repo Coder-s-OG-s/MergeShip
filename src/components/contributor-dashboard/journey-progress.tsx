@@ -1,7 +1,6 @@
-import { getServiceSupabase } from '@/lib/supabase/service';
 import { xpToNextLevel, xpForLevel } from '@/lib/xp/curve';
 
-function levelProgressPct(xp: number, level: number): number {
+export function levelProgressPct(xp: number, level: number): number {
   const floor = xpForLevel(level);
   const ceiling = xpForLevel(level + 1);
   if (ceiling <= floor) return 100;
@@ -9,16 +8,23 @@ function levelProgressPct(xp: number, level: number): number {
   return Math.max(0, Math.min(100, pct));
 }
 
+export function journeyHeading(level: number, next: number | null): string {
+  return next === null ? `L${level} · MAX LEVEL` : `L${level} → L${next} JOURNEY`;
+}
+
+export function journeyFooter(needed: number, next: number | null): string {
+  return next === null ? 'LEVEL CAP REACHED' : `${needed.toLocaleString()} XP TO L${next}`;
+}
+
 export default async function JourneyProgress({ xp, level }: { xp: number; level: number }) {
   const { needed, next } = xpToNextLevel(xp);
-  const nextLevel = next ?? level + 1;
   const pct = Math.round(levelProgressPct(xp, level));
 
   return (
     <div className="border border-zinc-800 bg-[#000E12] p-5">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-[10px] uppercase tracking-widest text-zinc-500">
-          L{level} → L{nextLevel} JOURNEY
+          {journeyHeading(level, next)}
         </h3>
         <span className="font-serif text-sm text-[#00FF87]">{pct}%</span>
       </div>
@@ -33,9 +39,7 @@ export default async function JourneyProgress({ xp, level }: { xp: number; level
 
       <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-zinc-600">
         <span>{xp.toLocaleString()} XP</span>
-        <span>
-          {needed.toLocaleString()} XP TO L{nextLevel}
-        </span>
+        <span>{journeyFooter(needed, next)}</span>
       </div>
     </div>
   );

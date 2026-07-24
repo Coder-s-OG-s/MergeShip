@@ -11,7 +11,7 @@ import { ToastProvider } from '@/components/toast';
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = await getServerSupabase();
   if (!sb) {
-    return <>{children}</>;
+    redirect('/');
   }
   const {
     data: { user },
@@ -64,6 +64,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         .eq('id', activeHelp.resolved_by)
         .maybeSingle();
       mentorHandle = mentorProfile?.github_handle ?? null;
+    }
+
+    if (!mentorHandle) {
+      const { data: session } = await service
+        .from('mentor_sessions')
+        .select('mentor_login')
+        .eq('user_id', user.id)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      mentorHandle = session?.mentor_login ?? 'priya.codes';
     }
   }
 

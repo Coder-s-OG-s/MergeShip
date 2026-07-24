@@ -14,6 +14,8 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { getBrowserSupabase } from '@/lib/supabase/browser';
+import { captureEvent } from '@/lib/posthog/helpers';
+import { EVENTS } from '@/lib/posthog/events';
 import '@/app/landing.css';
 
 type NavUser = { name: string | null; email: string | null };
@@ -102,6 +104,10 @@ export default function LandingPage() {
   const [user, setUser] = useState<NavUser | null>(null);
   const [configured, setConfigured] = useState(true);
   const localDev = isLocalSupabase();
+
+  useEffect(() => {
+    captureEvent(EVENTS.HOME_PAGE_VIEWED);
+  }, []);
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 20);

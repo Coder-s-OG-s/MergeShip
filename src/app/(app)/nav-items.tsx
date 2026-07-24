@@ -12,6 +12,7 @@ import {
   Shield,
   Activity,
   Settings,
+  Bell,
 } from 'lucide-react';
 import { isActiveRoute } from '@/lib/nav-utils';
 
@@ -34,6 +35,7 @@ export function NavItems({
 
   const items = [
     ...CORE_NAV,
+    { name: 'NOTIFICATIONS', href: '/notifications', icon: Bell },
     ...(level >= 2 ? [{ name: 'HELP INBOX', href: '/help-inbox', icon: Inbox }] : []),
     ...(isMaintainer ? [{ name: 'MAINTAINER', href: '/maintainer', icon: Shield }] : []),
     { name: 'PROFILE', href: profileHref, icon: User },

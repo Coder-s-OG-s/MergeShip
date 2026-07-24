@@ -23,7 +23,23 @@ import {
   index,
   primaryKey,
   bigint,
+  pgEnum,
 } from 'drizzle-orm/pg-core';
+
+// ---------- enums ----------
+export const reviewStageEnum = pgEnum('review_stage', [
+  'mentor_approval',
+  'l2_approval',
+  'l3_approval',
+  'maintainer_approval',
+]);
+
+export const reviewStatusEnum = pgEnum('review_status', [
+  'pending',
+  'approved',
+  'changes_requested',
+  'dismissed',
+]);
 
 // ---------- users / identity ----------
 
@@ -109,6 +125,22 @@ export const installationRepositories = pgTable(
   }),
 );
 
+export const repoSyncCursors = pgTable(
+  'repo_sync_cursors',
+  {
+    installationId: bigint('installation_id', { mode: 'number' })
+      .notNull()
+      .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+    repoFullName: text('repo_full_name').notNull(),
+    syncType: text('sync_type').notNull(),
+    page: integer('page').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.installationId, t.repoFullName, t.syncType] }),
+  }),
+);
+
 // ---------- issues (computed cache, forever) ----------
 
 export const issues = pgTable(
@@ -164,7 +196,7 @@ export const recommendations = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
     issueId: bigint('issue_id', { mode: 'number' })
       .notNull()
-      .references(() => issues.id),
+      .references(() => issues.id, { onDelete: 'cascade' }),
     difficulty: text('difficulty', { enum: ['E', 'M', 'H'] }).notNull(),
     xpReward: integer('xp_reward').notNull(),
     linkedPrUrl: text('linked_pr_url'),
@@ -260,6 +292,7 @@ export const helpRequests = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
     recommendationId: bigint('recommendation_id', { mode: 'number' }).references(
       () => recommendations.id,
+      { onDelete: 'cascade' },
     ),
     prUrl: text('pr_url').notNull(),
     reason: text('reason'),
@@ -352,6 +385,7 @@ export const flaggedAccounts = pgTable(
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     userId: uuid('user_id').references(() => profiles.id, { onDelete: 'cascade' }),
+    installationId: bigint('installation_id', { mode: 'number' }),
     reason: text('reason', {
       enum: ['daily_xp_event_spike', 'rapid_merge_spike', 'reviewer_approval_concentration'],
     }).notNull(),
@@ -373,6 +407,7 @@ export const flaggedAccounts = pgTable(
     ),
     statusDetectedIdx: index('flagged_accounts_status_detected_idx').on(t.status, t.detectedAt),
     userIdx: index('flagged_accounts_user_idx').on(t.userId),
+    installationIdx: index('flagged_accounts_installation_idx').on(t.installationId),
   }),
 );
 
@@ -406,6 +441,7 @@ export const pullRequests = pgTable(
     mentorCommentId: bigint('mentor_comment_id', { mode: 'number' }),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
     aiFlagged: boolean('ai_flagged').notNull().default(false),
+    aiFlagReason: text('ai_flag_reason'),
   },
   (t) => ({
     uniqRepoNumber: uniqueIndex('pull_requests_repo_number_unique').on(t.repoFullName, t.number),
@@ -440,6 +476,31 @@ export const pullRequestReviews = pgTable(
   (t) => ({
     prMentorIdx: index('pull_request_reviews_pr_mentor_idx').on(t.prId, t.isMentor),
     reviewerIdx: index('pull_request_reviews_reviewer_idx').on(t.reviewerUserId, t.submittedAt),
+  }),
+);
+
+export const pullRequestPipelineStages = pgTable(
+  'pull_request_pipeline_stages',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    prId: bigint('pr_id', { mode: 'number' })
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    reviewId: bigint('review_id', { mode: 'number' }).references(() => pullRequestReviews.id, {
+      onDelete: 'set null',
+    }),
+    stageType: reviewStageEnum('stage_type').notNull(),
+    status: reviewStatusEnum('status').notNull(),
+    reviewerUserId: uuid('reviewer_user_id').references(() => profiles.id, {
+      onDelete: 'set null',
+    }),
+    reviewerLevelSnapshot: integer('reviewer_level_snapshot'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    prStageIdx: uniqueIndex('pull_request_pipeline_stages_pr_stage_idx').on(t.prId, t.stageType),
+    prStatusIdx: index('pull_request_pipeline_stages_pr_status_idx').on(t.prId, t.status),
   }),
 );
 
@@ -543,11 +604,16 @@ export const failedWebhookEvents = pgTable(
 
     retryCount: integer('retry_count').notNull().default(0),
 
+    installationId: bigint('installation_id', { mode: 'number' }).references(
+      () => githubInstallations.id,
+    ),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     deliveryIdx: index('failed_webhook_delivery_idx').on(t.deliveryId),
     eventTypeIdx: index('failed_webhook_event_type_idx').on(t.eventType),
+    installationIdx: index('failed_webhook_events_installation_idx').on(t.installationId),
   }),
 );
 
@@ -600,5 +666,86 @@ export const userChallengeProgress = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.userId, t.date] }),
+  }),
+);
+
+// ---------- maintainer audit logs ----------
+
+export const maintainerAuditLogs = pgTable(
+  'maintainer_audit_logs',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    actorUserId: uuid('actor_user_id').references(() => profiles.id, { onDelete: 'set null' }),
+    actorSnapshot: jsonb('actor_snapshot'),
+    installationId: bigint('installation_id', { mode: 'number' }).references(
+      () => githubInstallations.id,
+      { onDelete: 'cascade' },
+    ),
+    action: text('action').notNull(),
+    targetType: text('target_type').notNull(),
+    targetId: text('target_id').notNull(),
+    status: text('status', { enum: ['success', 'failed'] })
+      .notNull()
+      .default('success'),
+    errorMessage: text('error_message'),
+    oldValues: jsonb('old_values'),
+    newValues: jsonb('new_values'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    installationIdx: index('maintainer_audit_logs_installation_idx').on(
+      t.installationId,
+      t.createdAt,
+    ),
+    actorIdx: index('maintainer_audit_logs_actor_idx').on(t.actorUserId, t.createdAt),
+  }),
+);
+export const organizationInvites = pgTable('organization_invites', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  installationId: bigint('installation_id', { mode: 'number' })
+    .notNull()
+    .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+});
+
+export const chatChannels = pgTable(
+  'chat_channels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    mentorId: uuid('mentor_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    menteeId: uuid('mentee_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqMentorMentee: uniqueIndex('chat_channels_mentor_mentee_uniq').on(t.mentorId, t.menteeId),
+    mentorIdx: index('chat_channels_mentor_idx').on(t.mentorId),
+    menteeIdx: index('chat_channels_mentee_idx').on(t.menteeId),
+  }),
+);
+
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    channelId: uuid('channel_id')
+      .notNull()
+      .references(() => chatChannels.id, { onDelete: 'cascade' }),
+    senderId: uuid('sender_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    content: text('content').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    channelTimeIdx: index('chat_messages_channel_time_idx').on(t.channelId, t.createdAt),
   }),
 );

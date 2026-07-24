@@ -1,6 +1,7 @@
 import { createAppAuth } from '@octokit/auth-app';
 import { Octokit } from '@octokit/rest';
 import { cacheGet, cacheSet } from '../cache';
+import { updateRateBudget } from './rate-budget';
 
 /**
  * Octokit factories. Three flavors:
@@ -65,7 +66,38 @@ export async function getInstallationToken(installationId: number): Promise<stri
 
 export async function getInstallOctokit(installationId: number): Promise<Octokit> {
   const token = await getInstallationToken(installationId);
-  return new Octokit({ auth: token });
+  const octokit = new Octokit({ auth: token });
+
+  octokit.hook.wrap('request', async (request, options) => {
+    try {
+      const response = await request(options);
+      const remaining = response.headers['x-ratelimit-remaining'];
+      const reset = response.headers['x-ratelimit-reset'];
+      if (remaining && reset) {
+        await updateRateBudget(
+          installationId,
+          parseInt(String(remaining), 10),
+          parseInt(String(reset), 10),
+        );
+      }
+      return response;
+    } catch (error: any) {
+      if (error.response?.headers) {
+        const remaining = error.response.headers['x-ratelimit-remaining'];
+        const reset = error.response.headers['x-ratelimit-reset'];
+        if (remaining && reset) {
+          await updateRateBudget(
+            installationId,
+            parseInt(String(remaining), 10),
+            parseInt(String(reset), 10),
+          );
+        }
+      }
+      throw error;
+    }
+  });
+
+  return octokit;
 }
 
 export function getUserOctokit(accessToken: string): Octokit {

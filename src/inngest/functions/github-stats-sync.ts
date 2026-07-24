@@ -55,6 +55,7 @@ export const githubStatsSync = inngest.createFunction(
         .eq('id', userId);
 
       await cacheDel(`gh:dashboard:${userId}`);
+      await cacheDel(`profile:v3:${githubHandle}`);
       return { merges, streak };
     });
   },

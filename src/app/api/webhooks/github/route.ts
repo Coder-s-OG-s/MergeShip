@@ -14,9 +14,23 @@ import { rateLimit } from '@/lib/rate-limit';
  *   3. Emit Inngest event for async processing, return 200 fast (<1s)
  */
 export async function POST(req: NextRequest) {
-  const secret = process.env.GITHUB_WEBHOOK_SECRET;
-  if (!secret) {
+  const secretEnv = process.env.GITHUB_WEBHOOK_SECRETS || process.env.GITHUB_WEBHOOK_SECRET;
+  if (!secretEnv) {
     return NextResponse.json({ error: 'webhook secret not configured' }, { status: 503 });
+  }
+
+  const secrets = secretEnv
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (secrets.length === 0) {
+    return NextResponse.json({ error: 'webhook secret not configured' }, { status: 503 });
+  }
+
+  if (secrets.length > 2) {
+    console.warn(
+      '[webhook] more than 2 secrets configured; please clean up old secrets after rotation',
+    );
   }
 
   const signature = req.headers.get('x-hub-signature-256');
@@ -29,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   const raw = await req.text();
 
-  if (!verifyWebhookSignature(raw, signature, secret)) {
+  if (!verifyWebhookSignature(raw, signature, secrets)) {
     return NextResponse.json({ error: 'invalid signature' }, { status: 401 });
   }
 
