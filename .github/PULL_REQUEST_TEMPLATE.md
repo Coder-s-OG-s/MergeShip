@@ -29,3 +29,4 @@ Closes #<!-- issue number -->
 - [ ] I tested this locally (`npm run dev`)
 - [ ] No hardcoded secrets or credentials
 - [ ] I have updated documentation if needed
+- [ ] The linked issue has correct labels per [Label Guide](../../CONTRIBUTING.md#6a-label-guide-for-multi-program-contributions)

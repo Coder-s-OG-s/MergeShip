@@ -7,6 +7,8 @@ body:
       value: |
         Got an idea to make MergeShip better? We'd love to hear it!
 
+        > **Labeling tip:** Maintainains will add type, area, difficulty, and program labels. See the [Label Guide](../../CONTRIBUTING.md#6a-label-guide-for-multi-program-contributions) for reference.
+
   - type: textarea
     id: problem
     attributes:
