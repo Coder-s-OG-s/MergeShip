@@ -7,6 +7,7 @@ import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { getMaintainerInstalls } from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 import { ToastProvider } from '@/components/toast';
+import { getUnreadNotificationCount } from '@/app/actions/notifications';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = await getServerSupabase();
@@ -92,6 +93,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // never break the layout
   }
 
+  let unreadCount = 0;
+  try {
+    const unreadRes = await getUnreadNotificationCount();
+    if (isOk(unreadRes)) {
+      unreadCount = unreadRes.data;
+    }
+  } catch {
+    // never break the layout
+  }
+
   return (
     <ToastProvider initialXp={xp} initialLevel={level}>
       <div className="flex h-screen overflow-hidden bg-[#111318] font-mono text-white">
@@ -106,6 +117,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           isMaintainer={isMaintainer}
           mentorHandle={mentorHandle}
           installs={installs}
+          unreadCount={unreadCount}
         />
 
         {/* Main Content Area */}

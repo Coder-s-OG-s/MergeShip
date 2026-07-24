@@ -20,6 +20,7 @@ export function Sidebar({
   isMaintainer,
   mentorHandle,
   installs = [],
+  unreadCount = 0,
 }: {
   handle: string | null;
   profileHref: string;
@@ -31,6 +32,7 @@ export function Sidebar({
   isMaintainer: boolean;
   mentorHandle: string | null;
   installs?: MaintainerInstall[];
+  unreadCount?: number;
 }) {
   const pathname = usePathname();
   const inMaintainerSection = isMaintainer && pathname.startsWith('/maintainer');
@@ -52,7 +54,12 @@ export function Sidebar({
           {inMaintainerSection ? (
             <MaintainerNavItems installs={installs} />
           ) : (
-            <NavItems profileHref={profileHref} level={level} isMaintainer={isMaintainer} />
+            <NavItems
+              profileHref={profileHref}
+              level={level}
+              isMaintainer={isMaintainer}
+              unreadCount={unreadCount}
+            />
           )}
         </nav>
 

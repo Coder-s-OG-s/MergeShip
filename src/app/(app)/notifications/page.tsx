@@ -7,6 +7,7 @@ import {
   notificationLink,
   type ActivityDetail,
 } from '@/lib/activity/notifications';
+import { markAllNotificationsRead } from '@/app/actions/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,7 @@ type ActivityRow = {
   kind: string;
   detail: ActivityDetail;
   created_at: string;
+  read_at: string | null;
 };
 
 function timeAgo(iso: string): string {
@@ -30,8 +32,12 @@ function timeAgo(iso: string): string {
 /**
  * In-app notification center. Reads across every activity_log kind for the
  * signed-in user (unlike /help-inbox, which only surfaces kind='help_dispatch'
- * joined against live help_requests). This is read-only for now -- no
- * read/unread tracking yet, that's a follow-up phase.
+ * joined against live help_requests).
+ *
+ * Visiting this page marks every currently-unread notification as read --
+ * unread state is captured from the fetch below *before* that mutation runs,
+ * so the unread dot still renders correctly for this render even though the
+ * rows are read by the time the page finishes loading.
  */
 export default async function NotificationsPage() {
   const sb = await getServerSupabase();
@@ -59,12 +65,16 @@ export default async function NotificationsPage() {
 
   const { data } = await service
     .from('activity_log')
-    .select('id, kind, detail, created_at')
+    .select('id, kind, detail, created_at, read_at')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(50);
 
   const items = (data ?? []) as ActivityRow[];
+
+  if (items.some((item) => !item.read_at)) {
+    await markAllNotificationsRead();
+  }
 
   return (
     <div className="min-h-screen bg-[#000E12] px-6 py-12 text-white">
@@ -85,21 +95,30 @@ export default async function NotificationsPage() {
               {items.map((item) => {
                 const message = notificationMessage(item.kind, item.detail);
                 const link = notificationLink(item.kind, item.detail);
+                const isUnread = !item.read_at;
 
                 return (
                   <li key={item.id} className="flex items-start justify-between gap-4 p-4">
-                    <div className="min-w-0">
-                      {link ? (
-                        // prettier-ignore
-                        <a href={link} target="_blank" rel="noopener noreferrer" className="text-[13px] text-zinc-200 hover:text-[#00FF87] hover:underline">
-                          {message}
-                        </a>
-                      ) : (
-                        <p className="text-[13px] text-zinc-200">{message}</p>
-                      )}
-                      <p className="mt-1 text-[10px] uppercase tracking-widest text-zinc-600">
-                        {timeAgo(item.created_at)}
-                      </p>
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span
+                        className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                          isUnread ? 'bg-[#00FF87]' : 'bg-transparent'
+                        }`}
+                        aria-hidden="true"
+                      />
+                      <div className="min-w-0">
+                        {link ? (
+                          // prettier-ignore
+                          <a href={link} target="_blank" rel="noopener noreferrer" className="text-[13px] text-zinc-200 hover:text-[#00FF87] hover:underline">
+                            {message}
+                          </a>
+                        ) : (
+                          <p className="text-[13px] text-zinc-200">{message}</p>
+                        )}
+                        <p className="mt-1 text-[10px] uppercase tracking-widest text-zinc-600">
+                          {timeAgo(item.created_at)}
+                        </p>
+                      </div>
                     </div>
                   </li>
                 );
