@@ -98,8 +98,14 @@ export const processInstallationEvent = inngest.createFunction(
             repos = (res as unknown as Array<{ full_name: string }>).map((r) => ({
               full_name: r.full_name,
             }));
-          } catch {
-            // Best-effort. issues-sweep will re-attempt to discover repos later.
+          } catch (err) {
+            console.error(
+              `[process-installation-event] Failed to discover repos for installation ${install.id}:`,
+              err,
+            );
+            throw new Error(
+              `Failed to discover repos for installation ${install.id}: ${(err as Error).message}`,
+            );
           }
         }
         if (repos.length > 0) {
