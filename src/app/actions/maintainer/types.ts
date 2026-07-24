@@ -97,3 +97,11 @@ export type PromotionEligibleRow = {
   level: number;
   xpNeeded: number;
 };
+
+export type PrVolumeDataPoint = {
+  date: string;
+  opened: number;
+  merged: number;
+  closed: number;
+  aiBlocked: number;
+};

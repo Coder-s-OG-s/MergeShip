@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMaintainerAnalyticsTrends } from './analytics';
+import { buildMaintainerAnalyticsTrends, buildPrVolumeTimeSeries } from './analytics';
 
 describe('buildMaintainerAnalyticsTrends', () => {
   it('groups merged PRs and completed XP into the last twelve UTC weeks', () => {
@@ -77,5 +77,128 @@ describe('buildMaintainerAnalyticsTrends', () => {
     });
 
     expect(trends.avgReviewTimeHours).toBe(1.8);
+  });
+});
+
+describe('buildPrVolumeTimeSeries', () => {
+  const makePr = (
+    overrides: Partial<{
+      github_created_at: string;
+      merged_at: string | null;
+      closed_at: string | null;
+      ai_flagged: boolean;
+      state: string;
+    }> = {},
+  ) => ({
+    github_created_at: '2026-07-10T12:00:00.000Z',
+    merged_at: null as string | null,
+    closed_at: null as string | null,
+    ai_flagged: false,
+    state: 'open',
+    ...overrides,
+  });
+
+  it('creates daily buckets for 7d range', () => {
+    const from = new Date('2026-07-08T00:00:00.000Z');
+    const to = new Date('2026-07-15T00:00:00.000Z');
+    const prs = [
+      makePr({ github_created_at: '2026-07-10T12:00:00.000Z' }),
+      makePr({ github_created_at: '2026-07-10T18:00:00.000Z' }),
+      makePr({
+        github_created_at: '2026-07-12T09:00:00.000Z',
+        merged_at: '2026-07-13T10:00:00.000Z',
+      }),
+    ];
+
+    const result = buildPrVolumeTimeSeries(prs, from, to, '7d');
+
+    expect(result).toHaveLength(7);
+    const jul10 = result.find((r) => r.date === '2026-07-10');
+    expect(jul10).toMatchObject({ opened: 2, merged: 0, closed: 0, aiBlocked: 0 });
+    const jul12 = result.find((r) => r.date === '2026-07-12');
+    expect(jul12).toMatchObject({ opened: 1, merged: 1, closed: 0, aiBlocked: 0 });
+  });
+
+  it('counts merged PRs separately from closed', () => {
+    const from = new Date('2026-07-08T00:00:00.000Z');
+    const to = new Date('2026-07-15T00:00:00.000Z');
+    const prs = [
+      makePr({
+        github_created_at: '2026-07-10T12:00:00.000Z',
+        merged_at: '2026-07-11T10:00:00.000Z',
+      }),
+      makePr({
+        github_created_at: '2026-07-10T14:00:00.000Z',
+        state: 'closed',
+        closed_at: '2026-07-11T11:00:00.000Z',
+      }),
+    ];
+
+    const result = buildPrVolumeTimeSeries(prs, from, to, '7d');
+
+    const jul10 = result.find((r) => r.date === '2026-07-10');
+    expect(jul10).toMatchObject({ opened: 2, merged: 1, closed: 1 });
+  });
+
+  it('counts AI blocked PRs', () => {
+    const from = new Date('2026-07-08T00:00:00.000Z');
+    const to = new Date('2026-07-15T00:00:00.000Z');
+    const prs = [
+      makePr({
+        github_created_at: '2026-07-10T12:00:00.000Z',
+        ai_flagged: true,
+        state: 'closed',
+        closed_at: '2026-07-10T10:00:00.000Z',
+      }),
+      makePr({ github_created_at: '2026-07-10T14:00:00.000Z', ai_flagged: false }),
+    ];
+
+    const result = buildPrVolumeTimeSeries(prs, from, to, '7d');
+
+    const jul10 = result.find((r) => r.date === '2026-07-10');
+    expect(jul10).toMatchObject({ opened: 2, aiBlocked: 1 });
+  });
+
+  it('creates weekly buckets for 90d range', () => {
+    const from = new Date('2026-06-01T00:00:00.000Z');
+    const to = new Date('2026-07-15T00:00:00.000Z');
+    const prs = [
+      makePr({ github_created_at: '2026-07-07T12:00:00.000Z' }),
+      makePr({ github_created_at: '2026-07-14T12:00:00.000Z' }),
+    ];
+
+    const result = buildPrVolumeTimeSeries(prs, from, to, '90d');
+
+    // July 7 is Tuesday → week start is July 5
+    const jul5 = result.find((r) => r.date === '2026-07-05');
+    expect(jul5).toMatchObject({ opened: 1 });
+    // July 14 is Tuesday → week start is July 12
+    const jul12 = result.find((r) => r.date === '2026-07-12');
+    expect(jul12).toMatchObject({ opened: 1 });
+  });
+
+  it('returns empty array when no PRs exist', () => {
+    const from = new Date('2026-07-08T00:00:00.000Z');
+    const to = new Date('2026-07-09T00:00:00.000Z');
+
+    const result = buildPrVolumeTimeSeries([], from, to, '7d');
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ opened: 0, merged: 0, closed: 0, aiBlocked: 0 });
+  });
+
+  it('sorts results by date ascending', () => {
+    const from = new Date('2026-07-08T00:00:00.000Z');
+    const to = new Date('2026-07-12T00:00:00.000Z');
+    const prs = [
+      makePr({ github_created_at: '2026-07-11T12:00:00.000Z' }),
+      makePr({ github_created_at: '2026-07-09T12:00:00.000Z' }),
+    ];
+
+    const result = buildPrVolumeTimeSeries(prs, from, to, '7d');
+
+    for (let i = 1; i < result.length; i++) {
+      expect(result[i]!.date >= result[i - 1]!.date).toBe(true);
+    }
   });
 });

@@ -20,6 +20,14 @@ export type MaintainerAnalyticsTrends = {
   avgReviewTimeHours: number | null;
 };
 
+export type PrVolumeDataPoint = {
+  date: string;
+  opened: number;
+  merged: number;
+  closed: number;
+  aiBlocked: number;
+};
+
 export type AnalyticsMergedPullRequest = {
   mergedAt: string | null;
 };
@@ -191,4 +199,84 @@ function monthLabel(date: Date): string {
   return new Intl.DateTimeFormat('en', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
     date,
   );
+}
+
+export type PrVolumeRawRow = {
+  github_created_at: string;
+  merged_at: string | null;
+  closed_at: string | null;
+  ai_flagged: boolean;
+  state: string;
+};
+
+export function buildPrVolumeTimeSeries(
+  prs: PrVolumeRawRow[],
+  from: Date,
+  to: Date,
+  range: string,
+): PrVolumeDataPoint[] {
+  const step = rangeToBucketMs(range);
+
+  const bucketKey = (d: Date): string => {
+    if (range === '90d' || range === 'all') {
+      const start = new Date(d);
+      start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+      return start.toISOString().slice(0, 10);
+    }
+    return d.toISOString().slice(0, 10);
+  };
+
+  const buckets = new Map<string, PrVolumeDataPoint>();
+
+  // Pre-create empty buckets for the full range
+  const totalMs = to.getTime() - from.getTime();
+  const numBuckets = Math.min(Math.ceil(totalMs / step), 100);
+
+  for (let i = 0; i < numBuckets; i++) {
+    const bucketStart = new Date(from.getTime() + i * step);
+    const key = bucketKey(bucketStart);
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        date: key,
+        opened: 0,
+        merged: 0,
+        closed: 0,
+        aiBlocked: 0,
+      });
+    }
+  }
+
+  for (const pr of prs) {
+    const created = new Date(pr.github_created_at);
+    const key = bucketKey(created);
+    const bucket = buckets.get(key);
+    if (!bucket) continue;
+
+    bucket.opened += 1;
+
+    if (pr.merged_at) {
+      bucket.merged += 1;
+    } else if (pr.state === 'closed') {
+      bucket.closed += 1;
+    }
+
+    if (pr.ai_flagged) {
+      bucket.aiBlocked += 1;
+    }
+  }
+
+  return Array.from(buckets.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function rangeToBucketMs(range: string): number {
+  switch (range) {
+    case '7d':
+      return 24 * 60 * 60 * 1000;
+    case '30d':
+      return 24 * 60 * 60 * 1000;
+    case '90d':
+      return 7 * 24 * 60 * 60 * 1000;
+    default:
+      return 30 * 24 * 60 * 60 * 1000;
+  }
 }

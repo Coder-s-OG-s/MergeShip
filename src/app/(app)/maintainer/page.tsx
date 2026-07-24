@@ -148,6 +148,12 @@ export default async function MaintainerPage({
               accountLogin={activeInstall.accountLogin}
             />
             <Link
+              href={`/maintainer/analytics?install=${activeInstallId}`}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-600"
+            >
+              Analytics →
+            </Link>
+            <Link
               href={`/maintainer?install=${activeInstallId}&state=open`}
               className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-600"
             >
@@ -191,6 +197,12 @@ export default async function MaintainerPage({
           />
           <div className="ml-auto flex items-center gap-2">
             <ExportCsvButton installationId={activeInstallId} filters={filters} />
+            <Link
+              href={`/maintainer/analytics?install=${activeInstallId}`}
+              className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
+            >
+              Analytics →
+            </Link>
             <Link
               href={`/maintainer/issues?install=${activeInstallId}`}
               className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"

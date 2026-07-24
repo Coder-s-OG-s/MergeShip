@@ -29,6 +29,7 @@ export {
   getReviewerLoad,
   getNoiseBreakdown,
   getPromotionEligible,
+  getPrVolumeTimeSeries,
 } from './analytics';
 
 export { getFlaggedAccounts, resolveFlaggedAccount } from './flagged-accounts';

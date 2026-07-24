@@ -8,7 +8,11 @@ import { tryGetDb } from '@/lib/db/client';
 import { profiles, xpEvents, pullRequests } from '@/lib/db/schema';
 import { eq, inArray, sum, desc, and, count } from 'drizzle-orm';
 import { cacheGet, cacheSet } from '@/lib/cache';
-import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
+import {
+  buildPrVolumeTimeSeries,
+  type MaintainerAnalyticsTrends,
+  type PrVolumeRawRow,
+} from '@/lib/maintainer/analytics';
 import {
   comparePrRows,
   validateFilters,
@@ -23,6 +27,7 @@ import {
   type ReviewerLoadRow,
   type NoiseBreakdown,
   type PromotionEligibleRow,
+  type PrVolumeDataPoint,
 } from './types';
 
 export async function getRepoHealthOverview(args: {
@@ -560,5 +565,55 @@ export async function getNoiseBreakdown(args: {
     return ok({ valid, spamAi, other, total });
   } catch (error: any) {
     return err('query_failed', error.message || 'Drizzle query failed');
+  }
+}
+
+export async function getPrVolumeTimeSeries(args: {
+  installationId: number;
+  range: string;
+}): Promise<Result<PrVolumeDataPoint[]>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) return ok([]);
+
+  const now = new Date();
+  const rangeMs = rangeToMs(args.range);
+  const from = new Date(now.getTime() - rangeMs);
+
+  const { data: prs, error } = await service
+    .from('pull_requests')
+    .select('github_created_at, merged_at, closed_at, ai_flagged, state')
+    .in('repo_full_name', repos)
+    .gte('github_created_at', from.toISOString())
+    .lte('github_created_at', now.toISOString())
+    .order('github_created_at', { ascending: true });
+
+  if (error) return err('query_failed', error.message);
+
+  const buckets = buildPrVolumeTimeSeries(
+    (prs ?? []) as unknown as PrVolumeRawRow[],
+    from,
+    now,
+    args.range,
+  );
+  return ok(buckets);
+}
+
+function rangeToMs(range: string): number {
+  switch (range) {
+    case '7d':
+      return 7 * 24 * 60 * 60 * 1000;
+    case '30d':
+      return 30 * 24 * 60 * 60 * 1000;
+    case '90d':
+      return 90 * 24 * 60 * 60 * 1000;
+    default:
+      return 365 * 24 * 60 * 60 * 1000;
   }
 }
