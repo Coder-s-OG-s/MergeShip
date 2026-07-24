@@ -114,6 +114,14 @@ export type PromotionEligibleRow = {
   xpNeeded: number;
 };
 
+export type PrVolumeDataPoint = {
+  date: string;
+  opened: number;
+  merged: number;
+  closed: number;
+  aiBlocked: number;
+};
+
 export type ContributorFunnelData = {
   registered: number;
   firstPr: number;

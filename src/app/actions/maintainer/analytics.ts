@@ -9,7 +9,11 @@ import { profiles, xpEvents, pullRequests, githubInstallations, issues } from '@
 import { eq, inArray, sum, desc, and, count, gte, lte, isNotNull } from 'drizzle-orm';
 import { computeTimeSaved, type TimeSavedBreakdown } from '@/lib/maintainer/time-saved';
 import { cacheGet, cacheSet } from '@/lib/cache';
-import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
+import {
+  buildPrVolumeTimeSeries,
+  type MaintainerAnalyticsTrends,
+  type PrVolumeRawRow,
+} from '@/lib/maintainer/analytics';
 import {
   buildDayOverDayStats,
   buildMaintainerAnalyticsTrends,
@@ -22,14 +26,15 @@ import {
   type QueueFilters,
 } from '@/lib/maintainer/queue';
 import { xpForLevel, MAX_LEVEL } from '@/lib/xp/curve';
-import type {
-  RepoHealthRow,
-  StaleIssueRow,
-  ContributorRow,
-  ReviewerLoadRow,
-  NoiseBreakdown,
-  PromotionEligibleRow,
-  ContributorFunnelData,
+import {
+  type RepoHealthRow,
+  type StaleIssueRow,
+  type ContributorRow,
+  type ReviewerLoadRow,
+  type NoiseBreakdown,
+  type PromotionEligibleRow,
+  type PrVolumeDataPoint,
+  type ContributorFunnelData,
 } from './types';
 import { type AnalyticsRange, rangeToDateBounds } from '@/lib/maintainer/analytics-range';
 
@@ -789,6 +794,56 @@ export async function getQueueSignalQuality(
     closedRejected,
     total,
   });
+}
+
+export async function getPrVolumeTimeSeries(args: {
+  installationId: number;
+  range: string;
+}): Promise<Result<PrVolumeDataPoint[]>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) return ok([]);
+
+  const now = new Date();
+  const rangeMs = rangeToMs(args.range);
+  const from = new Date(now.getTime() - rangeMs);
+
+  const { data: prs, error } = await service
+    .from('pull_requests')
+    .select('github_created_at, merged_at, closed_at, ai_flagged, state')
+    .in('repo_full_name', repos)
+    .gte('github_created_at', from.toISOString())
+    .lte('github_created_at', now.toISOString())
+    .order('github_created_at', { ascending: true });
+
+  if (error) return err('query_failed', error.message);
+
+  const buckets = buildPrVolumeTimeSeries(
+    (prs ?? []) as unknown as PrVolumeRawRow[],
+    from,
+    now,
+    args.range,
+  );
+  return ok(buckets);
+}
+
+function rangeToMs(range: string): number {
+  switch (range) {
+    case '7d':
+      return 7 * 24 * 60 * 60 * 1000;
+    case '30d':
+      return 30 * 24 * 60 * 60 * 1000;
+    case '90d':
+      return 90 * 24 * 60 * 60 * 1000;
+    default:
+      return 365 * 24 * 60 * 60 * 1000;
+  }
 }
 
 export async function getContributorFunnel(args: {

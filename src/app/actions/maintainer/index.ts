@@ -1,4 +1,5 @@
 export type * from './types';
+
 export type {
   StalePrRow,
   AiDetectionBreakdown,
@@ -236,6 +237,12 @@ export async function getRepoAnalyticsBreakdown(
   ...args: Parameters<typeof analyticsActions.getRepoAnalyticsBreakdown>
 ): ReturnType<typeof analyticsActions.getRepoAnalyticsBreakdown> {
   return analyticsActions.getRepoAnalyticsBreakdown(...args);
+}
+
+export async function getPrVolumeTimeSeries(
+  ...args: Parameters<typeof analyticsActions.getPrVolumeTimeSeries>
+): ReturnType<typeof analyticsActions.getPrVolumeTimeSeries> {
+  return analyticsActions.getPrVolumeTimeSeries(...args);
 }
 
 export async function getFlaggedAccounts(

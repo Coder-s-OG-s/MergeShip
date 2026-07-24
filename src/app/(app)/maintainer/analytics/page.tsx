@@ -7,6 +7,7 @@ import {
   getTimeSaved,
   getRepoAnalyticsBreakdown,
   getAnalyticsStats,
+  getPrVolumeTimeSeries,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { isOk } from '@/lib/result';
@@ -16,7 +17,9 @@ import RangeTabs from './range-tabs';
 import QueueSignalPanel from './queue-signal-panel';
 import { StatsHeader } from './stats-header';
 import SummaryBanner from './summary-banner';
-import type { AnalyticsRange } from '@/lib/maintainer/time-saved';
+import PrVolumeChart from './pr-volume-chart';
+import type { PrVolumeDataPoint } from '@/app/actions/maintainer';
+import type { AnalyticsRange } from '@/lib/maintainer/analytics-range';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,12 +71,15 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       ? rawRange
       : '30d';
 
-  const [timeSavedRes, repoAnalyticsRes, queueSignalRes, statsRes] = await Promise.all([
-    getTimeSaved(activeInstallId, range),
-    getRepoAnalyticsBreakdown(activeInstallId, range),
-    getQueueSignalQuality(activeInstallId, range),
-    getAnalyticsStats(activeInstallId, range),
-  ]);
+  const [timeSavedRes, repoAnalyticsRes, queueSignalRes, statsRes, prVolumeRes] = await Promise.all(
+    [
+      getTimeSaved(activeInstallId, range),
+      getRepoAnalyticsBreakdown(activeInstallId, range),
+      getQueueSignalQuality(activeInstallId, range),
+      getAnalyticsStats(activeInstallId, range),
+      getPrVolumeTimeSeries({ installationId: activeInstallId, range }),
+    ],
+  );
 
   const timeSaved = isOk(timeSavedRes)
     ? timeSavedRes.data
@@ -107,6 +113,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         maintainerTimeSavedHours: { value: 0, delta: 0, deltaPositiveIsGood: true },
       };
 
+  const prVolumeData: PrVolumeDataPoint[] = isOk(prVolumeRes) ? prVolumeRes.data : [];
+
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
       <div className="mx-auto max-w-6xl">
@@ -118,6 +126,10 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
         </header>
 
         <StatsHeader stats={stats} />
+
+        <div className="mb-8">
+          <PrVolumeChart data={prVolumeData} />
+        </div>
 
         <div className="grid gap-8 lg:grid-cols-3">
           <div className="lg:col-span-1">
