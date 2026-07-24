@@ -3,15 +3,16 @@
 import { useState } from 'react';
 import type { GitHubPR } from '@/app/actions/github-sync';
 
-type PRTab = 'all' | 'pending_review' | 'mentor_approved' | 'merged' | 'closed';
+type PRTab = 'all' | 'pending_review' | 'needs_changes' | 'mentor_approved' | 'merged' | 'closed';
 
 type EnrichedPR = GitHubPR & {
-  mentor_status?: 'pending' | 'approved' | null;
+  mentor_status?: 'pending' | 'approved' | 'changes_requested' | null;
   reviewed_by?: string | null;
   mentor_level?: string | null;
   close_reason?: string | null;
   xp_earned?: number | null;
   draft?: boolean | null;
+  review_feedback?: string | null;
 };
 
 type Props = {
@@ -21,6 +22,7 @@ type Props = {
 const TABS: { key: PRTab; label: string }[] = [
   { key: 'all', label: 'ALL' },
   { key: 'pending_review', label: 'PENDING REVIEW' },
+  { key: 'needs_changes', label: 'NEEDS CHANGES' },
   { key: 'mentor_approved', label: 'MENTOR APPROVED' },
   { key: 'merged', label: 'MERGED' },
   { key: 'closed', label: 'CLOSED' },
@@ -40,6 +42,7 @@ export function PRList({ prs }: Props) {
     if (activeTab === 'all') return true;
     if (activeTab === 'merged') return pr.state === 'merged';
     if (activeTab === 'closed') return pr.state === 'closed';
+    if (activeTab === 'needs_changes') return pr.mentor_status === 'changes_requested';
     if (activeTab === 'pending_review')
       return pr.state === 'open' && pr.mentor_status === 'pending';
     if (activeTab === 'mentor_approved') return pr.mentor_status === 'approved';
@@ -51,6 +54,7 @@ export function PRList({ prs }: Props) {
     all: repoFiltered.length,
     pending_review: repoFiltered.filter((p) => p.state === 'open' && p.mentor_status === 'pending')
       .length,
+    needs_changes: repoFiltered.filter((p) => p.mentor_status === 'changes_requested').length,
     mentor_approved: repoFiltered.filter((p) => p.mentor_status === 'approved').length,
     merged: repoFiltered.filter((p) => p.state === 'merged').length,
     closed: repoFiltered.filter((p) => p.state === 'closed').length,
@@ -191,6 +195,20 @@ function PRCard({ pr }: { pr: EnrichedPR }) {
         {pr.title} <span className="text-zinc-500">#{pr.number}</span>
       </a>
 
+      {/* Inline mentor feedback (only for changes_requested PRs with a linked review body) */}
+      {statusInfo.type === 'needs_changes' && pr.review_feedback && (
+        <div className="mb-3 flex items-start gap-2 rounded-sm border border-purple-500/30 bg-purple-900/10 p-3 text-[12px] text-purple-200">
+          <svg
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-400"
+            fill="currentColor"
+            viewBox="0 0 16 16"
+          >
+            <path d="M2 3a1 1 0 011-1h10a1 1 0 011 1v7a1 1 0 01-1 1H6l-3 3v-3H3a1 1 0 01-1-1V3z" />
+          </svg>
+          <span>&ldquo;{pr.review_feedback}&rdquo;</span>
+        </div>
+      )}
+
       {/* Bottom meta */}
       <div className="flex items-center gap-5 text-[11px] text-zinc-500">
         <PRMeta pr={pr} />
@@ -200,7 +218,7 @@ function PRCard({ pr }: { pr: EnrichedPR }) {
 }
 
 type StatusInfo = {
-  type: 'draft' | 'pending_review' | 'submitted' | 'merged' | 'closed' | 'open';
+  type: 'draft' | 'pending_review' | 'needs_changes' | 'submitted' | 'merged' | 'closed' | 'open';
 };
 
 function getPRStatusInfo(pr: EnrichedPR): StatusInfo {
@@ -210,6 +228,7 @@ function getPRStatusInfo(pr: EnrichedPR): StatusInfo {
   // Draft check added
   if (pr.draft) return { type: 'draft' };
 
+  if (pr.mentor_status === 'changes_requested') return { type: 'needs_changes' };
   if (pr.mentor_status === 'approved') return { type: 'submitted' };
   if (pr.mentor_status === 'pending') return { type: 'pending_review' };
 
@@ -229,6 +248,13 @@ function StatusBadge({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusInf
       return (
         <span className="rounded-sm border border-amber-600/60 bg-amber-900/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">
           Mentor Review Pending
+        </span>
+      );
+
+    case 'needs_changes':
+      return (
+        <span className="rounded-sm border border-purple-500/60 bg-purple-900/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-purple-400">
+          Mentor Feedback
         </span>
       );
 
@@ -290,6 +316,18 @@ function ActionButton({ pr, statusInfo }: { pr: EnrichedPR; statusInfo: StatusIn
           className={`${base} border-[#2d333b] text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800`}
         >
           View Draft
+        </a>
+      );
+
+    case 'needs_changes':
+      return (
+        <a
+          href={pr.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`${base} border-purple-500/60 bg-purple-900/10 text-purple-400 hover:bg-purple-900/20`}
+        >
+          Address Feedback
         </a>
       );
 
@@ -369,6 +407,8 @@ function PRMeta({ pr }: { pr: EnrichedPR }) {
           <span className="text-zinc-500">Reason: {pr.close_reason}</span>
         ) : pr.xp_earned ? (
           <span className="text-[#39d353]">+{pr.xp_earned} XP earned</span>
+        ) : pr.mentor_status === 'changes_requested' ? (
+          <span className="text-purple-400">Awaiting your update</span>
         ) : null}
       </span>
 
