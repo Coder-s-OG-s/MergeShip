@@ -863,6 +863,165 @@ describe('maintainer actions', () => {
         expect(res.data).toHaveLength(0);
       }
     });
+
+    // Regression tests for issue #755: query-level scoping
+    // The flagged_accounts query must now be constrained by `.in('user_id', …)`
+    // derived from users with activity in the maintainer's repos — no global
+    // unbounded load followed by JavaScript filtering.
+
+    it('scopes flagged_accounts query at the database level to active user ids (regression #755)', async () => {
+      // activeUserIds from PR + recommendations: only user-active-pr + user-active-rec
+      const prs = [{ author_user_id: 'user-active-pr' }];
+      const recs = [{ user_id: 'user-active-rec' }];
+
+      let flaggedAccountsCallCount = 0;
+      let lastInArgs: any[] = [];
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') return chain(prs);
+        if (table === 'recommendations') return chain(recs);
+        if (table === 'flagged_accounts') {
+          flaggedAccountsCallCount += 1;
+          // Return a chain that records the `.in(` column + values
+          const c = chain([
+            {
+              id: 1,
+              user_id: 'user-active-pr',
+              reason: 'daily_xp_event_spike',
+              severity: 'medium',
+              evidence: { items: [{ repo: 'my-org/my-repo', xpDelta: 10 }] },
+              detected_at: '2026-05-18T00:00:00Z',
+            },
+            {
+              id: 2,
+              user_id: 'user-active-rec',
+              reason: 'rapid_merge_spike',
+              severity: 'high',
+              evidence: { items: [{ repoFullName: 'my-org/my-repo' }] },
+              detected_at: '2026-05-18T01:00:00Z',
+            },
+          ]);
+          const origIn = c.in as any;
+          c.in = vi.fn((col: string, values: any[]) => {
+            if (col === 'user_id') lastInArgs = [col, values];
+            return c;
+          });
+          return c;
+        }
+        if (table === 'profiles') {
+          return chain([
+            { id: 'user-active-pr', github_handle: 'active-pr-user', xp: 100, level: 2 },
+            { id: 'user-active-rec', github_handle: 'active-rec-user', xp: 200, level: 3 },
+          ]);
+        }
+        return chain([]);
+      });
+
+      const res = await getFlaggedAccounts({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      expect(flaggedAccountsCallCount).toBe(1);
+      // The `.in('user_id', …)` filter must be applied to the flagged_accounts query
+      expect(lastInArgs[0]).toBe('user_id');
+      expect(lastInArgs[1]).toEqual(expect.arrayContaining(['user-active-pr', 'user-active-rec']));
+      // user-inactive (no activity in maintainer's repos) must not be in the filter
+      expect(lastInArgs[1]).not.toContain('user-inactive');
+      if (res.ok) {
+        expect(res.data).toHaveLength(2);
+      }
+    });
+
+    it('returns empty array without querying flagged_accounts when no users have activity in repos (#755)', async () => {
+      // No PRs and no recommendations → activeUserIds is empty
+      const prs: any[] = [];
+      const recs: any[] = [];
+
+      let flaggedAccountsCallCount = 0;
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') return chain(prs);
+        if (table === 'recommendations') return chain(recs);
+        if (table === 'flagged_accounts') {
+          flaggedAccountsCallCount += 1;
+          return chain([
+            {
+              id: 99,
+              user_id: 'someone-else',
+              reason: 'rapid_merge_spike',
+              severity: 'high',
+              evidence: { items: [{ repo: 'other-org/other-repo' }] },
+              detected_at: '2026-05-18T02:00:00Z',
+            },
+          ]);
+        }
+        return chain([]);
+      });
+
+      const res = await getFlaggedAccounts({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      // The fix must short-circuit before touching flagged_accounts so no
+      // global rows are ever loaded for an attacker who controls zero repos
+      // with user activity.
+      expect(flaggedAccountsCallCount).toBe(0);
+      if (res.ok) {
+        expect(res.data).toHaveLength(0);
+      }
+    });
+
+    it('propagates query error when pull_requests activity lookup fails (#755)', async () => {
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') return chain(null, { message: 'pr lookup broke' });
+        return chain([]);
+      });
+
+      const res = await getFlaggedAccounts({ installationId: 1 });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('query_failed');
+    });
+
+    it('propagates query error when recommendations activity lookup fails (#755)', async () => {
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') return chain([{ author_user_id: 'u1' }]);
+        if (table === 'recommendations') return chain(null, { message: 'rec lookup broke' });
+        return chain([]);
+      });
+
+      const res = await getFlaggedAccounts({ installationId: 1 });
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('query_failed');
+    });
+
+    it('still drops flags whose evidence.items repo is outside maintainer scope (#755)', async () => {
+      // Even when the user has activity in the maintainer's repos, a flag whose
+      // evidence solely references an unrelated repo must be filtered out.
+      const prs = [{ author_user_id: 'user-cross' }];
+      const recs: any[] = [];
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'pull_requests') return chain(prs);
+        if (table === 'recommendations') return chain(recs);
+        if (table === 'flagged_accounts') {
+          return chain([
+            {
+              id: 1,
+              user_id: 'user-cross',
+              reason: 'rapid_merge_spike',
+              severity: 'high',
+              evidence: { items: [{ repo: 'other-org/other-repo' }] },
+              detected_at: '2026-05-18T02:00:00Z',
+            },
+          ]);
+        }
+        if (table === 'profiles')
+          return chain([{ id: 'user-cross', github_handle: 'cross', xp: 50, level: 1 }]);
+        return chain([]);
+      });
+
+      const res = await getFlaggedAccounts({ installationId: 1 });
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toHaveLength(0);
+      }
+    });
   });
 
   // resolveFlaggedAccount

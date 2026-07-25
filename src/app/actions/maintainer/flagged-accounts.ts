@@ -39,11 +39,56 @@ export async function getFlaggedAccounts(args?: {
     return ok([]);
   }
 
+  // Step 1: Resolve user_ids that have activity in the maintainer's repos.
+  // We do this BEFORE touching `flagged_accounts` so that the flagged-accounts
+  // query can be scoped at the database level to those user_ids, eliminating
+  // the prior data-leak path where the global table was loaded unscoped and
+  // then filtered in JavaScript (see issue #755).
+  const [prUsersRes, recUsersRes] = await Promise.all([
+    service.from('pull_requests').select('author_user_id').in('repo_full_name', repos),
+    service
+      .from('recommendations')
+      .select('user_id, issues!inner(repo_full_name)')
+      .in('issues.repo_full_name', repos),
+  ]);
+
+  if (prUsersRes.error) {
+    return err('query_failed', prUsersRes.error.message);
+  }
+  if (recUsersRes.error) {
+    return err('query_failed', recUsersRes.error.message);
+  }
+
+  const activeUserIds = new Set<string>();
+  for (const pr of prUsersRes.data ?? []) {
+    if (pr.author_user_id) {
+      activeUserIds.add(pr.author_user_id);
+    }
+  }
+  for (const rec of recUsersRes.data ?? []) {
+    if (rec.user_id) {
+      activeUserIds.add(rec.user_id);
+    }
+  }
+
+  if (activeUserIds.size === 0) {
+    return ok([]);
+  }
+
+  const userIdsFilter = Array.from(activeUserIds);
+
+  // Step 2: Query `flagged_accounts` scoped to users with activity in the
+  // maintainer's repos. This is the query-level scoping the issue asked for.
+  // We still post-filter by `evidence.items[].repo` because the JSONB
+  // containment check is not portable across Supabase client versions, but
+  // the unbounded global load is gone — the query can now return at most
+  // flags for users the maintainer is already authorised to see.
   const { data: flags, error } = await service
     .from('flagged_accounts')
     .select('id, user_id, installation_id, reason, severity, evidence, detected_at')
     .eq('status', 'open')
     .or(`installation_id.is.null,installation_id.eq.${installationId}`)
+    .in('user_id', userIdsFilter)
     .order('detected_at', { ascending: false })
     .limit(100);
 
@@ -55,47 +100,7 @@ export async function getFlaggedAccounts(args?: {
     return ok([]);
   }
 
-  const userIds = Array.from(new Set(flags.map((flag) => flag.user_id).filter(Boolean)));
-  if (userIds.length === 0) {
-    return ok([]);
-  }
-
-  const { data: prUsers, error: prError } = await service
-    .from('pull_requests')
-    .select('author_user_id')
-    .in('author_user_id', userIds)
-    .in('repo_full_name', repos);
-
-  if (prError) {
-    return err('query_failed', prError.message);
-  }
-
-  const { data: recUsers, error: recError } = await service
-    .from('recommendations')
-    .select('user_id, issues!inner(repo_full_name)')
-    .in('user_id', userIds)
-    .in('issues.repo_full_name', repos);
-
-  if (recError) {
-    return err('query_failed', recError.message);
-  }
-
-  const activeUserIds = new Set<string>();
-  for (const pr of prUsers ?? []) {
-    if (pr.author_user_id) {
-      activeUserIds.add(pr.author_user_id);
-    }
-  }
-  for (const rec of recUsers ?? []) {
-    if (rec.user_id) {
-      activeUserIds.add(rec.user_id);
-    }
-  }
-
   const allowedFlags = flags.filter((flag) => {
-    if (!flag.user_id || !activeUserIds.has(flag.user_id)) {
-      return false;
-    }
     const evidence = flag.evidence as any;
     const items = Array.isArray(evidence?.items) ? evidence.items : [];
     return items.some((item: any) => {
