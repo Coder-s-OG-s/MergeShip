@@ -43,7 +43,7 @@ export default async function IssuesPage({
       : undefined) as 'E' | 'M' | 'H' | undefined,
     repo: resolvedSearchParams.repo,
     showClaimed: resolvedSearchParams.claimed === 'true',
-    page: Math.max(1, parseInt(resolvedSearchParams.page ?? '1') || 1),
+    page: Math.max(1, parseInt(resolvedSearchParams.page ?? '1', 10) || 1),
     sort: (['newest', 'xp_desc', 'xp_asc'].includes(resolvedSearchParams.sort ?? '')
       ? resolvedSearchParams.sort
       : undefined) as 'newest' | 'xp_desc' | 'xp_asc' | undefined,

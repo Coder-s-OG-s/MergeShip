@@ -1,4 +1,4 @@
-import { cacheRateLimitHit, isSharedCacheAvailable, blockedRateLimitBucket } from './cache';
+import { cacheRateLimitHit, isSharedCacheAvailable } from './cache';
 
 export const RATE_LIMIT_TIERS = {
   STANDARD: { limit: 30, windowSec: 60 },

@@ -75,7 +75,7 @@ export function ContributorsTable({
 
     // Repo filter
     if (selectedRepo !== 'All repos') {
-      list = list.filter((c) => c.repoFullNames.includes(selectedRepo));
+      list = list.filter((c) => c.repoFullNames?.includes(selectedRepo));
     }
 
     // Sort
