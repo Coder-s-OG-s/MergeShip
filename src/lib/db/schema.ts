@@ -385,6 +385,7 @@ export const flaggedAccounts = pgTable(
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     userId: uuid('user_id').references(() => profiles.id, { onDelete: 'cascade' }),
+    installationId: bigint('installation_id', { mode: 'number' }),
     reason: text('reason', {
       enum: ['daily_xp_event_spike', 'rapid_merge_spike', 'reviewer_approval_concentration'],
     }).notNull(),
@@ -406,6 +407,7 @@ export const flaggedAccounts = pgTable(
     ),
     statusDetectedIdx: index('flagged_accounts_status_detected_idx').on(t.status, t.detectedAt),
     userIdx: index('flagged_accounts_user_idx').on(t.userId),
+    installationIdx: index('flagged_accounts_installation_idx').on(t.installationId),
   }),
 );
 
@@ -708,3 +710,42 @@ export const organizationInvites = pgTable('organization_invites', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
 });
+
+export const chatChannels = pgTable(
+  'chat_channels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    mentorId: uuid('mentor_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    menteeId: uuid('mentee_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    uniqMentorMentee: uniqueIndex('chat_channels_mentor_mentee_uniq').on(t.mentorId, t.menteeId),
+    mentorIdx: index('chat_channels_mentor_idx').on(t.mentorId),
+    menteeIdx: index('chat_channels_mentee_idx').on(t.menteeId),
+  }),
+);
+
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    channelId: uuid('channel_id')
+      .notNull()
+      .references(() => chatChannels.id, { onDelete: 'cascade' }),
+    senderId: uuid('sender_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    content: text('content').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    channelTimeIdx: index('chat_messages_channel_time_idx').on(t.channelId, t.createdAt),
+  }),
+);

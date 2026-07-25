@@ -11,7 +11,7 @@ import { ToastProvider } from '@/components/toast';
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = await getServerSupabase();
   if (!sb) {
-    return <>{children}</>;
+    redirect('/');
   }
   const {
     data: { user },

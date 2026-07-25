@@ -1,9 +1,11 @@
 import { notFound } from 'next/navigation';
+import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
 import { ExternalLink, ArrowLeft } from 'lucide-react';
 import { CopyButton } from '@/components/copy-button';
+import { StartChatButton } from '@/components/start-chat-button';
 import { ActivityHeatmap } from '@/components/activity-heatmap';
 import { totalContributions } from '@/lib/contributions/activity-history';
 import { loadActivityHistory } from '@/lib/contributions/load-activity-history';
@@ -365,6 +367,33 @@ export default async function PublicProfile({ params }: { params: Promise<{ hand
   const profile = await loadProfileData(handle);
   if (!profile) notFound();
 
+  // Retrieve current user to check chat eligibility
+  const sb = await getServerSupabase();
+  let currentUserProfile: any = null;
+  if (sb) {
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+    if (user) {
+      const service = getServiceSupabase();
+      if (service) {
+        const { data } = await service
+          .from('profiles')
+          .select('id, level')
+          .eq('id', user.id)
+          .maybeSingle();
+        currentUserProfile = data;
+      }
+    }
+  }
+
+  let canChat = false;
+  if (currentUserProfile && currentUserProfile.id !== profile.profileId) {
+    const mentorLevel = Math.max(currentUserProfile.level, profile.level);
+    const menteeLevel = Math.min(currentUserProfile.level, profile.level);
+    canChat = mentorLevel >= 2 && mentorLevel > menteeLevel;
+  }
+
   return (
     <div className="min-h-screen bg-[#0d1117] font-mono text-white">
       {/* Top nav */}
@@ -435,6 +464,14 @@ export default async function PublicProfile({ params }: { params: Promise<{ hand
                 <p className="mb-3 text-[11px] uppercase tracking-widest text-zinc-600">
                   {formatJoinDate(profile.joinedAt)}
                 </p>
+                {canChat && (
+                  <div className="mb-4">
+                    <StartChatButton
+                      targetUserId={profile.profileId}
+                      targetHandle={profile.githubHandle}
+                    />
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-4 text-[11px] uppercase tracking-widest text-zinc-400">
                   <span>
                     <span className="font-bold text-white">{profile.prsMerged}</span> PRS MERGED

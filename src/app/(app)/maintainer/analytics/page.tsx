@@ -17,6 +17,7 @@ import RangeTabs from './range-tabs';
 import QueueSignalPanel from './queue-signal-panel';
 import { StatsHeader } from './stats-header';
 import { PrVolumeChart } from './pr-volume-chart';
+import SummaryBanner from './summary-banner';
 import type { AnalyticsRange } from '@/lib/maintainer/time-saved';
 
 export const dynamic = 'force-dynamic';
@@ -147,6 +148,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
             </div>
           </div>
         </div>
+
+        <SummaryBanner stats={stats} range={range} installationId={activeInstallId} />
       </div>
     </div>
   );

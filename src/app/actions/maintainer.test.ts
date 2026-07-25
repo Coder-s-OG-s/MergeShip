@@ -139,6 +139,8 @@ function chain(data: unknown = [], error: unknown = null) {
   c.gte = vi.fn(pass);
   c.lte = vi.fn(pass);
   c.not = vi.fn(pass);
+  c.is = vi.fn(pass);
+  c.or = vi.fn(pass);
   c.update = vi.fn(pass);
   c.delete = vi.fn(pass);
   c.upsert = vi.fn(pass);
@@ -893,6 +895,56 @@ describe('maintainer actions', () => {
       const res = await resolveFlaggedAccount(1, 'dismissed', 1);
       expect(res.ok).toBe(false);
       if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+
+    it('returns not_authorised if flag has a different installation_id', async () => {
+      mockFrom.mockReturnValue(
+        chain({
+          id: 1,
+          evidence: { items: [{ repoFullName: 'my-org/my-repo' }] },
+          user_id: 'user-1',
+          installation_id: 999,
+        }),
+      );
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['my-org/my-repo']);
+
+      const res = await resolveFlaggedAccount(1, 'dismissed', 1);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+
+    it('allows resolve when flag has matching installation_id', async () => {
+      const c1 = chain({
+        id: 1,
+        evidence: { items: [{ repoFullName: 'my-org/my-repo' }] },
+        user_id: 'user-1',
+        installation_id: 1,
+      });
+      const c2 = chain({ id: 1 });
+
+      mockFrom.mockReturnValueOnce(c1).mockReturnValueOnce(c2);
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['my-org/my-repo']);
+
+      const res = await resolveFlaggedAccount(1, 'dismissed', 1);
+      expect(res.ok).toBe(true);
+    });
+
+    it('allows resolve when flag has null installation_id (legacy)', async () => {
+      const c1 = chain({
+        id: 1,
+        evidence: { items: [{ repoFullName: 'my-org/my-repo' }] },
+        user_id: 'user-1',
+        installation_id: null,
+      });
+      const c2 = chain({ id: 1 });
+
+      mockFrom.mockReturnValueOnce(c1).mockReturnValueOnce(c2);
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['my-org/my-repo']);
+
+      const res = await resolveFlaggedAccount(1, 'dismissed', 1);
+      expect(res.ok).toBe(true);
     });
 
     it('updates status when flag is in maintainer scope', async () => {
