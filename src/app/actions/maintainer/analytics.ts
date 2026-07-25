@@ -1368,40 +1368,19 @@ export type PrVolumeBucket = {
   stalled: number;
 };
 
-export async function getPrVolumeTimeSeries(
-  installationId: number,
+export function bucketPrVolumeTimeSeries(
+  prs: {
+    mergedAt: Date | null;
+    closedAt: Date | null;
+    aiFlagged: boolean;
+    githubUpdatedAt: Date;
+    githubCreatedAt: Date;
+  }[],
   range: AnalyticsRange,
-): Promise<Result<PrVolumeBucket[]>> {
-  const authRes = await requireMaintainer({
-    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
-    requireService: true,
-  });
-  if (!authRes.ok) return authRes;
-  const { user } = authRes.data;
-
-  const repos = await listMaintainerRepos(user.id, installationId);
-  if (repos.length === 0) return ok([]);
-
-  const now = new Date();
-  const { from, to } = rangeToDateBounds(range, now);
-
-  const db = tryGetDb();
-  if (!db) return err('db_error', 'No database connection');
-
-  // Query all PRs created before `to` for the selected repos.
-  const prs = await db
-    .select({
-      id: pullRequests.id,
-      state: pullRequests.state,
-      mergedAt: pullRequests.mergedAt,
-      closedAt: pullRequests.closedAt,
-      aiFlagged: pullRequests.aiFlagged,
-      githubUpdatedAt: pullRequests.githubUpdatedAt,
-      githubCreatedAt: pullRequests.githubCreatedAt,
-    })
-    .from(pullRequests)
-    .where(and(inArray(pullRequests.repoFullName, repos), lte(pullRequests.githubCreatedAt, to)));
-
+  from: Date,
+  to: Date,
+  now: Date,
+): PrVolumeBucket[] {
   // Setup buckets
   const getNextBucket = (d: Date) => {
     const next = new Date(d.getTime());
@@ -1503,5 +1482,42 @@ export async function getPrVolumeTimeSeries(
     }
   }
 
-  return ok(Object.values(buckets));
+  return Object.values(buckets);
+}
+
+export async function getPrVolumeTimeSeries(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<PrVolumeBucket[]>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) return ok([]);
+
+  const now = new Date();
+  const { from, to } = rangeToDateBounds(range, now);
+
+  const db = tryGetDb();
+  if (!db) return err('db_error', 'No database connection');
+
+  // Query all PRs created before `to` for the selected repos.
+  const prs = await db
+    .select({
+      id: pullRequests.id,
+      state: pullRequests.state,
+      mergedAt: pullRequests.mergedAt,
+      closedAt: pullRequests.closedAt,
+      aiFlagged: pullRequests.aiFlagged,
+      githubUpdatedAt: pullRequests.githubUpdatedAt,
+      githubCreatedAt: pullRequests.githubCreatedAt,
+    })
+    .from(pullRequests)
+    .where(and(inArray(pullRequests.repoFullName, repos), lte(pullRequests.githubCreatedAt, to)));
+
+  return ok(bucketPrVolumeTimeSeries(prs, range, from, to, now));
 }
