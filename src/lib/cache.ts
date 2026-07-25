@@ -14,6 +14,17 @@ interface CacheBackend {
   del(key: string): Promise<void>;
   scanDel(prefix: string): Promise<void>;
   rateLimitHit(key: string, windowSec: number, now: number): Promise<RateLimitBucket>;
+  // Sliding-window counter: `count` reflects every hit in the trailing
+  // `windowSec` seconds, closing the fixed-window boundary loophole where a
+  // caller could spend a full budget at the end of one window and another at
+  // the start of the next. `limit` lets a backend bound its storage without
+  // changing the observed count/remaining decision.
+  rateLimitHitSlidingWindow(
+    key: string,
+    windowSec: number,
+    limit: number,
+    now: number,
+  ): Promise<RateLimitBucket>;
 }
 
 export type RateLimitBucket = {
@@ -70,6 +81,29 @@ class MemoryBackend implements CacheBackend {
     const next = count + 1;
     this.store.set(key, { value: next, expiresAt: hit.expiresAt });
     return { count: next, resetAt: hit.expiresAt };
+  }
+
+  async rateLimitHitSlidingWindow(
+    key: string,
+    windowSec: number,
+    limit: number,
+    now: number,
+  ): Promise<RateLimitBucket> {
+    const windowMs = windowSec * 1000;
+    const cutoff = now - windowMs;
+    const existing = this.store.get(key);
+    const prior = Array.isArray(existing?.value) ? (existing.value as number[]) : [];
+    const hits = prior.filter((t) => t > cutoff);
+    hits.push(now);
+
+    // Only the newest `limit + 1` timestamps can flip the over-limit decision,
+    // and any older excess would age out no later than the entries we retain —
+    // so capping here bounds memory without altering count/remaining/eviction.
+    const bounded = hits.length > limit + 1 ? hits.slice(hits.length - limit - 1) : hits;
+
+    const resetAt = now + windowMs;
+    this.store.set(key, { value: bounded, expiresAt: resetAt });
+    return { count: bounded.length, resetAt };
   }
 }
 
@@ -132,6 +166,32 @@ export class UpstashBackend implements CacheBackend {
       return blockedRateLimitBucket(windowSec, now);
     }
   }
+
+  async rateLimitHitSlidingWindow(
+    key: string,
+    windowSec: number,
+    _limit: number,
+    now: number,
+  ): Promise<RateLimitBucket> {
+    const windowMs = windowSec * 1000;
+    try {
+      // Unique member so simultaneous hits sharing a timestamp don't collapse
+      // into one sorted-set entry. The pipeline runs atomically.
+      const member = `${now}-${Math.random()}`;
+      const results = await this.redis
+        .multi()
+        .zremrangebyscore(key, 0, now - windowMs)
+        .zadd(key, { score: now, member })
+        .zcard(key)
+        .pexpire(key, windowMs)
+        .exec();
+      const zcard = results[2];
+      const count = typeof zcard === 'number' ? zcard : 0;
+      return { count, resetAt: now + windowMs };
+    } catch {
+      return blockedRateLimitBucket(windowSec, now);
+    }
+  }
 }
 
 export class IoRedisBackend implements CacheBackend {
@@ -186,6 +246,32 @@ export class IoRedisBackend implements CacheBackend {
       const ttl = await this.redis.ttl(key);
       if (ttl <= 0) await this.redis.expire(key, windowSec);
       return { count, resetAt: rateLimitResetAt(ttl, windowSec, now) };
+    } catch {
+      return blockedRateLimitBucket(windowSec, now);
+    }
+  }
+
+  async rateLimitHitSlidingWindow(
+    key: string,
+    windowSec: number,
+    _limit: number,
+    now: number,
+  ): Promise<RateLimitBucket> {
+    const windowMs = windowSec * 1000;
+    try {
+      // Unique member so simultaneous hits sharing a timestamp don't collapse
+      // into one sorted-set entry. MULTI makes the four commands atomic.
+      const member = `${now}-${Math.random()}`;
+      const results = await this.redis
+        .multi()
+        .zremrangebyscore(key, 0, now - windowMs)
+        .zadd(key, now, member)
+        .zcard(key)
+        .pexpire(key, windowMs)
+        .exec();
+      const zcard = results?.[2]?.[1];
+      const count = typeof zcard === 'number' ? zcard : 0;
+      return { count, resetAt: now + windowMs };
     } catch {
       return blockedRateLimitBucket(windowSec, now);
     }
@@ -266,4 +352,13 @@ export function cacheRateLimitHit(
   now: number,
 ): Promise<RateLimitBucket> {
   return backend.rateLimitHit(key, windowSec, now);
+}
+
+export function cacheRateLimitHitSlidingWindow(
+  key: string,
+  windowSec: number,
+  limit: number,
+  now: number,
+): Promise<RateLimitBucket> {
+  return backend.rateLimitHitSlidingWindow(key, windowSec, limit, now);
 }
