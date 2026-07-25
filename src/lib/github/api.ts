@@ -1,5 +1,6 @@
 import type { Octokit } from '@octokit/rest';
 import { cacheGet, cacheSet } from '../cache';
+import { singleFlight } from '../single-flight';
 
 /**
  * GitHub fetch wrapper with ETag-based conditional requests + Redis cache.
@@ -28,6 +29,13 @@ export type CachedRequestArgs<T> = {
 };
 
 export async function cachedGhRequest<T>(args: CachedRequestArgs<T>): Promise<T> {
+  // Coalesce concurrent callers for the same key: on a cache miss they share a
+  // single upstream request instead of each firing one (a cache stampede that
+  // would burn rate limit and duplicate work). See single-flight.ts.
+  return singleFlight(args.cacheKey, () => fetchThroughCache(args));
+}
+
+async function fetchThroughCache<T>(args: CachedRequestArgs<T>): Promise<T> {
   const cached = await cacheGet<CacheEntry<T>>(args.cacheKey);
 
   try {
