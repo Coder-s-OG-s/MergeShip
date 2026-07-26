@@ -94,7 +94,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <ToastProvider initialXp={xp} initialLevel={level}>
-      <div className="flex h-screen overflow-hidden font-mono text-white" style={{ backgroundColor: 'var(--shell-bg)' }}>
+      <div
+        className="flex h-screen overflow-hidden font-mono text-white"
+        style={{ backgroundColor: 'var(--shell-bg)' }}
+      >
         <Sidebar
           handle={handle}
           profileHref={`/@${handle}`}
