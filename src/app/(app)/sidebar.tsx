@@ -36,7 +36,7 @@ export function Sidebar({
   const inMaintainerSection = isMaintainer && pathname.startsWith('/maintainer');
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col justify-between border-r border-[#2d333b] bg-[#111318]">
+    <aside className="flex w-64 shrink-0 flex-col justify-between border-r" style={{ backgroundColor: 'var(--shell-bg)', borderColor: 'var(--shell-border)' }}>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="p-8 pb-12">
           <Link href="/" className="font-serif text-2xl font-bold tracking-wider text-white">
@@ -57,45 +57,45 @@ export function Sidebar({
         </nav>
 
         {!inMaintainerSection && (
-          <div className="mx-4 mt-6 grid grid-cols-2 gap-px border border-[#2d333b]">
-            <div className="bg-[#161b22] p-3">
-              <div className="text-[9px] uppercase tracking-widest text-zinc-500">Total XP</div>
+          <div className="mx-4 mt-6 grid grid-cols-2 gap-px border" style={{ borderColor: 'var(--shell-border)' }}>
+            <div className="p-3" style={{ backgroundColor: 'var(--shell-card-bg)' }}>
+              <div className="text-[9px] uppercase tracking-widest" style={{ color: 'var(--shell-text-muted)' }}>Total XP</div>
               <div className="mt-1 font-serif text-lg leading-none text-white">
                 {xp.toLocaleString()}
               </div>
             </div>
-            <div className="bg-[#161b22] p-3">
-              <div className="text-[9px] uppercase tracking-widest text-zinc-500">Merged PRs</div>
+            <div className="p-3" style={{ backgroundColor: 'var(--shell-card-bg)' }}>
+              <div className="text-[9px] uppercase tracking-widest" style={{ color: 'var(--shell-text-muted)' }}>Merged PRs</div>
               <div className="mt-1 font-serif text-lg leading-none text-white">
                 {githubTotalMerges.toString().padStart(2, '0')}
               </div>
             </div>
-            <div className="bg-[#161b22] p-3">
-              <div className="text-[9px] uppercase tracking-widest text-zinc-500">Open Issues</div>
+            <div className="p-3" style={{ backgroundColor: 'var(--shell-card-bg)' }}>
+              <div className="text-[9px] uppercase tracking-widest" style={{ color: 'var(--shell-text-muted)' }}>Open Issues</div>
               <div className="mt-1 font-serif text-lg leading-none text-white">
                 {openIssuesCount.toString().padStart(2, '0')}
               </div>
             </div>
-            <div className="bg-[#161b22] p-3">
-              <div className="text-[9px] uppercase tracking-widest text-zinc-500">Streak</div>
+            <div className="p-3" style={{ backgroundColor: 'var(--shell-card-bg)' }}>
+              <div className="text-[9px] uppercase tracking-widest" style={{ color: 'var(--shell-text-muted)' }}>Streak</div>
               <div className="mt-1 font-serif text-lg leading-none text-white">
                 {githubStreak.toString().padStart(2, '0')}
-                <span className="ml-1 text-[9px] text-zinc-500">d</span>
+                <span className="ml-1 text-[9px]" style={{ color: 'var(--shell-text-muted)' }}>d</span>
               </div>
             </div>
           </div>
         )}
 
         {!inMaintainerSection && mentorHandle && (
-          <div className="mx-4 mt-4 border border-[#2d333b] p-3">
-            <div className="mb-2 text-[9px] uppercase tracking-widest text-zinc-500">
+          <div className="mx-4 mt-4 border p-3" style={{ borderColor: 'var(--shell-border)' }}>
+            <div className="mb-2 text-[9px] uppercase tracking-widest" style={{ color: 'var(--shell-text-muted)' }}>
               Assigned Mentor
             </div>
             <div className="mb-3 flex items-center gap-2">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center bg-zinc-800 text-[10px] uppercase text-zinc-400">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center text-[10px] uppercase" style={{ backgroundColor: 'var(--shell-bg-secondary)', color: 'var(--shell-text-muted)' }}>
                 {mentorHandle.substring(0, 2).toUpperCase()}
               </div>
-              <span className="truncate text-[11px] font-bold uppercase tracking-widest text-zinc-200">
+              <span className="truncate text-[11px] font-bold uppercase tracking-widest text-white">
                 {mentorHandle}
               </span>
             </div>
@@ -109,10 +109,10 @@ export function Sidebar({
         )}
       </div>
 
-      <div className="border-t border-[#2d333b] p-6">
+      <div className="border-t p-6" style={{ borderColor: 'var(--shell-border)' }}>
         <div className="mb-6 flex items-center gap-3">
-          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-sm bg-zinc-800">
-            <div className="flex h-full w-full items-center justify-center bg-zinc-700 text-xs">
+          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-sm" style={{ backgroundColor: 'var(--shell-bg-secondary)' }}>
+            <div className="flex h-full w-full items-center justify-center text-xs" style={{ backgroundColor: 'var(--shell-bg-tertiary)' }}>
               {handle?.substring(0, 2).toUpperCase()}
             </div>
           </div>
@@ -120,7 +120,7 @@ export function Sidebar({
             <div className="truncate text-[13px] font-bold uppercase">
               {handle || 'CONTRIBUTOR'}
             </div>
-            <div className="truncate text-[11px] tracking-wider text-zinc-500">
+            <div className="truncate text-[11px] tracking-wider" style={{ color: 'var(--shell-text-muted)' }}>
               {inMaintainerSection ? 'MAINTAINER' : `L${level} PRACTITIONER`}
             </div>
           </div>
