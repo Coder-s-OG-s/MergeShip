@@ -176,6 +176,65 @@ export async function getContributorsList(
   return ok(rows);
 }
 
+export type ContributorSummary = {
+  handle: string;
+  level: number;
+  totalPrs: number;
+  mergedPrs: number;
+};
+
+/**
+ * Totals for a single author across every repo in this install — the
+ * "Contributor" panel on the PR detail page. Trust score is intentionally
+ * left out here; it depends on the composite trust score work (#454) and
+ * is computed separately in getContributorsList via computeTrustScore.
+ */
+export async function getContributorSummary(
+  userId: string,
+  installationId: number,
+): Promise<Result<ContributorSummary | null>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:contributor-summary', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  // Defense in depth: confirm the requested install actually belongs to the user.
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return ok(null);
+  }
+
+  const { data: profile } = await service
+    .from('profiles')
+    .select('github_handle, level')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (!profile) {
+    return ok(null);
+  }
+
+  type PrStateRow = { id: number; state: 'open' | 'closed' | 'merged' };
+  const { data: authoredPrs } = await service
+    .from('pull_requests')
+    .select('id, state')
+    .eq('author_user_id', userId)
+    .in('repo_full_name', repos);
+
+  const rows = (authoredPrs ?? []) as unknown as PrStateRow[];
+  const totalPrs = rows.length;
+  const mergedPrs = rows.filter((r) => r.state === 'merged').length;
+
+  return ok({
+    handle: profile.github_handle,
+    level: profile.level ?? 0,
+    totalPrs,
+    mergedPrs,
+  });
+}
+
 export async function removeContributorFromOrg(
   installationId: number,
   targetHandle: string,

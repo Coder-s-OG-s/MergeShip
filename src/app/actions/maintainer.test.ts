@@ -31,6 +31,7 @@ import {
   getContributorsList,
   previewMergeXp,
   getContributorStats,
+  getContributorSummary,
   getAiDetectionBreakdown,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
@@ -2007,6 +2008,63 @@ describe('maintainer actions', () => {
         expect(res.data.joinedLast7d).toBe(1);
         expect(res.data.avgTrust).toBeGreaterThan(0);
         expect(res.data.pendingInvites).toBe(0);
+      }
+    });
+  });
+
+  // getContributorSummary
+
+  describe('getContributorSummary', () => {
+    it('returns null when the caller does not maintain the install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+
+      const res = await getContributorSummary('user-alice', 1);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toBeNull();
+      }
+    });
+
+    it('returns null when the author has no profile', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockFrom.mockImplementation((table) => {
+        if (table === 'profiles') return chain(null);
+        return chain([]);
+      });
+
+      const res = await getContributorSummary('user-alice', 1);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toBeNull();
+      }
+    });
+
+    it('returns handle, level, and total-vs-merged PR counts scoped to the install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo', 'org/other']);
+
+      const mockProfile = { github_handle: 'arjun.kr', level: 2 };
+      const mockPrs = [
+        { id: 1, state: 'merged' },
+        { id: 2, state: 'merged' },
+        { id: 3, state: 'open' },
+        { id: 4, state: 'closed' },
+      ];
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'profiles') return chain(mockProfile);
+        if (table === 'pull_requests') return chain(mockPrs);
+        return chain([]);
+      });
+
+      const res = await getContributorSummary('user-alice', 1);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({
+          handle: 'arjun.kr',
+          level: 2,
+          totalPrs: 4,
+          mergedPrs: 2,
+        });
       }
     });
   });
