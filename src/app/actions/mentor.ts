@@ -63,17 +63,21 @@ export async function verifyPrAction(opts: {
     return err('not_authorised', 'You do not maintain the repository for this PR');
   }
 
-  // Mark PR verified
-  const { error: updateErr } = await service
+  // Mark PR verified - atomic update only when mentor_verified is false
+  const { data: updatedPr, error: updateErr } = await service
     .from('pull_requests')
     .update({
       mentor_verified: true,
       mentor_reviewer_id: user.id,
       mentor_review_at: new Date().toISOString(),
     })
-    .eq('id', pr.id);
+    .eq('id', pr.id)
+    .eq('mentor_verified', false)
+    .select('id')
+    .single();
 
   if (updateErr) return err('persist_failed', updateErr.message);
+  if (!updatedPr) return err('already_verified', 'This PR is already verified');
 
   // Award XP
   const { data: mentee } = await service
