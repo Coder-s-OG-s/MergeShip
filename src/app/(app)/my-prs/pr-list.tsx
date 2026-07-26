@@ -42,7 +42,8 @@ export function PRList({ prs }: Props) {
     if (activeTab === 'all') return true;
     if (activeTab === 'merged') return pr.state === 'merged';
     if (activeTab === 'closed') return pr.state === 'closed';
-    if (activeTab === 'needs_changes') return pr.mentor_status === 'changes_requested';
+    if (activeTab === 'needs_changes')
+      return pr.state === 'open' && pr.mentor_status === 'changes_requested';
     if (activeTab === 'pending_review')
       return pr.state === 'open' && pr.mentor_status === 'pending';
     if (activeTab === 'mentor_approved') return pr.mentor_status === 'approved';
@@ -54,7 +55,9 @@ export function PRList({ prs }: Props) {
     all: repoFiltered.length,
     pending_review: repoFiltered.filter((p) => p.state === 'open' && p.mentor_status === 'pending')
       .length,
-    needs_changes: repoFiltered.filter((p) => p.mentor_status === 'changes_requested').length,
+    needs_changes: repoFiltered.filter(
+      (p) => p.state === 'open' && p.mentor_status === 'changes_requested',
+    ).length,
     mentor_approved: repoFiltered.filter((p) => p.mentor_status === 'approved').length,
     merged: repoFiltered.filter((p) => p.state === 'merged').length,
     closed: repoFiltered.filter((p) => p.state === 'closed').length,
