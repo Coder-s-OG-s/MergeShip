@@ -74,7 +74,7 @@ export async function verifyPrAction(opts: {
     .eq('id', pr.id)
     .eq('mentor_verified', false)
     .select('id')
-    .single();
+    .maybeSingle();
 
   if (updateErr) return err('persist_failed', updateErr.message);
   if (!updatedPr) return err('already_verified', 'This PR is already verified');

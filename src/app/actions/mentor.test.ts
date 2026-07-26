@@ -149,7 +149,7 @@ describe('verifyPrAction', () => {
           mentor_verified: false,
           author_login: 'mentee',
         });
-        // But update returns null (atomic condition failed)
+        // But update returns null (atomic condition failed - maybeSingle returns null when no rows affected)
         readChain.update = vi.fn(() => chain(null, null));
         return readChain;
       }
