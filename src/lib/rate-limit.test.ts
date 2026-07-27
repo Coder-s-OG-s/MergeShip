@@ -104,6 +104,50 @@ describe('rateLimit production guard', () => {
   });
 });
 
+describe('rateLimit sliding window', () => {
+  it('evicts hits older than the window so budget recovers', async () => {
+    const opts = { namespace: 'sw', key: 'eviction', limit: 3, windowSec: 60 };
+    for (let i = 0; i < 3; i++) await rateLimit(opts);
+    expect((await rateLimit(opts)).ok).toBe(false);
+
+    // Advance past the window so every prior hit ages out.
+    vi.advanceTimersByTime(60_001);
+    const after = await rateLimit(opts);
+    expect(after.ok).toBe(true);
+    expect(after.remaining).toBe(2);
+  });
+
+  it('blocks a burst that straddles the fixed-window boundary', async () => {
+    // The loophole a sliding window closes: spend the whole budget near the end
+    // of one window, then immediately again at the start of the next.
+    const opts = { namespace: 'sw', key: 'straddle', limit: 4, windowSec: 60 };
+    for (let i = 0; i < 4; i++) await rateLimit(opts);
+
+    // Half a window later the earliest hits are still in range, so further hits
+    // stay blocked — a fixed window would have reset and allowed 4 more.
+    vi.advanceTimersByTime(30_000);
+    expect((await rateLimit(opts)).ok).toBe(false);
+  });
+
+  it('keeps blocking while older-but-in-window hits remain', async () => {
+    const opts = { namespace: 'sw', key: 'partial', limit: 2, windowSec: 60 };
+    await rateLimit(opts); // t=0
+    vi.advanceTimersByTime(40_000);
+    await rateLimit(opts); // t=40s
+    expect((await rateLimit(opts)).ok).toBe(false); // t=40s, over limit
+
+    // At t=61s the t=0 hit ages out, but the t=40s hits are still inside the
+    // trailing 60s, so the caller stays blocked.
+    vi.advanceTimersByTime(21_000);
+    expect((await rateLimit(opts)).ok).toBe(false);
+  });
+
+  it('resetAt is the trailing window measured from the latest hit', async () => {
+    const r = await rateLimit({ namespace: 'sw', key: 'reset', limit: 5, windowSec: 60 });
+    expect(r.resetAt).toBe(Date.now() + 60_000);
+  });
+});
+
 describe('RATE_LIMIT_TIERS', () => {
   it('defines standard, generous, medium, strict, and hourly tiers', () => {
     expect(RATE_LIMIT_TIERS.STANDARD).toEqual({ limit: 30, windowSec: 60 });

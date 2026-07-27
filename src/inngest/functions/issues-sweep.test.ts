@@ -138,4 +138,57 @@ describe('issuesSweep', () => {
       }),
     );
   });
+
+  it('self-heals empty installation_repositories by discovering repos via GitHub API and triggering pr-backfill', async () => {
+    const reposUpsert = vi.fn().mockResolvedValue({});
+    wire({
+      github_installations: sb({
+        select: vi.fn().mockReturnThis(),
+        is: vi.fn().mockReturnValue({
+          is: vi.fn().mockResolvedValue({ data: [{ id: 1, account_login: 'test-org' }] }),
+        }),
+      }),
+      installation_repositories: sb({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({ data: [] }), // Initially empty!
+        upsert: reposUpsert,
+      }),
+    });
+
+    const octokit = {
+      paginate: vi.fn().mockResolvedValue([{ full_name: 'test-org/recovered-repo' }]),
+      apps: { listReposAccessibleToInstallation: {} },
+      repos: {
+        get: vi.fn().mockResolvedValue({
+          data: { fork: false, parent: null },
+        }),
+      },
+      issues: {
+        listForRepo: vi.fn().mockResolvedValue({ data: [] }),
+      },
+    };
+    vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
+
+    const result = await run({ step });
+
+    expect(octokit.paginate).toHaveBeenCalled();
+    expect(reposUpsert).toHaveBeenCalledWith(
+      [{ installation_id: 1, repo_full_name: 'test-org/recovered-repo' }],
+      { onConflict: 'installation_id,repo_full_name' },
+    );
+    expect(mockSend).toHaveBeenCalledWith({
+      name: 'pr-backfill/installation',
+      data: { installationId: 1 },
+    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        installs: 1,
+        perInstall: expect.arrayContaining([
+          expect.objectContaining({
+            repos: 1,
+          }),
+        ]),
+      }),
+    );
+  });
 });

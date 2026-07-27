@@ -63,7 +63,7 @@ export async function verifyPrAction(opts: {
     return err('not_authorised', 'You do not maintain the repository for this PR');
   }
 
-  // Mark PR verified - atomic update only when mentor_verified is false
+  // Mark PR verified atomically to avoid concurrent verification race condition
   const { data: updatedPr, error: updateErr } = await service
     .from('pull_requests')
     .update({
@@ -79,14 +79,30 @@ export async function verifyPrAction(opts: {
   if (updateErr) return err('persist_failed', updateErr.message);
   if (!updatedPr) return err('already_verified', 'This PR is already verified');
 
-  // Award XP
-  const { data: mentee } = await service
-    .from('profiles')
-    .select('level')
-    .eq('id', pr.author_user_id)
-    .maybeSingle();
+  // Backfill author_user_id if mentee created a profile after opening the PR
+  let menteeUserId = pr.author_user_id;
+  if (!menteeUserId) {
+    const { data: authorProfile } = await service
+      .from('profiles')
+      .select('id')
+      .eq('github_handle', pr.author_login)
+      .maybeSingle();
+    if (authorProfile?.id) {
+      menteeUserId = authorProfile.id;
+      await service.from('pull_requests').update({ author_user_id: menteeUserId }).eq('id', pr.id);
+    }
+  }
 
-  const menteeLevel = mentee?.level ?? 0;
+  // Award XP
+  let menteeLevel = 0;
+  if (menteeUserId) {
+    const { data: mentee } = await service
+      .from('profiles')
+      .select('level')
+      .eq('id', menteeUserId)
+      .maybeSingle();
+    menteeLevel = mentee?.level ?? 0;
+  }
   const isMentor = mentor.level > menteeLevel;
 
   let xp = XP_REWARDS.HELP_REVIEW_BASE;

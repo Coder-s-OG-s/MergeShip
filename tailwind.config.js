@@ -33,6 +33,14 @@ module.exports = {
           400: "#2D2D5A",
           300: "#3D3D70",
         },
+        shell: {
+          bg: "var(--shell-bg)",
+          border: "var(--shell-border)",
+          "card-bg": "var(--shell-card-bg)",
+          "text-muted": "var(--shell-text-muted)",
+          "bg-secondary": "var(--shell-bg-secondary)",
+          "bg-tertiary": "var(--shell-bg-tertiary)",
+        },
       },
       fontFamily: {
         display: ["Outfit", "sans-serif"],

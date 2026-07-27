@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   mockExecute: vi.fn(),
   mockCacheGet: vi.fn(),
   mockCacheSet: vi.fn(),
-  mockCacheRateLimitHit: vi.fn(),
+  mockCacheRateLimitHitSlidingWindow: vi.fn(),
   mockPaginate: vi.fn(),
   mockRequest: vi.fn(),
 }));
@@ -27,7 +27,7 @@ vi.mock('@/lib/db/client', () => ({
 vi.mock('@/lib/cache', () => ({
   cacheGet: mocks.mockCacheGet,
   cacheSet: mocks.mockCacheSet,
-  cacheRateLimitHit: mocks.mockCacheRateLimitHit,
+  cacheRateLimitHitSlidingWindow: mocks.mockCacheRateLimitHitSlidingWindow,
 }));
 
 vi.mock('@/lib/github/app', () => ({
@@ -62,7 +62,7 @@ describe('getLeaderboard', () => {
       },
     });
     mocks.mockCacheGet.mockResolvedValue(null);
-    mocks.mockCacheRateLimitHit.mockResolvedValue({ count: 1, resetAt: null });
+    mocks.mockCacheRateLimitHitSlidingWindow.mockResolvedValue({ count: 1, resetAt: null });
   });
 
   it('successfully fetches global leaderboard', async () => {

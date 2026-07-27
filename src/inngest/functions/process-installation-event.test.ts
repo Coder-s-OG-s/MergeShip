@@ -4,9 +4,11 @@ import {
   processInstallationReposEvent,
 } from './process-installation-event';
 import { sb, wire, step } from './__tests__/test-helpers';
+import { getInstallOctokit } from '@/lib/github/app';
 
 // Mock external dependencies.
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
+vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn() }));
 
 const mockSend = vi.fn().mockResolvedValue(undefined);
 vi.mock('../client', () => ({
@@ -62,6 +64,48 @@ describe('processInstallationEvent', () => {
         account_login: 'myorg',
       }),
     );
+  });
+
+  describe('repo discovery', () => {
+    it('discovers repos via GitHub API when repositories payload is omitted', async () => {
+      const reposUpsert = vi.fn().mockResolvedValue({ error: null });
+      wire({
+        profiles: sb(),
+        github_installations: sb({ upsert: vi.fn().mockResolvedValue({ error: null }) }),
+        installation_repositories: sb({ upsert: reposUpsert }),
+      });
+
+      const mockOctokit = {
+        paginate: vi.fn().mockResolvedValue([{ full_name: 'myorg/discovered-repo' }]),
+        apps: { listReposAccessibleToInstallation: {} },
+      };
+      vi.mocked(getInstallOctokit).mockResolvedValue(mockOctokit as never);
+
+      const event = ev('created', { repositories: undefined });
+      const result = await installRun({ event, step });
+
+      expect(getInstallOctokit).toHaveBeenCalledWith(100);
+      expect(mockOctokit.paginate).toHaveBeenCalled();
+      expect(reposUpsert).toHaveBeenCalledWith(
+        [{ installation_id: 100, repo_full_name: 'myorg/discovered-repo' }],
+        { onConflict: 'installation_id,repo_full_name' },
+      );
+      expect(result).toEqual({ ok: true, linked: false, repoCount: 1 });
+    });
+
+    it('throws error when repo discovery API fails so Inngest retries', async () => {
+      wire({
+        profiles: sb(),
+        github_installations: sb({ upsert: vi.fn().mockResolvedValue({ error: null }) }),
+      });
+
+      vi.mocked(getInstallOctokit).mockRejectedValue(new Error('API Rate Limit Exceeded'));
+
+      const event = ev('created', { repositories: undefined });
+      await expect(installRun({ event, step })).rejects.toThrow(
+        'Failed to discover repos for installation 100: API Rate Limit Exceeded',
+      );
+    });
   });
 
   describe('uninstall cleanup', () => {

@@ -18,6 +18,14 @@ type LlmCallArgs<T> = {
 
 const TIMEOUT_MS = 10000;
 const MAX_RETRIES = 2;
+// Individual budgets (MAX_RETRIES for transient, 1 for schema) are each fine on
+// their own, but since they're tracked independently, alternating failure types
+// could exceed either budget individually. This caps the combined total attempts
+// per provider regardless of failure type mix. MAX_RETRIES + 1 keeps the
+// transient-only and schema-only paths at their existing, already-tested call
+// counts (3 and 2 respectively) -- this ceiling only ever binds when failure
+// types interleave.
+const MAX_TOTAL_ATTEMPTS = MAX_RETRIES + 1;
 
 const defaultProviders: LlmProvider[] = [groqProvider, geminiProvider];
 let providerOverrides: LlmProvider[] | null = null;
@@ -77,8 +85,14 @@ export async function llmCall<T>(args: LlmCallArgs<T>): Promise<Result<T>> {
 
     let retryCount = 0;
     let schemaRetryCount = 0;
+    let totalAttempts = 0;
 
-    while (retryCount <= MAX_RETRIES && schemaRetryCount <= 1) {
+    while (
+      retryCount <= MAX_RETRIES &&
+      schemaRetryCount <= 1 &&
+      totalAttempts < MAX_TOTAL_ATTEMPTS
+    ) {
+      totalAttempts++;
       let raw: string;
       try {
         raw = await runWithTimeout(provider.complete(args.prompt), TIMEOUT_MS, provider.name);
@@ -87,7 +101,7 @@ export async function llmCall<T>(args: LlmCallArgs<T>): Promise<Result<T>> {
 
         if (provider.isTransientError(e) || message.includes('Timeout')) {
           retryCount++;
-          if (retryCount <= MAX_RETRIES) {
+          if (retryCount <= MAX_RETRIES && totalAttempts < MAX_TOTAL_ATTEMPTS) {
             continue; // Retry transient error on same provider
           }
         }
@@ -103,7 +117,7 @@ export async function llmCall<T>(args: LlmCallArgs<T>): Promise<Result<T>> {
       } catch {
         // Schema invalid due to JSON parsing
         schemaRetryCount++;
-        if (schemaRetryCount <= 1) {
+        if (schemaRetryCount <= 1 && totalAttempts < MAX_TOTAL_ATTEMPTS) {
           continue; // Retry schema once on same provider
         }
         errors.push(`${provider.name} returned non-JSON`);
@@ -113,7 +127,7 @@ export async function llmCall<T>(args: LlmCallArgs<T>): Promise<Result<T>> {
       const result = args.schema.safeParse(parsed);
       if (!result.success) {
         schemaRetryCount++;
-        if (schemaRetryCount <= 1) {
+        if (schemaRetryCount <= 1 && totalAttempts < MAX_TOTAL_ATTEMPTS) {
           continue; // Retry schema once on same provider
         }
         errors.push(

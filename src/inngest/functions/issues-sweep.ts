@@ -70,7 +70,7 @@ export const issuesSweep = inngest.createFunction(
           .select('repo_full_name')
           .eq('installation_id', install.id);
 
-        const repos = (repoRows ?? []) as RepoRow[];
+        let repos = (repoRows ?? []) as RepoRow[];
 
         let octokit;
         try {
@@ -86,6 +86,36 @@ export const issuesSweep = inngest.createFunction(
             upserts: 0,
             errors: [`install-token: ${(e as Error).message}`],
           };
+        }
+
+        // Self-healing: if installation_repositories is empty for an active install,
+        // re-discover accessible repos via GitHub API and populate table.
+        if (repos.length === 0) {
+          try {
+            const res = await octokit.paginate(octokit.apps.listReposAccessibleToInstallation, {
+              per_page: 100,
+            });
+            const discovered = (res as unknown as Array<{ full_name: string }>).map((r) => ({
+              full_name: r.full_name,
+            }));
+            if (discovered.length > 0) {
+              await sb.from('installation_repositories').upsert(
+                discovered.map((r) => ({
+                  installation_id: install.id,
+                  repo_full_name: r.full_name,
+                })),
+                { onConflict: 'installation_id,repo_full_name' },
+              );
+              repos = discovered.map((r) => ({ repo_full_name: r.full_name }));
+
+              await inngest.send({
+                name: 'pr-backfill/installation',
+                data: { installationId: install.id },
+              });
+            }
+          } catch (e) {
+            errors.push(`repo-discovery: ${(e as Error).message}`);
+          }
         }
 
         // Resolve fork → upstream. The interesting issues live on the
