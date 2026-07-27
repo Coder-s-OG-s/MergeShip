@@ -9,11 +9,7 @@ import { getMaintainerInstalls } from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 import { ToastProvider } from '@/components/toast';
 
-export default async function AppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = await getServerSupabase();
   if (!sb) {
     return <>{children}</>;
@@ -34,9 +30,7 @@ export default async function AppLayout({
   if (service) {
     const { data: profile } = await service
       .from('profiles')
-      .select(
-        'github_handle, level, xp, github_total_merges, github_streak',
-      )
+      .select('github_handle, level, xp, github_total_merges, github_streak')
       .eq('id', user.id)
       .maybeSingle();
     handle = profile?.github_handle ?? null;
