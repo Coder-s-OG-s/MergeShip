@@ -139,13 +139,10 @@ export async function retryFailedWebhookEvent(args: {
 
   // Use an atomic RPC call to prevent race conditions where
   // concurrent retries both pass the check before incrementing.
-  const { data: rpcResult, error: rpcError } = await service.rpc(
-    'increment_webhook_retry_count',
-    {
-      event_id: args.eventId,
-      max_retries: MAX_RETRIES,
-    },
-  );
+  const { data: rpcResult, error: rpcError } = await service.rpc('increment_webhook_retry_count', {
+    event_id: args.eventId,
+    max_retries: MAX_RETRIES,
+  });
 
   if (rpcError || !rpcResult) {
     // If the RPC failed, it likely means the retry limit was exceeded.
