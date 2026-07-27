@@ -27,7 +27,7 @@ function classifyPrHeuristic(pr: { title: string; body: string | null }): AiClas
     return { flagged: true, reason: 'generated_msg' };
 
   // Very short title + empty/tiny body → likely noise
-  if (title.length < 20 && body.length < 30) return { flagged: true, reason: 'large_diff' };
+  if (title.length < 20 && body.length < 30) return { flagged: true, reason: 'generated_msg' };
 
   return { flagged: false, reason: null };
 }
