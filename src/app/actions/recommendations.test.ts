@@ -391,6 +391,48 @@ describe('Recommendations Server Actions', () => {
       }
     });
 
+    it('does not reuse an above-level difficulty as the preferred replacement tier', async () => {
+      const mixedPool = [
+        {
+          id: 11,
+          difficulty: 'H',
+          xp_reward: 300,
+          repo_full_name: 'a/b',
+          github_issue_number: 2,
+          title: 'Hard issue',
+          url: 'http',
+        },
+        {
+          id: 12,
+          difficulty: 'E',
+          xp_reward: 100,
+          repo_full_name: 'a/b',
+          github_issue_number: 3,
+          title: 'Easy issue',
+          url: 'http',
+        },
+      ];
+
+      mocks.mockServiceFrom
+        // A Hard rec can reach 'open' for a L0 user by claiming the issue from
+        // the browser and then unclaiming it.
+        .mockReturnValueOnce(
+          createMockChain(null, { data: { id: 1, difficulty: 'H', issue_id: 10 }, error: null }),
+        ) // update rec
+        .mockReturnValueOnce(createMockChain(null, { data: { level: 0 }, error: null })) // profile level
+        .mockReturnValueOnce(createMockChain({ data: [{ issue_id: 10 }] })) // select seen
+        .mockReturnValueOnce(createIssuesPoolChain(mixedPool)) // same-tier pool, clamped to E
+        .mockReturnValueOnce(createMockChain(null, { data: { id: 2 }, error: null })); // insert replacement
+
+      const result = await skipRecommendation(1);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.replacement?.difficulty).toBe('E');
+        expect(result.data.replacement?.issueId).toBe(12);
+      }
+    });
+
     it('returns not_skippable if status is not open', async () => {
       mocks.mockServiceFrom.mockReturnValueOnce(createMockChain(null, { data: null, error: null })); // update returns null row
 

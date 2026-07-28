@@ -8,7 +8,7 @@ import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { ok, err, type Result } from '@/lib/result';
 import { cacheGet, cacheSet, cacheDel } from '@/lib/cache';
 import { filterAndRank, type ScoredIssue } from '@/lib/pipeline/recommend';
-import { getAllowedDifficulties } from '@/lib/pipeline/difficulty';
+import { capDifficulty, getAllowedDifficulties } from '@/lib/pipeline/difficulty';
 import { getInstallationToken } from '@/lib/github/app';
 
 /**
@@ -331,6 +331,10 @@ async function pickReplacement(args: {
 }): Promise<RecCard | null> {
   const { service, userId, preferDifficulty, userLevel } = args;
   const allowedDifficulties = getAllowedDifficulties(userLevel);
+  // The skipped rec can sit above the user's cap (claiming an issue from the
+  // browser skips the level mix, and unclaiming it returns it to 'open'), so
+  // the preferred tier has to be clamped too — not just the broad fallback.
+  const sameTierDifficulty = capDifficulty(preferDifficulty, userLevel);
 
   const { data: seen } = await service
     .from('recommendations')
@@ -339,7 +343,7 @@ async function pickReplacement(args: {
   const excludeIds = new Set((seen ?? []).map((r) => r.issue_id));
 
   // Try same tier first, then any tier. Health >= 40 filter mirrors filterAndRank.
-  for (const where of [{ difficulty: preferDifficulty }, null]) {
+  for (const where of [{ difficulty: sameTierDifficulty }, null]) {
     const q = service
       .from('issues')
       .select('id, repo_full_name, github_issue_number, title, difficulty, xp_reward, url')
