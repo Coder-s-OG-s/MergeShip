@@ -429,6 +429,8 @@ export const pullRequests = pgTable(
     state: text('state', { enum: ['open', 'closed', 'merged'] }).notNull(),
     draft: boolean('draft').notNull().default(false),
     url: text('url').notNull(),
+    baseBranch: text('base_branch'),
+    headBranch: text('head_branch'),
     githubCreatedAt: timestamp('github_created_at', { withTimezone: true }).notNull(),
     githubUpdatedAt: timestamp('github_updated_at', { withTimezone: true }).notNull(),
     mergedAt: timestamp('merged_at', { withTimezone: true }),
