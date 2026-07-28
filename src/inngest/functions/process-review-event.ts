@@ -132,7 +132,7 @@ export const processReviewEvent = inngest.createFunction(
         const createdTime = new Date(helpReq.created_at).getTime();
         if (!isNaN(submittedTime) && !isNaN(createdTime)) {
           const responseMs = submittedTime - createdTime;
-          isFast = responseMs <= SPEED_BONUS_HOURS * 3600 * 1000;
+          isFast = responseMs >= 0 && responseMs <= SPEED_BONUS_HOURS * 3600 * 1000;
         }
       }
       if (isFast) xp += XP_REWARDS.HELP_REVIEW_SPEED_BONUS;

@@ -196,4 +196,46 @@ describe('processReviewEvent handler tests', () => {
       }),
     );
   });
+
+  it('does not award speed bonus when review submitted_at is earlier than help_request created_at', async () => {
+    const profilesMock = sb({
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { id: 'reviewer-id', level: 2 } })
+        .mockResolvedValueOnce({ data: { id: 'reviewer-id', level: 2 } })
+        .mockResolvedValueOnce({ data: { level: 1 } }),
+    });
+
+    const helpRequestsMock = sb({
+      maybeSingle: vi.fn().mockResolvedValue({
+        // help request created at 04:00, but review was submitted earlier at 02:00
+        data: { id: 'hr-1', user_id: 'mentee-1', created_at: '2026-05-12T04:00:00Z' },
+      }),
+      update: vi.fn().mockReturnThis(),
+    });
+
+    helpRequestsMock.select = vi
+      .fn()
+      .mockImplementationOnce(() => helpRequestsMock)
+      .mockResolvedValueOnce({ data: [{ id: 'hr-1' }], error: null });
+
+    wire({
+      profiles: profilesMock,
+      help_requests: helpRequestsMock,
+    });
+
+    vi.mocked(insertXpEvent).mockResolvedValue(true as never);
+
+    // review submitted_at is 2026-05-12T02:00:00Z (2 hours BEFORE help request was created)
+    const result = await run({ event: ev(), step });
+
+    expect(result).toEqual({ xpAwarded: 55, isMentor: true, isFast: false });
+    expect(insertXpEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'reviewer-id',
+        xpDelta: 55, // Base (35) + Mentor bonus (20) = 55, NO Speed bonus (10)
+        metadata: expect.objectContaining({ isFast: false }),
+      }),
+    );
+  });
 });
