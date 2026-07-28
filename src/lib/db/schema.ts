@@ -630,6 +630,21 @@ export const mentorSessions = pgTable('mentor_sessions', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const reportSnapshots = pgTable('report_snapshots', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  token: text('token').notNull().unique(),
+  installationId: bigint('installation_id', { mode: 'number' })
+    .notNull()
+    .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+  range: text('range', { enum: ['7d', '30d', '90d', 'all'] }).notNull(),
+  snapshotData: jsonb('snapshot_data').notNull(),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => profiles.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
 export const announcements = pgTable('announcements', {
   id: bigserial('id', { mode: 'number' }).primaryKey(),
   title: text('title').notNull(),
