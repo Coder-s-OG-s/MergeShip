@@ -1,6 +1,7 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
-import { getLeaderboard } from '@/app/actions/leaderboard';
+import { getLeaderboard, type LeaderboardEntry } from '@/app/actions/leaderboard';
+import { getLeaderboardPage } from '@/app/actions/getLeaderboardPage';
 import { isOk } from '@/lib/result';
 import { LeaderboardContent } from './leaderboard-content';
 import { tryGetDb } from '@/lib/db/client';
@@ -9,14 +10,17 @@ import type { User } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
+const PAGE_SIZE = 20;
+
 export default async function LeaderboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string; id?: string }>;
+  searchParams: Promise<{ scope?: string; id?: string; page?: string }>;
 }) {
   const resolvedSearchParams = await searchParams;
   let scope = resolvedSearchParams.scope ?? 'global';
   let scopeId = resolvedSearchParams.id ?? null;
+  const page = Math.max(1, parseInt(resolvedSearchParams.page ?? '1', 10) || 1);
 
   const sb = await getServerSupabase();
 
@@ -94,19 +98,83 @@ export default async function LeaderboardPage({
     activeTab = 'organization';
   }
 
-  const result = await getLeaderboard(finalScope, scopeId, 100);
+  let entries: LeaderboardEntry[] = [];
+  let currentUserRank: LeaderboardEntry | null = null;
+  let totalCount = 0;
+  let pageSize = PAGE_SIZE;
+  let currentPage = page;
+  const useServerPagination = finalScope === 'global';
+
+  if (useServerPagination) {
+    const pageResult = await getLeaderboardPage(page, PAGE_SIZE);
+    if (isOk(pageResult)) {
+      entries = pageResult.data.entries;
+      totalCount = pageResult.data.totalCount;
+      pageSize = pageResult.data.pageSize;
+      currentPage = pageResult.data.page;
+    }
+
+    if (user) {
+      const onPage = entries.find((e) => e.userId === user.id) ?? null;
+      if (onPage) {
+        currentUserRank = onPage;
+      } else {
+        const db = tryGetDb();
+        if (db) {
+          const rankRows = await db.execute<{ rank: number | string }>(sql`
+            with ranked_profiles as (
+              select id, dense_rank() over (order by xp desc) as rank
+              from profiles
+            )
+            select rank from ranked_profiles where id = ${user.id}
+          `);
+          const rankList = Array.isArray(rankRows)
+            ? rankRows
+            : ((rankRows as unknown as { rows: { rank: number | string }[] }).rows ?? []);
+          const rank = rankList[0]?.rank;
+          if (rank !== undefined) {
+            currentUserRank = {
+              rank: Number(rank),
+              userId: user.id,
+              githubHandle: userHandle ?? '',
+              displayName: null,
+              avatarUrl,
+              xp: userXp,
+              level: userLevel,
+              githubTotalMerges: userMerges,
+              githubStreak: userStreak,
+            };
+          }
+        }
+      }
+    }
+  } else {
+    const result = await getLeaderboard(finalScope, scopeId, 100);
+    if (isOk(result)) {
+      entries = result.data.entries;
+      currentUserRank = result.data.currentUserRank;
+      totalCount = result.data.entries.length;
+      pageSize = result.data.entries.length || PAGE_SIZE;
+      currentPage = 1;
+    }
+  }
 
   return (
     <LeaderboardContent
       activeTab={activeTab}
-      entries={isOk(result) ? result.data.entries : []}
-      currentUserRank={isOk(result) ? result.data.currentUserRank : null}
+      entries={entries}
+      currentUserRank={currentUserRank}
+      currentUserId={user?.id ?? null}
       userHandle={userHandle}
       userXp={userXp}
       userLevel={userLevel}
       userMerges={userMerges}
       userStreak={userStreak}
       avatarUrl={avatarUrl}
+      totalCount={totalCount}
+      page={currentPage}
+      pageSize={pageSize}
+      paginationEnabled={useServerPagination}
     />
   );
 }

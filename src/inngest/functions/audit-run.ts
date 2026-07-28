@@ -1,6 +1,7 @@
 import { inngest } from '../client';
-import { getInstallOctokit, getUserOctokit } from '@/lib/github/app';
+import { getInstallOctokit, getInstallationToken, getUserOctokit } from '@/lib/github/app';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { fetchContributionCalendar } from '@/app/actions/github-sync-helpers';
 import { computeAuditScore, type AuditSignals } from '@/lib/xp/audit';
 import { clampAuditScoreToLevel } from '@/lib/xp/audit-clamp';
 import { pickPrimaryLanguage } from '@/lib/xp/primary-language';
@@ -64,9 +65,13 @@ export const auditRun = inngest.createFunction(
 
       // Pick the auth source. Install token preferred — doesn't expire on
       // queue delay. OAuth token falls back if we don't have an install yet.
+      // We also capture a raw token string for the GraphQL contribution
+      // calendar call, which needs a bearer token rather than an Octokit.
       let gh;
+      let token: string | null = null;
       if (event.data.installationId) {
         gh = await getInstallOctokit(event.data.installationId);
+        token = await getInstallationToken(event.data.installationId);
       } else {
         // Look up install on the fly — covers the case where audit was
         // queued at bootstrap and install completed between then and now.
@@ -80,8 +85,10 @@ export const auditRun = inngest.createFunction(
         const installId = install?.[0]?.id;
         if (installId) {
           gh = await getInstallOctokit(installId);
+          token = await getInstallationToken(installId);
         } else if (event.data.accessToken) {
           gh = getUserOctokit(event.data.accessToken);
+          token = event.data.accessToken;
         } else {
           return { skipped: true, reason: 'no_auth_source' };
         }
@@ -117,13 +124,26 @@ export const auditRun = inngest.createFunction(
       const distinctLanguages = new Set(languageList.filter((l): l is string => Boolean(l))).size;
       const primaryLanguage = pickPrimaryLanguage(languageList);
 
+      // Fetch yearly contributions from the contribution calendar.
+      // Graceful fallback to 0 if the token is missing or the API call fails
+      // so the audit always completes.
+      let yearlyContributions = 0;
+      if (token) {
+        try {
+          const calendar = await fetchContributionCalendar(token, githubHandle);
+          yearlyContributions = calendar.reduce((sum, d) => sum + d.contributionCount, 0);
+        } catch {
+          // API failure — fall back to 0 so the audit still completes.
+        }
+      }
+
       const signals: AuditSignals = {
         accountAgeYears,
         mergedPrs: mergedPrs.data.total_count,
         nonOwnMergedPrs: nonOwnMergedPrs.data.total_count,
         closedIssues: closedIssues.data.total_count,
         distinctLanguages,
-        yearlyContributions: 0, // populated in Phase 2 from heatmap source
+        yearlyContributions,
         followers: user.data.followers,
       };
       const rawAuditScore = computeAuditScore(signals);

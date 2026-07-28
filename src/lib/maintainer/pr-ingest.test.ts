@@ -136,5 +136,12 @@ describe('buildPrRow', () => {
   it('sets ai_flagged true when aiFlagged param is true', () => {
     const row = buildPrRow(base, null, 'opened', true);
     expect(row.ai_flagged).toBe(true);
+    expect(row.ai_flag_reason).toBeNull();
+  });
+
+  it('sets ai_flag_reason when aiFlagReason param is provided', () => {
+    const row = buildPrRow(base, null, 'opened', true, 'large_diff');
+    expect(row.ai_flagged).toBe(true);
+    expect(row.ai_flag_reason).toBe('large_diff');
   });
 });

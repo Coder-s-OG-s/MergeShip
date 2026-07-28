@@ -4,9 +4,11 @@ import {
   processInstallationReposEvent,
 } from './process-installation-event';
 import { sb, wire, step } from './__tests__/test-helpers';
+import { getInstallOctokit } from '@/lib/github/app';
 
 // Mock external dependencies.
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
+vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn() }));
 
 const mockSend = vi.fn().mockResolvedValue(undefined);
 vi.mock('../client', () => ({
@@ -64,17 +66,135 @@ describe('processInstallationEvent', () => {
     );
   });
 
-  it('uninstall sets uninstalled_at', async () => {
-    const installs = sb({ update: vi.fn().mockReturnThis() });
-    wire({ github_installations: installs });
+  describe('repo discovery', () => {
+    it('discovers repos via GitHub API when repositories payload is omitted', async () => {
+      const reposUpsert = vi.fn().mockResolvedValue({ error: null });
+      wire({
+        profiles: sb(),
+        github_installations: sb({ upsert: vi.fn().mockResolvedValue({ error: null }) }),
+        installation_repositories: sb({ upsert: reposUpsert }),
+      });
 
-    await installRun({ event: ev('deleted'), step });
+      const mockOctokit = {
+        paginate: vi.fn().mockResolvedValue([{ full_name: 'myorg/discovered-repo' }]),
+        apps: { listReposAccessibleToInstallation: {} },
+      };
+      vi.mocked(getInstallOctokit).mockResolvedValue(mockOctokit as never);
 
-    expect(installs.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        uninstalled_at: expect.any(String),
-      }),
-    );
+      const event = ev('created', { repositories: undefined });
+      const result = await installRun({ event, step });
+
+      expect(getInstallOctokit).toHaveBeenCalledWith(100);
+      expect(mockOctokit.paginate).toHaveBeenCalled();
+      expect(reposUpsert).toHaveBeenCalledWith(
+        [{ installation_id: 100, repo_full_name: 'myorg/discovered-repo' }],
+        { onConflict: 'installation_id,repo_full_name' },
+      );
+      expect(result).toEqual({ ok: true, linked: false, repoCount: 1 });
+    });
+
+    it('throws error when repo discovery API fails so Inngest retries', async () => {
+      wire({
+        profiles: sb(),
+        github_installations: sb({ upsert: vi.fn().mockResolvedValue({ error: null }) }),
+      });
+
+      vi.mocked(getInstallOctokit).mockRejectedValue(new Error('API Rate Limit Exceeded'));
+
+      const event = ev('created', { repositories: undefined });
+      await expect(installRun({ event, step })).rejects.toThrow(
+        'Failed to discover repos for installation 100: API Rate Limit Exceeded',
+      );
+    });
+  });
+
+  describe('uninstall cleanup', () => {
+    it('marks uninstalled_at and deletes all 6 derived tables', async () => {
+      const installs = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      const repos = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      const users = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      const userRepos = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      const settings = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      const orgs = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      const cursors = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+
+      wire({
+        github_installations: installs,
+        installation_repositories: repos,
+        github_installation_users: users,
+        installation_user_repos: userRepos,
+        installation_settings: settings,
+        org_communities: orgs,
+        repo_sync_cursors: cursors,
+      });
+
+      await installRun({ event: ev('deleted'), step });
+
+      // 1. Uninstall marks uninstalled_at
+      expect(installs.update).toHaveBeenCalledWith(
+        expect.objectContaining({ uninstalled_at: expect.any(String) }),
+      );
+
+      // 2. All 6 derived tables are deleted sequentially
+      expect(repos.delete).toHaveBeenCalled();
+      expect(users.delete).toHaveBeenCalled();
+      expect(userRepos.delete).toHaveBeenCalled();
+      expect(settings.delete).toHaveBeenCalled();
+      expect(orgs.delete).toHaveBeenCalled();
+      expect(cursors.delete).toHaveBeenCalled();
+    });
+
+    it('throws if marking uninstalled_at fails', async () => {
+      const installs = sb({ eq: vi.fn().mockResolvedValue({ error: { message: 'db error' } }) });
+      wire({ github_installations: installs });
+
+      await expect(installRun({ event: ev('deleted'), step })).rejects.toThrow(
+        'Failed to mark install 100 as uninstalled: db error',
+      );
+    });
+
+    it('throws if cleanup deletion fails, leaving remaining tables untouched', async () => {
+      const installs = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      // installation_repositories deletes successfully
+      const repos = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      // github_installation_users fails
+      const users = sb({ eq: vi.fn().mockResolvedValue({ error: { message: 'users error' } }) });
+      // remaining tables should not be called
+      const userRepos = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+
+      wire({
+        github_installations: installs,
+        installation_repositories: repos,
+        github_installation_users: users,
+        installation_user_repos: userRepos,
+      });
+
+      await expect(installRun({ event: ev('deleted'), step })).rejects.toThrow(
+        'Failed to delete from github_installation_users for install 100: users error',
+      );
+
+      expect(repos.delete).toHaveBeenCalled();
+      expect(users.delete).toHaveBeenCalled();
+      expect(userRepos.delete).not.toHaveBeenCalled(); // Failed before reaching this
+    });
+
+    it('tolerates already-deleted rows (idempotency)', async () => {
+      // Supabase delete() returns { error: null } and 0 rows if nothing matches
+      const installs = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      const tables = sb({ eq: vi.fn().mockResolvedValue({ error: null }) });
+      wire({
+        github_installations: installs,
+        installation_repositories: tables,
+        github_installation_users: tables,
+        installation_user_repos: tables,
+        installation_settings: tables,
+        org_communities: tables,
+        repo_sync_cursors: tables,
+      });
+
+      const result = await installRun({ event: ev('deleted'), step });
+      expect(result).toEqual({ ok: true, uninstalled: true, cleanup: true });
+    });
   });
 
   it('suspend sets suspended_at', async () => {

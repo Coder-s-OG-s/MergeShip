@@ -16,12 +16,23 @@ export default async function GitHubPRsWrapper({
   const { data: prsData } = await service
     .from('pull_requests')
     .select(
-      'id, github_pr_id, repo_full_name, number, title, state, url, github_created_at, merged_at',
+      `
+      id,
+      github_pr_id,
+      repo_full_name,
+      number,
+      title,
+      state,
+      url,
+      github_created_at,
+      merged_at,
+      pull_request_reviews ( state )
+    `,
     )
     .eq('author_user_id', userId)
     .order('github_created_at', { ascending: false });
 
-  const prs = (prsData ?? []) as GitHubPR[];
+  const prs = (prsData ?? []) as any;
 
   // Active Issues: claimed recommendations only
   const { data: claimedRecs } = await service

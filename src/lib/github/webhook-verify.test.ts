@@ -38,3 +38,28 @@ describe('verifyWebhookSignature', () => {
     expect(verifyWebhookSignature(body, valid.slice(0, 20), secret)).toBe(false);
   });
 });
+
+describe('verifyWebhookSignature with multiple secrets', () => {
+  const secret1 = 'old-secret';
+  const secret2 = 'new-secret';
+  const secret3 = 'future-secret';
+  const body = JSON.stringify({ action: 'opened' });
+  const secrets = [secret1, secret2];
+
+  it('accepts signature matching the first secret', () => {
+    expect(verifyWebhookSignature(body, sign(secret1, body), secrets)).toBe(true);
+  });
+
+  it('accepts signature matching the second secret', () => {
+    expect(verifyWebhookSignature(body, sign(secret2, body), secrets)).toBe(true);
+  });
+
+  it('rejects signature matching neither secret', () => {
+    expect(verifyWebhookSignature(body, sign(secret3, body), secrets)).toBe(false);
+  });
+
+  it('rejects tampered body for all secrets', () => {
+    expect(verifyWebhookSignature(body + 'x', sign(secret1, body), secrets)).toBe(false);
+    expect(verifyWebhookSignature(body + 'x', sign(secret2, body), secrets)).toBe(false);
+  });
+});

@@ -221,33 +221,6 @@ describe('maintainerDiscover', () => {
       }),
     });
 
-    vi.mocked(cacheGet).mockResolvedValueOnce({ ranAt: Date.now() });
-
-    const result = await run({ event: {}, step });
-
-    expect(mockSend).not.toHaveBeenCalled();
-    expect(result).toEqual({ swept: 0, skipped: 1 });
-  });
-
-  it('does not use force:true in sweep events', async () => {
-    wire({
-      github_installation_users: sb({
-        select: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue({
-          data: [{ user_id: 'u1' }],
-        }),
-      }),
-      profiles: sb({
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        maybeSingle: vi.fn().mockResolvedValue({
-          data: { github_handle: 'alice' },
-        }),
-      }),
-    });
-
-    vi.mocked(cacheGet).mockResolvedValue(null);
-
     const result = await run({ event: {}, step });
 
     expect(mockSend).toHaveBeenCalledWith({

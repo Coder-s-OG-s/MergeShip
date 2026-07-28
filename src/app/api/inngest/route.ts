@@ -10,6 +10,7 @@ import {
 } from '@/inngest/functions/process-installation-event';
 import { issuesSweep } from '@/inngest/functions/issues-sweep';
 import { recommendationsBuild } from '@/inngest/functions/recommendations-build';
+import { recommendationsBuildWorker } from '@/inngest/functions/recommendations-worker';
 import { maintainerDiscover } from '@/inngest/functions/maintainer-discover';
 import {
   processMembershipEvent,
@@ -27,7 +28,9 @@ import { githubStatsSync } from '@/inngest/functions/github-stats-sync';
 import { mentorPostComment } from '@/inngest/functions/mentor-post-comment';
 import { processIssueEvent } from '@/inngest/functions/process-issue-event';
 import { processIssueCommentEvent } from '@/inngest/functions/process-issue-comment-event';
-import { weeklyDigest } from '@/inngest/functions/weekly-digest';
+import { weeklyDigest, sendUserDigest } from '@/inngest/functions/weekly-digest';
+import { deadLetterHandler } from '@/inngest/functions/dead-letter';
+import { mentorAssignedNotify } from '@/inngest/functions/mentor-assigned-notify';
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -40,6 +43,7 @@ export const { GET, POST, PUT } = serve({
     processInstallationReposEvent,
     issuesSweep,
     recommendationsBuild,
+    recommendationsBuildWorker,
     maintainerDiscover,
     processMembershipEvent,
     processMemberEvent,
@@ -54,5 +58,8 @@ export const { GET, POST, PUT } = serve({
     processIssueEvent,
     processIssueCommentEvent,
     weeklyDigest,
+    sendUserDigest,
+    deadLetterHandler,
+    mentorAssignedNotify,
   ],
 });

@@ -1,9 +1,11 @@
 import { notFound } from 'next/navigation';
+import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import Link from 'next/link';
 import { ExternalLink, ArrowLeft } from 'lucide-react';
 import { CopyButton } from '@/components/copy-button';
+import { StartChatButton } from '@/components/start-chat-button';
 import { ActivityHeatmap } from '@/components/activity-heatmap';
 import { totalContributions } from '@/lib/contributions/activity-history';
 import { loadActivityHistory } from '@/lib/contributions/load-activity-history';
@@ -68,7 +70,7 @@ type Achievement = {
 
 type TimelineEvent = {
   id: string;
-  type: 'PR_MERGED' | 'ISSUE_CLAIMED' | 'LEVEL_UP' | 'XP_EARNED' | 'MENTORED';
+  type: 'PR_MERGED' | 'PR_OPENED' | 'ISSUE_CLAIMED' | 'LEVEL_UP' | 'XP_EARNED' | 'MENTORED';
   title: string;
   subtitle: string;
   timestamp: string;
@@ -227,7 +229,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     } else if (pr.state === 'open') {
       timelineEvents.push({
         id: `pr-open-${pr.id}`,
-        type: 'XP_EARNED',
+        type: 'PR_OPENED',
         title: pr.title,
         subtitle: `${pr.repo_full_name} #${pr.number}`,
         timestamp: pr.github_created_at,
@@ -269,7 +271,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
     {
       id: 'streak_5',
       icon: '🔥',
-      label: '5-DAY STREAK',
+      label: '5-DAY GITHUB STREAK',
       locked: (profile.github_streak ?? 0) < 5,
     },
     {
@@ -317,6 +319,7 @@ async function loadProfileData(handle: string): Promise<ProfileData | null> {
 
 const EVENT_COLOR: Record<string, string> = {
   PR_MERGED: 'bg-emerald-500/20 text-emerald-400 border border-emerald-700/50',
+  PR_OPENED: 'bg-zinc-500/20 text-zinc-400 border border-zinc-700/50',
   ISSUE_CLAIMED: 'bg-blue-500/20 text-blue-400 border border-blue-700/50',
   LEVEL_UP: 'bg-purple-500/20 text-purple-400 border border-purple-700/50',
   XP_EARNED: 'bg-yellow-500/20 text-yellow-400 border border-yellow-700/50',
@@ -325,6 +328,7 @@ const EVENT_COLOR: Record<string, string> = {
 
 const EVENT_DOT: Record<string, string> = {
   PR_MERGED: 'bg-emerald-400',
+  PR_OPENED: 'bg-zinc-400',
   ISSUE_CLAIMED: 'bg-blue-400',
   LEVEL_UP: 'bg-purple-400',
   XP_EARNED: 'bg-yellow-400',
@@ -362,6 +366,33 @@ export default async function PublicProfile({ params }: { params: Promise<{ hand
   const handle = decodeURIComponent(resolvedParams.handle).replace(/^@/, '');
   const profile = await loadProfileData(handle);
   if (!profile) notFound();
+
+  // Retrieve current user to check chat eligibility
+  const sb = await getServerSupabase();
+  let currentUserProfile: any = null;
+  if (sb) {
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+    if (user) {
+      const service = getServiceSupabase();
+      if (service) {
+        const { data } = await service
+          .from('profiles')
+          .select('id, level')
+          .eq('id', user.id)
+          .maybeSingle();
+        currentUserProfile = data;
+      }
+    }
+  }
+
+  let canChat = false;
+  if (currentUserProfile && currentUserProfile.id !== profile.profileId) {
+    const mentorLevel = Math.max(currentUserProfile.level, profile.level);
+    const menteeLevel = Math.min(currentUserProfile.level, profile.level);
+    canChat = mentorLevel >= 2 && mentorLevel > menteeLevel;
+  }
 
   return (
     <div className="min-h-screen bg-[#0d1117] font-mono text-white">
@@ -433,6 +464,14 @@ export default async function PublicProfile({ params }: { params: Promise<{ hand
                 <p className="mb-3 text-[11px] uppercase tracking-widest text-zinc-600">
                   {formatJoinDate(profile.joinedAt)}
                 </p>
+                {canChat && (
+                  <div className="mb-4">
+                    <StartChatButton
+                      targetUserId={profile.profileId}
+                      targetHandle={profile.githubHandle}
+                    />
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-4 text-[11px] uppercase tracking-widest text-zinc-400">
                   <span>
                     <span className="font-bold text-white">{profile.prsMerged}</span> PRS MERGED
@@ -552,7 +591,7 @@ export default async function PublicProfile({ params }: { params: Promise<{ hand
                 </div>
                 <div className="border border-[#21262d] bg-[#161b22] p-4">
                   <div className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">
-                    Activity Streak
+                    MergeShip Activity Streak
                   </div>
                   <div className="font-serif text-2xl font-bold text-white">
                     {profile.streakDays}d

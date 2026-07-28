@@ -2,13 +2,25 @@
 
 import { ok, err, type Result } from '@/lib/result';
 import { requireMaintainer } from '@/lib/action-auth';
+import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { validateCommunityUrl, type CommunityKind } from '@/lib/maintainer/community';
 import { type CommunityLink } from './types';
 
 export async function getCommunityLinks(installationId: number): Promise<Result<CommunityLink[]>> {
-  const authRes = await requireMaintainer({ requireService: true });
+  const authRes = await requireMaintainer({
+    requireService: true,
+    rateLimit: { namespace: 'maint:community-links', ...RATE_LIMIT_TIERS.GENEROUS },
+  });
   if (!authRes.ok) return authRes;
-  const { service } = authRes.data;
+  const { user, service } = authRes.data;
+
+  const { data: junction } = await service
+    .from('github_installation_users')
+    .select('installation_id')
+    .eq('user_id', user.id)
+    .eq('installation_id', installationId)
+    .maybeSingle();
+  if (!junction) return err('not_authorised', 'not your install');
 
   const { data } = await service
     .from('org_communities')

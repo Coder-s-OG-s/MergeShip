@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const isDev = process.env.NODE_ENV === 'development';
+
 const nextConfig = {
   // Compress responses for faster transfer
   compress: true,
@@ -31,11 +33,11 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com",
+              `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''} https://va.vercel-scripts.com https://us-assets.i.posthog.com`,
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' https://api.github.com https://github.com https://*.supabase.co https://vitals.vercel-insights.com http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
+              `connect-src 'self' https://api.github.com https://github.com https://*.supabase.co https://vitals.vercel-insights.com https://us.i.posthog.com https://us-assets.i.posthog.com${isDev ? " http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*" : ""}`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

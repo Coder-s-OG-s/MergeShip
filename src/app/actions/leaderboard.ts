@@ -7,6 +7,7 @@ import { ok, err, type Result } from '@/lib/result';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getAppOctokit, getInstallOctokit } from '@/lib/github/app';
 import { requireUser } from '@/lib/action-auth';
+import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 
 export type LeaderboardScope = 'global' | 'cohort' | 'language' | 'tag' | 'monthly' | 'friends';
 
@@ -136,6 +137,15 @@ export async function getLeaderboard(
     }[] = [];
 
     if (!cached) {
+      // Rate-limit non-friends scopes to prevent database resource exhaustion.
+      if (scope !== 'friends') {
+        const rlRes = await requireUser({
+          rateLimit: { namespace: 'leaderboard', ...RATE_LIMIT_TIERS.STANDARD },
+          rateLimitMessage: 'too many leaderboard requests, slow down',
+        });
+        if (!rlRes.ok) return rlRes;
+      }
+
       if (scope === 'global') {
         rows = (await db.execute(sql`
         select id, github_handle, display_name, avatar_url, xp, level, github_total_merges, github_streak,

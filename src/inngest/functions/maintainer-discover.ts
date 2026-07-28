@@ -34,17 +34,21 @@ const SWEEP_USER_LIMIT = 20;
 export const maintainerDiscover = inngest.createFunction(
   { id: 'maintainer-discover', concurrency: { key: 'event.data.userId', limit: 1 } },
   [{ event: 'maintainer/discover' }, { cron: '0 2 * * *' }],
-  async ({ event }) => {
+  async ({ event, step }) => {
+    // Cron tick fires with empty event.data — run a sweep across all
+    // recently-active users with a junction row. For point-in-time
+    // triggers, event.data carries the specific user.
     if (!event.data || typeof event.data !== 'object') {
       return await sweep();
     }
     const e = event as DiscoverEvent;
     if (!e.data.userId) return await sweep();
-    return await discoverForUser(e.data.userId, e.data.githubHandle, e.data.force === true);
+    return await discoverForUser(step, e.data.userId, e.data.githubHandle, e.data.force === true);
   },
 );
 
 async function discoverForUser(
+  step: any,
   userId: string,
   githubHandle: string,
   force: boolean,
@@ -84,6 +88,16 @@ async function discoverForUser(
   const proposed: ProposedGrant[] = [];
 
   for (const install of installRows) {
+    const budget = await step.run(`check-budget-install-${install.id}`, () =>
+      checkRateBudget(install.id),
+    );
+    if (!budget.ok) {
+      await step.sleepUntil(
+        `sleep-budget-install-${install.id}`,
+        new Date(budget.resetAt * 1000 + 5000),
+      );
+    }
+
     let octokit;
     try {
       octokit = await getInstallOctokit(install.id);

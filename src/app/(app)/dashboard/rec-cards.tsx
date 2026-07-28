@@ -10,6 +10,8 @@ import {
 } from '@/app/actions/recommendations';
 import { sendHelpRequest } from '@/app/actions/help';
 import { CooldownTimer } from '@/components/cooldown-timer';
+import { captureEvent } from '@/lib/posthog/helpers';
+import { EVENTS } from '@/lib/posthog/events';
 
 const PR_URL_RE = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
 
@@ -40,6 +42,11 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
       const res = await claimRecommendation(rec.id);
       if (res.ok) {
         setRecs((prev) => prev.map((r) => (r.id === rec.id ? { ...r, status: 'claimed' } : r)));
+        captureEvent(EVENTS.RECOMMENDATION_CLAIMED, {
+          recId: rec.id,
+          difficulty: rec.difficulty,
+          xpReward: rec.xpReward,
+        });
       } else {
         if (res.error.code === 'rate_limited') {
           handleRateLimit(res.error.resetAt);
@@ -61,6 +68,7 @@ export default function RecCards({ recs: initial }: { recs: RecCard[] }) {
           const without = prev.filter((r) => r.id !== rec.id);
           return res.data.replacement ? [...without, res.data.replacement] : without;
         });
+        captureEvent(EVENTS.RECOMMENDATION_SKIPPED, { recId: rec.id, difficulty: rec.difficulty });
       } else {
         if (res.error.code === 'rate_limited') {
           handleRateLimit(res.error.resetAt);
@@ -222,8 +230,10 @@ function ClaimedActions({
     onError(null);
     startTransition(async () => {
       const res = await sendHelpRequest({ recId: rec.id, prUrl: input.trim() });
-      if (res.ok) setHelpSent(true);
-      else {
+      if (res.ok) {
+        setHelpSent(true);
+        captureEvent(EVENTS.HELP_REQUEST_SENT, { recId: rec.id });
+      } else {
         if (res.error.code === 'rate_limited') {
           onRateLimit(res.error.resetAt);
         }

@@ -12,11 +12,12 @@ import { SyncButton } from '../dashboard/sync-button';
 export const dynamic = 'force-dynamic';
 
 type EnrichedPR = GitHubPR & {
-  mentor_status?: 'pending' | 'approved' | null;
+  mentor_status?: 'pending' | 'approved' | 'changes_requested' | null;
   reviewed_by?: string | null;
   mentor_level?: string | null;
   close_reason?: string | null;
   xp_earned?: number | null;
+  review_feedback?: string | null;
 };
 
 type PRsCache = {
@@ -159,16 +160,55 @@ export default async function MyPRsPage() {
       }
     }
 
+    // --- pipeline_stages: fresher GitHub-review-driven signal, layered on top of
+    // the recommendations/help_requests logic above. `pr.id` here is already the
+    // internal pull_requests.id (selected directly in the query above), so no
+    // extra URL-to-id lookup query is needed.
+    const internalPrIds = basePRs.map((pr) => pr.id).filter(Boolean);
+
+    let stageByPrId: Record<number, { status: string; reviewId: number | null }> = {};
+    if (internalPrIds.length > 0) {
+      const { data: stageData } = await service
+        .from('pull_request_pipeline_stages')
+        .select('pr_id, status, review_id')
+        .eq('stage_type', 'mentor_approval')
+        .in('pr_id', internalPrIds);
+
+      stageByPrId = Object.fromEntries(
+        (stageData ?? []).map((s: any) => [s.pr_id, { status: s.status, reviewId: s.review_id }]),
+      );
+    }
+
+    const reviewIds = Object.values(stageByPrId)
+      .map((s) => s.reviewId)
+      .filter((id): id is number => id !== null);
+
+    let feedbackByReviewId: Record<number, string> = {};
+    if (reviewIds.length > 0) {
+      const { data: reviewData } = await service
+        .from('pull_request_reviews')
+        .select('id, body_excerpt')
+        .in('id', reviewIds);
+
+      feedbackByReviewId = Object.fromEntries(
+        (reviewData ?? [])
+          .filter((r: any) => r.body_excerpt)
+          .map((r: any) => [r.id, r.body_excerpt]),
+      );
+    }
+
     enrichedPRs = basePRs.map((pr) => {
       const rec = recByUrl[pr.url];
       const help = helpByUrl[pr.url];
 
-      let mentor_status: 'pending' | 'approved' | null = null;
+      let mentor_status: 'pending' | 'approved' | 'changes_requested' | null = null;
       let reviewed_by: string | null = null;
       let mentor_level: string | null = null;
       let xp_earned: number | null = null;
       let close_reason: string | null = null;
+      let review_feedback: string | null = null;
 
+      // --- existing recommendations/help_requests logic, unchanged ---
       if (rec?.status === 'completed') {
         mentor_status = 'approved';
         xp_earned = rec.xp_reward ?? null;
@@ -187,6 +227,22 @@ export default async function MyPRsPage() {
         mentor_status = 'pending';
       }
 
+      // --- pipeline_stages override: takes priority when present, since it's
+      // written directly from GitHub review webhooks (process-review-event.ts)
+      // and is fresher than the recommendations/help_requests signal above.
+      // NOTE: these two systems are not otherwise kept in sync anywhere in the
+      // codebase (confirmed: no cross-writes in process-pr-event.ts or
+      // process-review-event.ts) — flagged in PR description as a known gap.
+      const stage = stageByPrId[pr.id];
+      if (stage?.status === 'changes_requested') {
+        mentor_status = 'changes_requested';
+        if (stage.reviewId && feedbackByReviewId[stage.reviewId]) {
+          review_feedback = feedbackByReviewId[stage.reviewId] ?? null;
+        }
+      } else if (stage?.status === 'approved' && mentor_status !== 'approved') {
+        mentor_status = 'approved';
+      }
+
       if (pr.state === 'closed') {
         close_reason = 'Closed by maintainer';
       }
@@ -195,7 +251,15 @@ export default async function MyPRsPage() {
         xp_earned = rec.xp_reward;
       }
 
-      return { ...pr, mentor_status, reviewed_by, mentor_level, xp_earned, close_reason };
+      return {
+        ...pr,
+        mentor_status,
+        reviewed_by,
+        mentor_level,
+        xp_earned,
+        close_reason,
+        review_feedback,
+      };
     });
   }
 

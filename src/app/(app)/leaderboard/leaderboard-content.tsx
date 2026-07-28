@@ -1,13 +1,26 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Trophy, Flame, Swords, Users, Globe, Calendar, Building2, UserPlus } from 'lucide-react';
+import {
+  Trophy,
+  Flame,
+  Swords,
+  Users,
+  Globe,
+  Calendar,
+  Building2,
+  UserPlus,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import type { LeaderboardEntry } from '@/app/actions/leaderboard';
 import { useSeasonCountdown } from '@/hooks/useSeasonCountdown';
+import { captureEvent } from '@/lib/posthog/helpers';
+import { EVENTS } from '@/lib/posthog/events';
 
 type Tab = 'global' | 'monthly' | 'organization' | 'friends';
 
@@ -22,49 +35,80 @@ interface Props {
   activeTab: Tab;
   entries: LeaderboardEntry[];
   currentUserRank: LeaderboardEntry | null;
+  currentUserId: string | null;
   userHandle: string | null;
   userXp: number;
   userLevel: number;
   userMerges: number;
   userStreak: number;
   avatarUrl: string | null;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  paginationEnabled: boolean;
 }
 
 export function LeaderboardContent({
   activeTab,
   entries,
   currentUserRank,
+  currentUserId,
   userHandle,
   userXp,
   userLevel,
   userMerges,
   userStreak,
   avatarUrl,
+  totalCount,
+  page,
+  pageSize,
+  paginationEnabled,
 }: Props) {
-  const displayEntries = useMemo(() => entries.slice(0, 50), [entries]);
-  const top3 = useMemo(() => displayEntries.slice(0, 3), [displayEntries]);
+  useEffect(() => {
+    captureEvent(EVENTS.LEADERBOARD_VIEWED, { activeTab, userLevel, userXp });
+  }, [activeTab, userLevel, userXp]);
 
-  const totalContributors = entries.length;
+  const displayEntries = useMemo(
+    () => (paginationEnabled ? entries : entries.slice(0, 50)),
+    [entries, paginationEnabled],
+  );
+  const top3 = useMemo(
+    () => (paginationEnabled && page > 1 ? [] : displayEntries.slice(0, 3)),
+    [displayEntries, paginationEnabled, page],
+  );
+
+  const totalContributors = totalCount > 0 ? totalCount : entries.length;
   const totalXpShipped = entries.reduce((sum, e) => sum + e.xp, 0);
+  const totalPages = Math.max(1, Math.ceil(totalContributors / Math.max(pageSize, 1)));
 
   const userRankInfo = useMemo(() => {
-    if (!userHandle || !currentUserRank) return null;
-    const inViewEntry = displayEntries.find((e) => e.githubHandle === userHandle);
+    if (!currentUserId && !userHandle) return null;
+    const inViewEntry = displayEntries.find(
+      (e) =>
+        (currentUserId !== null && e.userId === currentUserId) ||
+        (userHandle !== null && e.githubHandle === userHandle),
+    );
     if (inViewEntry) return { rank: inViewEntry.rank, inView: true };
-    return { rank: currentUserRank.rank, inView: false };
-  }, [userHandle, currentUserRank, displayEntries]);
+    if (currentUserRank) return { rank: currentUserRank.rank, inView: false };
+    return null;
+  }, [currentUserId, userHandle, currentUserRank, displayEntries]);
 
   const upperPercentile = userRankInfo
     ? ((totalContributors - userRankInfo.rank) / totalContributors) * 100
     : null;
   const rivals = useMemo(() => {
-    if (!userHandle) return [];
-    const userIndex = displayEntries.findIndex((e) => e.githubHandle === userHandle);
+    if (!currentUserId && !userHandle) return [];
+    const userIndex = displayEntries.findIndex(
+      (e) =>
+        (currentUserId !== null && e.userId === currentUserId) ||
+        (userHandle !== null && e.githubHandle === userHandle),
+    );
     if (userIndex === -1) return [];
     const before = displayEntries[userIndex - 1] ?? null;
     const after = displayEntries[userIndex + 1] ?? null;
     return [before, after].filter(Boolean) as LeaderboardEntry[];
-  }, [displayEntries, userHandle]);
+  }, [displayEntries, currentUserId, userHandle]);
+
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -72,7 +116,19 @@ export function LeaderboardContent({
     const params = new URLSearchParams(searchParams.toString());
     params.set('scope', tab);
     params.delete('id');
+    params.delete('page');
     router.push(`/leaderboard?${params.toString()}`);
+  }
+
+  function pageHref(targetPage: number): string {
+    const params = new URLSearchParams(searchParams.toString());
+    if (targetPage <= 1) {
+      params.delete('page');
+    } else {
+      params.set('page', String(targetPage));
+    }
+    const qs = params.toString();
+    return qs ? `/leaderboard?${qs}` : '/leaderboard';
   }
 
   const formatXp = (xp: number) => {
@@ -216,37 +272,44 @@ export function LeaderboardContent({
             </div>
           ) : (
             <>
-              {/* Podium */}
-              <div className="mb-10 flex items-end justify-center gap-4">
-                {top3.length === 3 ? (
-                  <>
-                    <PodiumCard
-                      entry={top3[1]!}
-                      position={2}
-                      gradient="from-zinc-400 via-zinc-300 to-zinc-200"
-                      shadow="shadow-[0_0_20px_rgba(192,192,192,0.3)]"
-                      height="h-36"
-                    />
-                    <PodiumCard
-                      entry={top3[0]!}
-                      position={1}
-                      gradient="from-yellow-400 via-yellow-300 to-amber-200"
-                      shadow="shadow-[0_0_25px_rgba(255,215,0,0.4)]"
-                      height="h-44"
-                    />
-                    <PodiumCard
-                      entry={top3[2]!}
-                      position={3}
-                      gradient="from-orange-500 via-orange-400 to-orange-300"
-                      shadow="shadow-[0_0_20px_rgba(205,127,50,0.3)]"
-                      height="h-28"
-                    />
-                  </>
-                ) : (
-                  <div className="py-8 text-sm text-zinc-600">
-                    Need at least 3 contributors for the podium
-                  </div>
-                )}
+              {/* Podium — only on page 1 so ranks stay meaningful */}
+              {top3.length > 0 && (
+                <div className="mb-10 flex items-end justify-center gap-4">
+                  {top3.length === 3 ? (
+                    <>
+                      <PodiumCard
+                        entry={top3[1]!}
+                        position={2}
+                        gradient="from-zinc-400 via-zinc-300 to-zinc-200"
+                        shadow="shadow-[0_0_20px_rgba(192,192,192,0.3)]"
+                        height="h-36"
+                      />
+                      <PodiumCard
+                        entry={top3[0]!}
+                        position={1}
+                        gradient="from-yellow-400 via-yellow-300 to-amber-200"
+                        shadow="shadow-[0_0_25px_rgba(255,215,0,0.4)]"
+                        height="h-44"
+                      />
+                      <PodiumCard
+                        entry={top3[2]!}
+                        position={3}
+                        gradient="from-orange-500 via-orange-400 to-orange-300"
+                        shadow="shadow-[0_0_20px_rgba(205,127,50,0.3)]"
+                        height="h-28"
+                      />
+                    </>
+                  ) : (
+                    <div className="py-8 text-sm text-zinc-600">
+                      Need at least 3 contributors for the podium
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Count — matches Issues page style */}
+              <div className="mb-6 text-[11px] uppercase tracking-widest text-zinc-500">
+                {totalContributors.toLocaleString()} CONTRIBUTORS
               </div>
 
               {/* Table */}
@@ -263,7 +326,9 @@ export function LeaderboardContent({
                   </thead>
                   <tbody>
                     {displayEntries.map((entry, index) => {
-                      const isMe = userHandle !== null && entry.githubHandle === userHandle;
+                      const isMe =
+                        (currentUserId !== null && entry.userId === currentUserId) ||
+                        (userHandle !== null && entry.githubHandle === userHandle);
                       return (
                         <motion.tr
                           key={entry.userId}
@@ -356,6 +421,39 @@ export function LeaderboardContent({
                   </div>
                 )}
               </div>
+
+              {/* Pagination — Link-based for shareable URLs, styled like Issues */}
+              {paginationEnabled && totalPages > 1 && (
+                <div className="mt-10 flex items-center justify-between border-t border-[#2d333b] pt-6">
+                  {page <= 1 ? (
+                    <span className="flex cursor-not-allowed items-center gap-2 text-[11px] uppercase tracking-widest text-zinc-400 opacity-30">
+                      <ChevronLeft className="h-3 w-3" /> PREV
+                    </span>
+                  ) : (
+                    <Link
+                      href={pageHref(page - 1)}
+                      className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-zinc-400 transition-colors hover:text-white"
+                    >
+                      <ChevronLeft className="h-3 w-3" /> PREV
+                    </Link>
+                  )}
+                  <span className="text-[11px] uppercase tracking-widest text-zinc-500">
+                    {page} / {totalPages}
+                  </span>
+                  {page >= totalPages ? (
+                    <span className="flex cursor-not-allowed items-center gap-2 text-[11px] uppercase tracking-widest text-zinc-400 opacity-30">
+                      NEXT <ChevronRight className="h-3 w-3" />
+                    </span>
+                  ) : (
+                    <Link
+                      href={pageHref(page + 1)}
+                      className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-zinc-400 transition-colors hover:text-white"
+                    >
+                      NEXT <ChevronRight className="h-3 w-3" />
+                    </Link>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

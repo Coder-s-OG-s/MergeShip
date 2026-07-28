@@ -24,6 +24,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@google/genai": "^2.10.0",
     "@octokit/auth-app": "^7.1.1",
     "@octokit/rest": "^21.0.2",
     "@octokit/webhooks": "^13.4.1",
@@ -45,6 +46,7 @@
     "lucide-react": "^0.400.0",
     "next": "^16.2.6",
     "postgres": "^3.4.5",
+    "posthog-js": "^1.402.0",
     "react": "^18",
     "react-dom": "^18",
     "recharts": "^2.12.0",
@@ -55,6 +57,9 @@
   },
   "devDependencies": {
     "@faker-js/faker": "^9.2.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20",
     "@types/react": "^18",
@@ -65,6 +70,7 @@
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.6",
     "husky": "^9.1.7",
+    "jsdom": "^29.1.1",
     "lint-staged": "^15.2.10",
     "postcss": "^8.5.15",
     "prettier": "^3.3.3",

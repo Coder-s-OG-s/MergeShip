@@ -5,6 +5,17 @@ import type { MaintainerPrRow } from '@/lib/maintainer/queue';
 
 export type { MaintainerPrRow };
 
+export type MaintainerDashboardStats = {
+  openPrs: number;
+  aiFlagged: number;
+  readyToMerge: number;
+  cleanRate: number;
+  avgReviewTimeHours: number;
+  contributors: number;
+  issuesOpen: number;
+  prsMerged: number;
+};
+
 export type MaintainerIssueRow = {
   id: number;
   repoFullName: string;
@@ -84,6 +95,22 @@ export type ReviewerLoadRow = {
   prCount: number;
 };
 
+export type TimelineEvent = {
+  id: string;
+  type: 'opened' | 'comment' | 'commit' | 'review';
+  timestamp: string;
+  actor: {
+    login: string;
+    avatarUrl: string | null;
+  };
+  details: {
+    body?: string;
+    message?: string;
+    sha?: string;
+    state?: 'approved' | 'changes_requested' | 'commented' | 'dismissed';
+  };
+};
+
 export type NoiseBreakdown = {
   valid: number;
   spamAi: number;
@@ -96,4 +123,10 @@ export type PromotionEligibleRow = {
   xp: number;
   level: number;
   xpNeeded: number;
+};
+
+export type ContributorFunnelData = {
+  registered: number;
+  firstPr: number;
+  l2Promoted: number;
 };

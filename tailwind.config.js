@@ -1,8 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/components/**/*.{ts,tsx}",
+    "./src/app/**/*.{ts,tsx}",
   ],
   darkMode: "class",
   theme: {
@@ -32,6 +32,14 @@ module.exports = {
           500: "#222245",
           400: "#2D2D5A",
           300: "#3D3D70",
+        },
+        shell: {
+          bg: "var(--shell-bg)",
+          border: "var(--shell-border)",
+          "card-bg": "var(--shell-card-bg)",
+          "text-muted": "var(--shell-text-muted)",
+          "bg-secondary": "var(--shell-bg-secondary)",
+          "bg-tertiary": "var(--shell-bg-tertiary)",
         },
       },
       fontFamily: {

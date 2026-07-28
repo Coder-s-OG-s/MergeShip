@@ -2,10 +2,21 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { getServerSupabase } from '@/lib/supabase/server';
 
 export async function devSkipInstall() {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('Development-only action');
+  }
+
+  const sb = await getServerSupabase();
+  if (sb) {
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+    if (!user) {
+      throw new Error('Authentication required');
+    }
   }
 
   const cookieStore = await cookies();

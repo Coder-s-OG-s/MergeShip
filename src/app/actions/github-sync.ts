@@ -175,6 +175,7 @@ export async function syncGitHubStats(): Promise<Result<SyncOutput>> {
       .eq('id', user.id);
 
     await cacheDel(`gh:dashboard:${user.id}`);
+    await cacheDel(`profile:v3:${profile.github_handle}`);
     await cacheDel(`myprs:${user.id}`);
     await cacheDel(`myprs:sync:${user.id}`);
 

@@ -65,3 +65,8 @@ export async function requireMaintainer<T extends ActionAuthOptions>(
 
   return userRes;
 }
+
+// Compatibility helper used by existing maintainer server actions.
+export async function requireMaintainerAuth(): Promise<Result<ActionAuthSuccess>> {
+  return requireMaintainer();
+}

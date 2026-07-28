@@ -70,6 +70,7 @@ describe('githubStatsSync', () => {
       86_400,
     );
     expect(cacheDel).toHaveBeenCalledWith('gh:dashboard:u1');
+    expect(cacheDel).toHaveBeenCalledWith('profile:v3:alice');
     expect(result).toEqual({ merges: 5, streak: 10 });
   });
 

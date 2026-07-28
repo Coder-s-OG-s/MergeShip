@@ -1,6 +1,7 @@
 export type SeniorMaintainer = {
   userId: string;
   handle: string;
+  activeReviewCount: number;
 };
 
 // A mentor can only be routed a PR if they're actually allowed to verify it.
@@ -22,7 +23,12 @@ export function pickMentor(
 ): SeniorMaintainer | null {
   const candidates = seniors
     .filter((senior) => senior.userId !== excludedUserId)
-    .sort((a, b) => a.handle.localeCompare(b.handle) || a.userId.localeCompare(b.userId));
+    .sort(
+      (a, b) =>
+        a.activeReviewCount - b.activeReviewCount ||
+        a.handle.localeCompare(b.handle) ||
+        a.userId.localeCompare(b.userId),
+    );
 
   return candidates[0] ?? null;
 }
