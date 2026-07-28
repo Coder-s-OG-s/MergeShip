@@ -228,7 +228,10 @@ export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<
   if (!token) return err('no_github_token', 'reconnect your GitHub account');
 
   const ghRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'User-Agent': 'MergeShip/1.0',
+    },
   });
   if (!ghRes.ok)
     return err('github_fetch_failed', 'could not fetch PR from GitHub — check the URL');
