@@ -48,4 +48,17 @@ describe('GitHub Rate Limit Budget Manager', () => {
     const res2 = await checkRateBudget(1005);
     expect(res2.ok).toBe(false);
   });
+
+  it('retains depleted budget and blocks requests even when resetAt matches current time', async () => {
+    const installId = 1006;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const resetAt = nowSec; // resetAt <= currentTime
+    const remaining = 0;
+
+    await updateRateBudget(installId, remaining, resetAt);
+
+    const res = await checkRateBudget(installId);
+    expect(res.ok).toBe(false);
+    expect(res.remaining).toBe(0);
+  });
 });

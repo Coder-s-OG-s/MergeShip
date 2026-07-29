@@ -28,7 +28,7 @@ export async function updateRateBudget(
     return;
   }
   try {
-    const ttlSeconds = Math.max(0, resetAt - Math.floor(Date.now() / 1000));
+    const ttlSeconds = Math.max(1, resetAt - Math.floor(Date.now() / 1000));
     await cacheSet(getBudgetCacheKey(installationId), { remaining, resetAt }, ttlSeconds);
   } catch {
     // Fail open: if cache fails, do not crash the calling process
