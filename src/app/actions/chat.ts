@@ -67,7 +67,22 @@ export async function getOrCreateChatChannel(
   const mentorId = profileSelf.level > profileOther.level ? profileSelf.id : profileOther.id;
   const menteeId = profileSelf.level > profileOther.level ? profileOther.id : profileSelf.id;
 
-  // Check if channel already exists
+  // Try to insert first — the unique index on (mentor_id, mentee_id) prevents
+  // duplicates atomically, eliminating the TOCTOU window between check and insert.
+  const [newChannel] = await db
+    .insert(schema.chatChannels)
+    .values({
+      mentorId,
+      menteeId,
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  if (newChannel) {
+    return ok({ channelId: newChannel.id });
+  }
+
+  // Insert conflicted (already exists), fetch the existing channel
   const [existingChannel] = await db
     .select()
     .from(schema.chatChannels)
@@ -76,24 +91,11 @@ export async function getOrCreateChatChannel(
     )
     .limit(1);
 
-  if (existingChannel) {
-    return ok({ channelId: existingChannel.id });
-  }
-
-  // Create channel
-  const [newChannel] = await db
-    .insert(schema.chatChannels)
-    .values({
-      mentorId,
-      menteeId,
-    })
-    .returning();
-
-  if (!newChannel) {
+  if (!existingChannel) {
     return err('persist_failed', 'Failed to create chat channel');
   }
 
-  return ok({ channelId: newChannel.id });
+  return ok({ channelId: existingChannel.id });
 }
 
 export async function sendChatMessage(
