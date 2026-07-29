@@ -32,6 +32,7 @@ import {
   previewMergeXp,
   getContributorStats,
   getAiDetectionBreakdown,
+  getMaintainerDashboardStats,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -2293,5 +2294,66 @@ describe('maintainer actions', () => {
         expect(res.data.byReason.suspiciousIp).toBe(1);
       }
     });
+  });
+});
+
+describe('getMaintainerDashboardStats', () => {
+  it('returns zeroes when maintainer has no repos', async () => {
+    vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+    const res = await getMaintainerDashboardStats({ installationId: 1 });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data).toEqual({
+        openPrs: 0,
+        aiFlagged: 0,
+        readyToMerge: 0,
+        cleanRate: 0,
+        avgReviewTimeHours: 0,
+        contributors: 0,
+        issuesOpen: 0,
+        prsMerged: 0,
+      });
+    }
+  });
+
+  it('queries database and calculates dashboard stats correctly', async () => {
+    vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+
+    const mockWhere = (returnValue: any) => vi.fn().mockResolvedValue(returnValue);
+    mockDbSelect
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: mockWhere([{ count: 5 }]) }) })
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: mockWhere([{ count: 2 }]) }) })
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: mockWhere([{ count: 10 }]) }) })
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: mockWhere([{ count: 3 }]) }) })
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: mockWhere([{ count: 7 }]) }) })
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: mockWhere([
+            {
+              githubCreatedAt: new Date('2023-01-01T10:00:00Z'),
+              mentorReviewAt: new Date('2023-01-01T12:00:00Z'),
+            },
+            {
+              githubCreatedAt: new Date('2023-01-02T10:00:00Z'),
+              mentorReviewAt: new Date('2023-01-02T14:00:00Z'),
+            },
+          ]),
+        }),
+      });
+
+    const res = await getMaintainerDashboardStats({ installationId: 1 });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data).toEqual({
+        openPrs: 5,
+        aiFlagged: 0,
+        readyToMerge: 2,
+        cleanRate: 0,
+        avgReviewTimeHours: 3,
+        contributors: 7,
+        issuesOpen: 3,
+        prsMerged: 10,
+      });
+    }
   });
 });

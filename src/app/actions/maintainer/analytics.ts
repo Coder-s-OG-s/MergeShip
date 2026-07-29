@@ -13,7 +13,7 @@ import {
   issues,
   reportSnapshots,
 } from '@/lib/db/schema';
-import { eq, inArray, sum, desc, and, count, gte, lte, isNotNull } from 'drizzle-orm';
+import { eq, inArray, sum, desc, and, count, gte, lte, isNotNull, sql } from 'drizzle-orm';
 import { computeTimeSaved, type TimeSavedBreakdown } from '@/lib/maintainer/time-saved';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
@@ -37,6 +37,7 @@ import type {
   NoiseBreakdown,
   PromotionEligibleRow,
   ContributorFunnelData,
+  MaintainerDashboardStats,
 } from './types';
 import { type AnalyticsRange, rangeToDateBounds } from '@/lib/maintainer/analytics-range';
 import { randomBytes } from 'crypto';
@@ -1365,6 +1366,106 @@ export async function getAnalyticsStats(
       prevMaintainerTimeSavedHours,
       true,
     ),
+  });
+}
+
+export async function getMaintainerDashboardStats(args: {
+  installationId: number;
+}): Promise<Result<MaintainerDashboardStats>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) {
+    return ok({
+      openPrs: 0,
+      aiFlagged: 0,
+      readyToMerge: 0,
+      cleanRate: 0,
+      avgReviewTimeHours: 0,
+      contributors: 0,
+      issuesOpen: 0,
+      prsMerged: 0,
+    });
+  }
+
+  const db = tryGetDb();
+  if (!db) return err('no_db', 'Database connection not available');
+
+  const [
+    openPrsRes,
+    readyToMergeRes,
+    prsMergedRes,
+    issuesOpenRes,
+    contributorsRes,
+    avgReviewTimeRes,
+  ] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(pullRequests)
+      .where(and(inArray(pullRequests.repoFullName, repos), eq(pullRequests.state, 'open'))),
+    db
+      .select({ count: count() })
+      .from(pullRequests)
+      .where(
+        and(
+          inArray(pullRequests.repoFullName, repos),
+          eq(pullRequests.state, 'open'),
+          eq(pullRequests.mentorVerified, true),
+        ),
+      ),
+    db
+      .select({ count: count() })
+      .from(pullRequests)
+      .where(and(inArray(pullRequests.repoFullName, repos), eq(pullRequests.state, 'merged'))),
+    db
+      .select({ count: count() })
+      .from(issues)
+      .where(and(inArray(issues.repoFullName, repos), eq(issues.state, 'open'))),
+    db
+      .select({ count: sql<number>`count(distinct ${pullRequests.authorLogin})` })
+      .from(pullRequests)
+      .where(inArray(pullRequests.repoFullName, repos)),
+    db
+      .select({
+        githubCreatedAt: pullRequests.githubCreatedAt,
+        mentorReviewAt: pullRequests.mentorReviewAt,
+      })
+      .from(pullRequests)
+      .where(
+        and(inArray(pullRequests.repoFullName, repos), isNotNull(pullRequests.mentorReviewAt)),
+      ),
+  ]);
+
+  let totalDurationMs = 0;
+  let reviewedCount = 0;
+  for (const pr of avgReviewTimeRes) {
+    if (pr.mentorReviewAt && pr.githubCreatedAt) {
+      const ms = pr.mentorReviewAt.getTime() - pr.githubCreatedAt.getTime();
+      if (ms > 0) {
+        totalDurationMs += ms;
+        reviewedCount++;
+      }
+    }
+  }
+  const avgReviewTimeHours =
+    reviewedCount > 0
+      ? Math.round((totalDurationMs / reviewedCount / (1000 * 60 * 60)) * 10) / 10
+      : 0;
+
+  return ok({
+    openPrs: Number(openPrsRes[0]?.count ?? 0),
+    aiFlagged: 0,
+    readyToMerge: Number(readyToMergeRes[0]?.count ?? 0),
+    cleanRate: 0,
+    avgReviewTimeHours,
+    contributors: Number(contributorsRes[0]?.count ?? 0),
+    issuesOpen: Number(issuesOpenRes[0]?.count ?? 0),
+    prsMerged: Number(prsMergedRes[0]?.count ?? 0),
   });
 }
 

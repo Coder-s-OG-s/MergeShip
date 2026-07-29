@@ -29,7 +29,7 @@ vi.mock('@/lib/rate-limit', () => ({
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
-/** Build a chainable Supabase query mock with optional terminal result for .single(). */
+/** Build a chainable Supabase query mock with optional terminal result for .single() or .maybeSingle(). */
 function makeChain(resolveValue?: unknown) {
   const result = resolveValue ?? { data: null, error: null };
   return {
@@ -39,6 +39,7 @@ function makeChain(resolveValue?: unknown) {
     gte: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     single: vi.fn().mockResolvedValue(result),
+    maybeSingle: vi.fn().mockResolvedValue(result),
   };
 }
 
@@ -87,14 +88,43 @@ describe('sendHelpRequest', () => {
     }
   });
 
+  it('rejects when recommendation is not found', async () => {
+    mocks.mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    mocks.mockRateLimit.mockResolvedValue({ ok: true });
+
+    // Recommendation query returns null
+    const recChain = makeChain({ data: null, error: null });
+    mocks.mockServiceFrom.mockReturnValueOnce(recChain);
+
+    const result = await sendHelpRequest({ recId: 999, prUrl: 'help' });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('not_found');
+  });
+
+  it('rejects when recommendation belongs to another user', async () => {
+    mocks.mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    mocks.mockRateLimit.mockResolvedValue({ ok: true });
+
+    // Recommendation query returns rec belonging to another user
+    const recChain = makeChain({ data: { id: 1, user_id: 'other-user' }, error: null });
+    mocks.mockServiceFrom.mockReturnValueOnce(recChain);
+
+    const result = await sendHelpRequest({ recId: 1, prUrl: 'help' });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('forbidden');
+  });
+
   it('enforces cooldown for same PR URL within 4 hours', async () => {
     mocks.mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
     mocks.mockRateLimit.mockResolvedValue({ ok: true });
 
+    const recChain = makeChain({ data: { id: 1, user_id: 'user-1' }, error: null });
     // Cooldown query: .limit() returns existing help request → cooldown hit
     const cooldownChain = makeChain();
     cooldownChain.limit = vi.fn().mockResolvedValue({ data: [{ id: 99 }], error: null });
-    mocks.mockServiceFrom.mockReturnValueOnce(cooldownChain);
+    mocks.mockServiceFrom.mockReturnValueOnce(recChain).mockReturnValueOnce(cooldownChain);
 
     const result = await sendHelpRequest({
       recId: 1,
@@ -105,24 +135,38 @@ describe('sendHelpRequest', () => {
     if (!result.ok) expect(result.error.code).toBe('cooldown');
   });
 
-  it('accepts plain text message and sends help request', async () => {
+  it('accepts plain text message and sends help request with recommendation_id', async () => {
     mocks.mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
     mocks.mockRateLimit.mockResolvedValue({ ok: true });
     mocks.mockInngestSend.mockResolvedValue(undefined);
 
+    const recChain = makeChain({ data: { id: 10, user_id: 'user-1' }, error: null });
+
     // Cooldown query: standard chain → .limit() returns chain → data is
     // undefined → cooldown passes.
     const cooldownChain = makeChain();
-    mocks.mockServiceFrom.mockReturnValueOnce(cooldownChain);
 
     // Insert query: .single() resolves with the new row.
     const insertChain = makeChain({ data: { id: 123 }, error: null });
-    mocks.mockServiceFrom.mockReturnValueOnce(insertChain);
 
-    const result = await sendHelpRequest({ recId: 1, prUrl: 'I need help' });
+    mocks.mockServiceFrom
+      .mockReturnValueOnce(recChain)
+      .mockReturnValueOnce(cooldownChain)
+      .mockReturnValueOnce(insertChain);
+
+    const result = await sendHelpRequest({ recId: 10, prUrl: 'I need help' });
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.data.helpRequestId).toBe(123);
+
+    expect(insertChain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: 'user-1',
+        recommendation_id: 10,
+        pr_url: 'rec:10',
+        reason: 'I need help',
+      }),
+    );
 
     expect(mocks.mockInngestSend).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'help/dispatch' }),
@@ -134,11 +178,14 @@ describe('sendHelpRequest', () => {
     mocks.mockRateLimit.mockResolvedValue({ ok: true });
     mocks.mockInngestSend.mockResolvedValue(undefined);
 
+    const recChain = makeChain({ data: { id: 1, user_id: 'user-1' }, error: null });
     const cooldownChain = makeChain();
-    mocks.mockServiceFrom.mockReturnValueOnce(cooldownChain);
-
     const insertChain = makeChain({ data: { id: 456 }, error: null });
-    mocks.mockServiceFrom.mockReturnValueOnce(insertChain);
+
+    mocks.mockServiceFrom
+      .mockReturnValueOnce(recChain)
+      .mockReturnValueOnce(cooldownChain)
+      .mockReturnValueOnce(insertChain);
 
     const prUrl = 'https://github.com/some-org/some-repo/pull/789';
     const result = await sendHelpRequest({ recId: 1, prUrl });

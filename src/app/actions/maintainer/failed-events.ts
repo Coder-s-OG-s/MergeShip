@@ -137,16 +137,25 @@ export async function retryFailedWebhookEvent(args: {
     return err('invalid_input', `Invalid event_type: ${eventType ?? 'null'}`);
   }
 
-  const currentRetries: number = failedEvent.retry_count ?? 0;
-  if (currentRetries >= MAX_RETRIES) {
+  // Use an atomic RPC call to prevent race conditions where
+  // concurrent retries both pass the check before incrementing.
+  const { data: rpcResult, error: rpcError } = await service.rpc('increment_webhook_retry_count', {
+    event_id: args.eventId,
+    max_retries: MAX_RETRIES,
+  });
+
+  if (rpcError || !rpcResult) {
+    // If the RPC failed, it likely means the retry limit was exceeded.
+    // Fetch the current state to return an accurate error.
+    const { data: recheckEvent } = await service
+      .from('failed_webhook_events')
+      .select('retry_count')
+      .eq('id', args.eventId)
+      .maybeSingle();
+
+    const currentRetries: number = recheckEvent?.retry_count ?? 0;
     return err('max_retries', `Max retries exceeded (${currentRetries}/${MAX_RETRIES})`);
   }
-
-  // Increment retry count before dispatching for durability.
-  await service
-    .from('failed_webhook_events')
-    .update({ retry_count: currentRetries + 1 })
-    .eq('id', args.eventId);
 
   await inngest.send({
     name: eventType,

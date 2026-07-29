@@ -7,6 +7,7 @@ import {
   getMaintainerInstalls,
   getMaintainerPrQueue,
   getMaintainerAnalyticsTrends,
+  getMaintainerDashboardStats,
   getRepoHealthOverview,
   getStaleIssues,
   getStalePrs,
@@ -40,6 +41,7 @@ import RefreshButton from './refresh-button';
 import InviteContributorButton from './invite-contributor-button';
 import CiStatusBadge from './ci-status-badge';
 import AnalyticsTrends from './analytics-trends';
+import { DashboardStats } from './dashboard-stats';
 import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
 import QueueSettings from './queue-settings';
@@ -125,6 +127,19 @@ export default async function MaintainerPage({
   });
   const rows: MaintainerPrRow[] = isOk(queueRes) ? queueRes.data.rows : [];
   const trendsRes = await getMaintainerAnalyticsTrends({ installationId: activeInstallId });
+  const dashboardStatsRes = await getMaintainerDashboardStats({ installationId: activeInstallId });
+  const dashboardStats = isOk(dashboardStatsRes)
+    ? dashboardStatsRes.data
+    : {
+        openPrs: 0,
+        aiFlagged: 0,
+        readyToMerge: 0,
+        cleanRate: 0,
+        avgReviewTimeHours: 0,
+        contributors: 0,
+        issuesOpen: 0,
+        prsMerged: 0,
+      };
   const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
     ? trendsRes.data
     : {
@@ -199,6 +214,12 @@ export default async function MaintainerPage({
               accountLogin={activeInstall.accountLogin}
             />
             <Link
+              href={`/maintainer/analytics?install=${activeInstallId}`}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-600"
+            >
+              Analytics →
+            </Link>
+            <Link
               href={`/maintainer?install=${activeInstallId}&state=open`}
               className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-600"
             >
@@ -243,6 +264,12 @@ export default async function MaintainerPage({
           <div className="ml-auto flex items-center gap-2">
             <ExportCsvButton installationId={activeInstallId} filters={filters} />
             <Link
+              href={`/maintainer/analytics?install=${activeInstallId}`}
+              className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
+            >
+              Analytics →
+            </Link>
+            <Link
               href={`/maintainer/issues?install=${activeInstallId}`}
               className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
             >
@@ -275,37 +302,7 @@ export default async function MaintainerPage({
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
         <QueueSettings settings={settings} />
-        <section className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <StatTile
-            label="PRs Opened"
-            value={formatCount(analyticsTrends.dayOverDay.openedPrs.current)}
-            detail="today"
-            delta={analyticsTrends.dayOverDay.openedPrs}
-          />
-          <StatTile
-            label="PRs Merged"
-            value={formatCount(analyticsTrends.dayOverDay.mergedPrs.current)}
-            detail="today"
-            delta={analyticsTrends.dayOverDay.mergedPrs}
-          />
-          <StatTile
-            label="Mentor Reviews"
-            value={formatCount(analyticsTrends.dayOverDay.mentorReviews.current)}
-            detail="today"
-            delta={analyticsTrends.dayOverDay.mentorReviews}
-          />
-          <StatTile
-            label="Average Review Time"
-            value={
-              analyticsTrends.avgReviewTimeHours !== null
-                ? `${analyticsTrends.avgReviewTimeHours.toFixed(1)}h`
-                : '-'
-            }
-            detail="all verified PRs"
-            delta={analyticsTrends.dayOverDay.avgReviewTimeHours}
-            deltaUnit="h"
-          />
-        </section>
+        <DashboardStats stats={dashboardStats} />
         <AnalyticsTrends data={analyticsTrends} />
         {promotionEligible.length > 0 && (
           <section className="mb-8 rounded-2xl border border-emerald-900/60 bg-emerald-950/20 p-5">
@@ -635,62 +632,6 @@ export default async function MaintainerPage({
       </div>
     </div>
   );
-}
-
-function StatTile({
-  label,
-  value,
-  detail,
-  delta,
-  deltaUnit,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  delta: MaintainerDayOverDayMetric;
-  deltaUnit?: 'h';
-}) {
-  return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <h2 className="text-sm font-semibold text-white">{label}</h2>
-        <DeltaBadge metric={delta} unit={deltaUnit} />
-      </div>
-      <div className="mt-4 flex items-baseline gap-2">
-        <span className="text-4xl font-bold text-white">{value}</span>
-        <span className="text-xs text-zinc-500">{detail}</span>
-      </div>
-    </section>
-  );
-}
-
-function DeltaBadge({ metric, unit }: { metric: MaintainerDayOverDayMetric; unit?: 'h' }) {
-  const label = formatDelta(metric, unit);
-  const tone =
-    metric.direction === 'up'
-      ? 'border-emerald-800/70 bg-emerald-950/60 text-emerald-300'
-      : metric.direction === 'down'
-        ? 'border-red-800/70 bg-red-950/60 text-red-300'
-        : 'border-zinc-700 bg-zinc-800/70 text-zinc-400';
-
-  return (
-    <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${tone}`}>{label}</span>
-  );
-}
-
-function formatCount(value: number | null): string {
-  return value === null ? '-' : value.toLocaleString();
-}
-
-function formatDelta(metric: MaintainerDayOverDayMetric, unit?: 'h'): string {
-  if (metric.delta === null) {
-    return metric.current && metric.current > 0 ? 'new today' : 'no data';
-  }
-  if (metric.delta === 0) return 'no change';
-
-  const sign = metric.delta > 0 ? '+' : '';
-  const value = unit === 'h' ? `${sign}${metric.delta.toFixed(1)}h` : `${sign}${metric.delta}`;
-  return `${value} vs yesterday`;
 }
 
 function FilterPill({ label, href, active }: { label: string; href: string; active: boolean }) {

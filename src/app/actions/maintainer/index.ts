@@ -203,6 +203,12 @@ export async function getMaintainerAnalyticsTrends(
   return analyticsActions.getMaintainerAnalyticsTrends(...args);
 }
 
+export async function getMaintainerDashboardStats(
+  ...args: Parameters<typeof analyticsActions.getMaintainerDashboardStats>
+): ReturnType<typeof analyticsActions.getMaintainerDashboardStats> {
+  return analyticsActions.getMaintainerDashboardStats(...args);
+}
+
 export async function exportPrQueueCsv(
   ...args: Parameters<typeof analyticsActions.exportPrQueueCsv>
 ): ReturnType<typeof analyticsActions.exportPrQueueCsv> {

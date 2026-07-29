@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getDisplayProfiles } from './leaderboard-snapshot';
+import { getDisplayProfiles, getRankContext } from './leaderboard-snapshot';
 
 describe('leaderboard-snapshot helpers', () => {
   const generateProfiles = (count: number) =>
@@ -50,6 +50,62 @@ describe('leaderboard-snapshot helpers', () => {
       expect(result[0]?.github_handle).toBe('user-4');
       expect(result[2]?.github_handle).toBe('user-6'); // middle element
       expect(result[4]?.github_handle).toBe('user-8');
+    });
+  });
+
+  describe('getRankContext', () => {
+    it('returns null userRank when user is not in the tier (myIndex === -1)', () => {
+      const profiles = generateProfiles(10);
+      const ctx = getRankContext(profiles, -1);
+      expect(ctx.userRank).toBeNull();
+      expect(ctx.totalInTier).toBe(10);
+      expect(ctx.gapToTop).toBeNull();
+      expect(ctx.isTierLeader).toBe(false);
+    });
+
+    it('reports rank 1 and isTierLeader when the user is at the top of the tier', () => {
+      const profiles = generateProfiles(8);
+      const ctx = getRankContext(profiles, 0);
+      expect(ctx.userRank).toBe(1);
+      expect(ctx.totalInTier).toBe(8);
+      expect(ctx.gapToTop).toBe(0);
+      expect(ctx.isTierLeader).toBe(true);
+    });
+
+    it('reports correct rank and gap to the top for a mid-tier user', () => {
+      const profiles = generateProfiles(20);
+      // rank 7 (index 6) -> gap to top is 6
+      const ctx = getRankContext(profiles, 6);
+      expect(ctx.userRank).toBe(7);
+      expect(ctx.totalInTier).toBe(20);
+      expect(ctx.gapToTop).toBe(6);
+      expect(ctx.isTierLeader).toBe(false);
+    });
+
+    it('reports correct rank for the bottom of the tier', () => {
+      const profiles = generateProfiles(15);
+      const ctx = getRankContext(profiles, 14);
+      expect(ctx.userRank).toBe(15);
+      expect(ctx.totalInTier).toBe(15);
+      expect(ctx.gapToTop).toBe(14);
+      expect(ctx.isTierLeader).toBe(false);
+    });
+
+    it('handles empty tier gracefully', () => {
+      const ctx = getRankContext([], -1);
+      expect(ctx.userRank).toBeNull();
+      expect(ctx.totalInTier).toBe(0);
+      expect(ctx.gapToTop).toBeNull();
+      expect(ctx.isTierLeader).toBe(false);
+    });
+
+    it('handles a single-user tier where the user is the tier leader', () => {
+      const profiles = generateProfiles(1);
+      const ctx = getRankContext(profiles, 0);
+      expect(ctx.userRank).toBe(1);
+      expect(ctx.totalInTier).toBe(1);
+      expect(ctx.gapToTop).toBe(0);
+      expect(ctx.isTierLeader).toBe(true);
     });
   });
 });

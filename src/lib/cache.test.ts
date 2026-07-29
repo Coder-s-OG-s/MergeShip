@@ -5,6 +5,7 @@ import {
   cacheSet,
   cacheDel,
   cacheDelByPrefix,
+  cacheRateLimitHitSlidingWindow,
   IoRedisBackend,
   UpstashBackend,
 } from './cache';
@@ -49,6 +50,35 @@ describe('cache (memory backend)', () => {
     await cacheSet('k', 'first', 60);
     await cacheSet('k', 'second', 60);
     expect(await cacheGet('k')).toBe('second');
+  });
+});
+
+describe('cacheRateLimitHitSlidingWindow (memory backend)', () => {
+  it('counts every hit inside the trailing window', async () => {
+    const now = 1_000_000;
+    const a = await cacheRateLimitHitSlidingWindow('rl:sw', 60, 5, now);
+    expect(a.count).toBe(1);
+    const b = await cacheRateLimitHitSlidingWindow('rl:sw', 60, 5, now + 1000);
+    expect(b.count).toBe(2);
+    expect(b.resetAt).toBe(now + 1000 + 60_000);
+  });
+
+  it('evicts hits older than the window', async () => {
+    const now = 1_000_000;
+    await cacheRateLimitHitSlidingWindow('rl:sw', 60, 5, now);
+    await cacheRateLimitHitSlidingWindow('rl:sw', 60, 5, now + 10_000);
+    // 61s after the first hit: the first ages out, the second is still in range.
+    const c = await cacheRateLimitHitSlidingWindow('rl:sw', 60, 5, now + 61_000);
+    expect(c.count).toBe(2);
+  });
+
+  it('caps stored timestamps at limit + 1 without changing the block decision', async () => {
+    const now = 1_000_000;
+    let last: { count: number; resetAt: number } | undefined;
+    for (let i = 0; i < 10; i++) {
+      last = await cacheRateLimitHitSlidingWindow('rl:cap', 60, 3, now + i);
+    }
+    expect(last?.count).toBe(4);
   });
 });
 
@@ -121,6 +151,39 @@ describe('IoRedisBackend', () => {
     expect(result.count).toBe(Number.MAX_SAFE_INTEGER);
     expect(result.resetAt).toBe(1000 + 60 * 1000);
   });
+
+  it('rateLimitHitSlidingWindow reads the zcard from the atomic pipeline', async () => {
+    const mockRedis = {
+      multi: vi.fn().mockReturnThis(),
+      zremrangebyscore: vi.fn().mockReturnThis(),
+      zadd: vi.fn().mockReturnThis(),
+      zcard: vi.fn().mockReturnThis(),
+      pexpire: vi.fn().mockReturnThis(),
+      exec: vi.fn().mockResolvedValue([
+        [null, 0],
+        [null, 1],
+        [null, 3],
+        [null, 1],
+      ]),
+    };
+    const backend = new IoRedisBackend(mockRedis as any);
+    const result = await backend.rateLimitHitSlidingWindow('rl:key', 60, 10, 1000);
+    expect(result.count).toBe(3);
+    expect(result.resetAt).toBe(1000 + 60 * 1000);
+    expect(mockRedis.zremrangebyscore).toHaveBeenCalledWith('rl:key', 0, 1000 - 60_000);
+  });
+
+  it('rateLimitHitSlidingWindow fails closed on redis error', async () => {
+    const mockRedis = {
+      multi: vi.fn(() => {
+        throw new Error('Redis down');
+      }),
+    };
+    const backend = new IoRedisBackend(mockRedis as any);
+    const result = await backend.rateLimitHitSlidingWindow('rl:key', 60, 10, 1000);
+    expect(result.count).toBe(Number.MAX_SAFE_INTEGER);
+    expect(result.resetAt).toBe(1000 + 60 * 1000);
+  });
 });
 
 describe('UpstashBackend', () => {
@@ -185,5 +248,32 @@ describe('UpstashBackend', () => {
     const result = await backend.rateLimitHit('rl:key', 60, 1000);
     expect(result.count).toBe(Number.MAX_SAFE_INTEGER);
     expect(result.resetAt).toBe(1000 + 60 * 1000);
+  });
+
+  it('rateLimitHitSlidingWindow reads the zcard from the atomic pipeline', async () => {
+    const mockUpstash = {
+      multi: vi.fn().mockReturnThis(),
+      zremrangebyscore: vi.fn().mockReturnThis(),
+      zadd: vi.fn().mockReturnThis(),
+      zcard: vi.fn().mockReturnThis(),
+      pexpire: vi.fn().mockReturnThis(),
+      exec: vi.fn().mockResolvedValue([0, 1, 4, 1]),
+    };
+    const backend = new UpstashBackend(mockUpstash as any);
+    const result = await backend.rateLimitHitSlidingWindow('rl:key', 60, 10, 2000);
+    expect(result.count).toBe(4);
+    expect(result.resetAt).toBe(2000 + 60 * 1000);
+  });
+
+  it('rateLimitHitSlidingWindow fails closed on error', async () => {
+    const mockUpstash = {
+      multi: vi.fn(() => {
+        throw new Error('Redis down');
+      }),
+    };
+    const backend = new UpstashBackend(mockUpstash as any);
+    const result = await backend.rateLimitHitSlidingWindow('rl:key', 60, 10, 2000);
+    expect(result.count).toBe(Number.MAX_SAFE_INTEGER);
+    expect(result.resetAt).toBe(2000 + 60 * 1000);
   });
 });
