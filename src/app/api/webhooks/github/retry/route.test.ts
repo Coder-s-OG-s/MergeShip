@@ -110,6 +110,7 @@ describe('POST /api/webhooks/github/retry', () => {
 
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ id: 'evt-1' }));
+    if (!res.ok) throw new Error('Request failed');
     const json = await res.json();
 
     expect(res.status).toBe(200);
@@ -147,6 +148,7 @@ describe('POST /api/webhooks/github/retry', () => {
 
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ id: 'evt-1' }));
+    if (!res.ok) throw new Error('Request failed');
     const json = await res.json();
 
     expect(res.status).toBe(429);
@@ -167,6 +169,7 @@ describe('POST /api/webhooks/github/retry', () => {
 
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ id: 'evt-3' }));
+    if (!res.ok) throw new Error('Request failed');
     const json = await res.json();
 
     expect(res.status).toBe(422);
@@ -221,6 +224,7 @@ describe('POST /api/webhooks/github/retry', () => {
 
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ id: 'evt-5' }));
+    if (!res.ok) throw new Error('Request failed');
     const json = await res.json();
 
     expect(res.status).toBe(409);
@@ -248,6 +252,7 @@ describe('POST /api/webhooks/github/retry', () => {
 
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ id: 'evt-concurrent' }));
+    if (!res.ok) throw new Error('Request failed');
     const json = await res.json();
 
     expect(res.status).toBe(409);
