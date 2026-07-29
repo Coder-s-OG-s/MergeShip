@@ -25,7 +25,7 @@ import { cacheGet, cacheSet } from '@/lib/cache';
  */
 
 type DiscoverEvent = {
-  data: { userId: string; githubHandle: string; force?: boolean };
+  data: { userId: string; githubHandle: string; force?: boolean; installationId?: number };
 };
 
 const DEDUP_TTL_S = 60 * 60; // 1h
@@ -43,7 +43,13 @@ export const maintainerDiscover = inngest.createFunction(
     }
     const e = event as DiscoverEvent;
     if (!e.data.userId) return await sweep();
-    return await discoverForUser(step, e.data.userId, e.data.githubHandle, e.data.force === true);
+    return await discoverForUser(
+      step,
+      e.data.userId,
+      e.data.githubHandle,
+      e.data.force === true,
+      e.data.installationId,
+    );
   },
 );
 
@@ -52,6 +58,7 @@ async function discoverForUser(
   userId: string,
   githubHandle: string,
   force: boolean,
+  installationId?: number,
 ): Promise<{ user: string; installs: number; toUpsert: number; toDelete: number }> {
   const sb = getServiceSupabase();
   if (!sb) throw new Error('service role missing');
@@ -76,7 +83,7 @@ async function discoverForUser(
     account_type: string;
     uninstalled_at: string | null;
   };
-  const installRows = (userInstalls ?? [])
+  const knownInstalls = (userInstalls ?? [])
     .map((r) => {
       const joined = r.github_installations as unknown as JoinedInstall;
       return joined && joined.uninstalled_at === null
@@ -84,6 +91,21 @@ async function discoverForUser(
         : null;
     })
     .filter(Boolean) as Array<{ id: number; account_login: string; account_type: string }>;
+
+  const targetInstall = installationId
+    ? await sb
+        .from('github_installations')
+        .select('id, account_login, account_type')
+        .eq('id', installationId)
+        .is('uninstalled_at', null)
+        .maybeSingle()
+    : null;
+
+  const installRows = targetInstall?.data
+    ? [...knownInstalls, targetInstall.data].filter(
+        (inst, idx, arr) => arr.findIndex((i) => i.id === inst.id) === idx,
+      )
+    : knownInstalls;
 
   const proposed: ProposedGrant[] = [];
 
