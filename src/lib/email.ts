@@ -189,7 +189,7 @@ export async function sendWeeklyDigestEmail({
         You can unsubscribe from these emails by updating your <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com'}/settings/profile">Profile Settings</a>.
       </p>
     `,
-    text: `Your Weekly Progress Digest\n\nHello ${githubHandle}, here's what you achieved this week on MergeShip!\n\nProgress:\n- XP Gained: ${xpGained} XP\n- Current Level: Level ${currentLevel}\n- Progress to Next Level: ${xpToNextLevel} XP needed\n\nActivity:\n- Issues Completed: ${issuesCompleted}\n- PRs Merged: ${prsMerged}\n- Reviews Performed: ${reviewsPerformed}\n\n${recommendations.length > 0 ? `Recommended for you:\n${recommendations.map((r) => `- ${r.title} (+${r.xpReward} XP): ${r.url}`).join('\n')}\n\n` : ''}View your dashboard: ${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com'}\n\nYou can unsubscribe from these emails by updating your Profile Settings.\n`,
+    text: `Your Weekly Progress Digest\n\nHello ${githubHandle}, here's what you achieved this week on MergeShip!\n\nProgress:\n- XP Gained: ${xpGained} XP\n- Current Level: Level ${currentLevel}\n- Progress to Next Level: ${xpToNextLevel} XP needed\n\nActivity:\n- Issues Completed: ${issuesCompleted}\n- PRs Merged: ${prsMerged}\n- Reviews Performed: ${reviewsPerformed}\n\n${recommendations.length > 0 ? `Recommended for you:\n${recommendations.map((r) => `- ${r.title} (+${r.xpReward} XP): ${r.url}`).join('\n')}\n\n` : ''}View your dashboard: ${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com'}\n\nYou can unsubscribe from these emails by updating your Profile Settings: ${process.env.NEXT_PUBLIC_APP_URL || 'https://mergeship.com'}/settings/profile\n`,
   });
 }
 
@@ -219,5 +219,6 @@ export async function sendOrganizationInviteEmail({
       <p>Click the link below to accept the invitation:</p>
       <p><a href="${htmlEscape(inviteLink)}">${htmlEscape(inviteLink)}</a></p>
     `,
+    text: `${inviterHandle} invited you to join ${organizationName} on MergeShip.\n\nClick the link below to accept the invitation:\n${inviteLink}`,
   });
 }
