@@ -24,15 +24,18 @@ export type XpEventInsert = {
   };
 };
 
-export async function insertXpEvent(event: XpEventInsert): Promise<boolean> {
-  const db = getDb();
+export async function insertXpEvent(
+  event: XpEventInsert,
+  tx?: any,
+): Promise<boolean> {
+  const db = tx ?? getDb();
 
   // Snapshot today's prior total so the tripwire check sees the value
   // BEFORE this event lands. Done as a separate query because the trigger
   // recompute happens atomically on insert — we can't observe it client-side.
   let priorTodayTotal = 0;
   try {
-    priorTodayTotal = await sumXpToday(event.userId);
+    priorTodayTotal = await sumXpToday(event.userId, db);
   } catch {
     // Tripwire is best-effort. Never block the XP insert.
   }
@@ -43,57 +46,67 @@ export async function insertXpEvent(event: XpEventInsert): Promise<boolean> {
     const { action, limit } = event.dailyCapLimit;
     const todayDate = new Date().toISOString().slice(0, 10);
 
-    try {
-      inserted = await db.transaction(async (tx) => {
-        // Increment the count in xp_daily_usage table atomically
-        const res = await tx.execute<{ count: number }>(sql`
-          insert into xp_daily_usage (user_id, date, action, count)
-          values (${event.userId}, ${todayDate}::date, ${action}, 1)
-          on conflict (user_id, date, action)
-          do update set count = xp_daily_usage.count + 1
-          returning count
-        `);
-        const list = Array.isArray(res) ? res : (res as any).rows;
-        const count = list[0]?.count ?? 1;
+    const doDailyCapCheck = async (client: typeof db) => {
+      const res = await client.execute<{ count: number }>(sql`
+        insert into xp_daily_usage (user_id, date, action, count)
+        values (${event.userId}, ${todayDate}::date, ${action}, 1)
+        on conflict (user_id, date, action)
+        do update set count = xp_daily_usage.count + 1
+        returning count
+      `);
+      const list = Array.isArray(res) ? res : (res as any).rows;
+      const count = list[0]?.count ?? 1;
 
-        if (count > limit) {
-          throw new Error('daily_review_cap_reached');
-        }
-
-        // Insert the event
-        const result = await tx
-          .insert(schema.xpEvents)
-          .values({
-            userId: event.userId,
-            source: event.source,
-            refType: event.refType,
-            refId: event.refId,
-            repo: event.repo,
-            difficulty: event.difficulty,
-            xpDelta: event.xpDelta,
-            metadata: event.metadata as never,
-          })
-          .onConflictDoNothing({
-            target: [schema.xpEvents.userId, schema.xpEvents.source, schema.xpEvents.refId],
-          })
-          .returning({ id: schema.xpEvents.id });
-
-        if (result.length === 0) {
-          // Duplicate insertion, roll back the daily count increment!
-          tx.rollback();
-          return false;
-        }
-
-        return true;
-      });
-    } catch (err: any) {
-      if (err.message === 'daily_review_cap_reached') {
-        throw err;
+      if (count > limit) {
+        throw new Error('daily_review_cap_reached');
       }
-      if (err instanceof TransactionRollbackError) {
-        inserted = false;
-      } else {
-        throw err;
+
+      // Insert the event
+      const result = await client
+        .insert(schema.xpEvents)
+        .values({
+          userId: event.userId,
+          source: event.source,
+          refType: event.refType,
+          refId: event.refId,
+          repo: event.repo,
+          difficulty: event.difficulty,
+          xpDelta: event.xpDelta,
+          metadata: event.metadata as never,
+        })
+        .onConflictDoNothing({
+          target: [schema.xpEvents.userId, schema.xpEvents.source, schema.xpEvents.refId],
+        })
+        .returning({ id: schema.xpEvents.id });
+
+      if (result.length === 0) {
+        // Duplicate insertion, undo the daily count increment
+        if (!tx) {
+          client.rollback();
+        }
+        return false;
+      }
+
+      return true;
+    };
+
+    if (tx) {
+      // Caller-managed transaction — use tx directly, no nested transaction
+      inserted = await doDailyCapCheck(tx);
+    } else {
+      try {
+        inserted = await db.transaction(async (innerTx) => {
+          return doDailyCapCheck(innerTx);
+        });
+      } catch (err: any) {
+        if (err.message === 'daily_review_cap_reached') {
+          throw err;
+        }
+        if (err instanceof TransactionRollbackError) {
+          inserted = false;
+        } else {
+          throw err;
+        }
       }
     }
   } else {
@@ -140,9 +153,9 @@ export async function insertXpEvent(event: XpEventInsert): Promise<boolean> {
   return inserted;
 }
 
-async function sumXpToday(userId: string): Promise<number> {
-  const db = getDb();
-  const rows = await db.execute<{ sum: number | null }>(
+async function sumXpToday(userId: string, db?: any): Promise<number> {
+  const client = db ?? getDb();
+  const rows = await client.execute<{ sum: number | null }>(
     sql`select coalesce(sum(xp_delta), 0)::int as sum
         from xp_events
         where user_id = ${userId}
