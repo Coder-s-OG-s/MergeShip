@@ -42,6 +42,7 @@ export default function DocsPage() {
       return;
     }
     sb.auth.getUser().then(({ data }) => {
+.catch(err => console.error(err))
       if (!data.user) return setUser(null);
       const u = data.user;
       const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
