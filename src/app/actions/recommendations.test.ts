@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
     mockSql: vi.fn((strings, ...values) => ({ strings, values })),
     mockGetInstallationToken: vi.fn(),
     mockListMaintainerInstalls: vi.fn(),
+    mockListMaintainerRepos: vi.fn(),
   };
 });
 
@@ -31,6 +32,7 @@ vi.mock('@/lib/github/app', () => ({
 
 vi.mock('@/lib/maintainer/detect', () => ({
   listMaintainerInstalls: mocks.mockListMaintainerInstalls,
+  listMaintainerRepos: mocks.mockListMaintainerRepos,
 }));
 
 vi.mock('@/lib/supabase/service', () => {
@@ -165,6 +167,7 @@ describe('Recommendations Server Actions', () => {
     mocks.mockRateLimit.mockResolvedValue({ ok: true });
     mocks.mockGetInstallationToken.mockResolvedValue('fake-install-token');
     mocks.mockListMaintainerInstalls.mockResolvedValue([]);
+    mocks.mockListMaintainerRepos.mockResolvedValue([]);
     mocks.mockServiceFrom.mockImplementation(() => createMockChain(null, null));
     vi.stubGlobal(
       'fetch',
@@ -484,6 +487,7 @@ describe('Recommendations Server Actions', () => {
           permissionLevel: 'org_admin',
         },
       ]);
+      mocks.mockListMaintainerRepos.mockResolvedValueOnce(['owner/repo']);
 
       // Set up the getServiceSupabase mock to return an installation_id for installation_repositories
       vi.mocked(getServiceSupabase).mockReturnValueOnce({

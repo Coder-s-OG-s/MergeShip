@@ -10,7 +10,7 @@ import { cacheGet, cacheSet, cacheDel } from '@/lib/cache';
 import { filterAndRank, type ScoredIssue } from '@/lib/pipeline/recommend';
 import { getAllowedDifficulties } from '@/lib/pipeline/difficulty';
 import { getInstallationToken } from '@/lib/github/app';
-import { listMaintainerInstalls } from '@/lib/maintainer/detect';
+import { listMaintainerInstalls, listMaintainerRepos } from '@/lib/maintainer/detect';
 
 /**
  * Server actions for the recommendation lifecycle.
@@ -221,7 +221,10 @@ export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<
     );
     const installationId = matchingInstall?.installation_id;
     if (installationId) {
-      token = await getInstallationToken(installationId);
+      const userRepos = await listMaintainerRepos(user.id, installationId);
+      if (userRepos.includes(`${owner}/${repo}`)) {
+        token = await getInstallationToken(installationId);
+      }
     }
   } catch {
     // fall back
