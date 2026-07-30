@@ -21,7 +21,8 @@ alter table report_snapshots enable row level security;
 -- exposure is bounded only by token guessability + the 30-day expiry check
 -- done in the app layer (page.tsx), not by RLS.
 drop policy if exists report_snapshots_read_by_token on report_snapshots;
-create policy report_snapshots_read_by_token on report_snapshots for select using (true);
+-- remove entirely — service_role already bypasses RLS, and no client-side
+-- code queries this table directly
 
 -- No insert/update/delete policy -> service-role only.
 
