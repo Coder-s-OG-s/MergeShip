@@ -15,16 +15,12 @@ create table if not exists report_snapshots (
 create index if not exists report_snapshots_token_idx on report_snapshots(token);
 create index if not exists report_snapshots_installation_idx on report_snapshots(installation_id);
 
+-- RLS is enabled with no policies at all: this table is service-role only.
+-- service_role bypasses RLS regardless, and no client-side code queries
+-- this table directly — the public /report/[token] page reads it via
+-- getServiceSupabase(). Exposure is bounded by token guessability
+-- (crypto.randomBytes) + the 30-day expiry check done in page.tsx.
 alter table report_snapshots enable row level security;
-
--- Public read by token. This intentionally allows anon SELECT on any row --
--- exposure is bounded only by token guessability + the 30-day expiry check
--- done in the app layer (page.tsx), not by RLS.
-drop policy if exists report_snapshots_read_by_token on report_snapshots;
--- remove entirely — service_role already bypasses RLS, and no client-side
--- code queries this table directly
-
--- No insert/update/delete policy -> service-role only.
 
 -- PostgREST requires explicit table grants in addition to RLS (see 0021).
 -- report_snapshots was created after 0021's blanket grant ran, so it
