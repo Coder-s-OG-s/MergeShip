@@ -101,11 +101,19 @@ async function discoverForUser(
         .maybeSingle()
     : null;
 
+  const dedupeById = (inst: { id: number }, idx: number, arr: { id: number }[]) =>
+    arr.findIndex((i) => i.id === inst.id) === idx;
+
   const installRows = targetInstall?.data
-    ? [...knownInstalls, targetInstall.data].filter(
-        (inst, idx, arr) => arr.findIndex((i) => i.id === inst.id) === idx,
-      )
-    : knownInstalls;
+    ? [...knownInstalls, targetInstall.data].filter(dedupeById)
+    : knownInstalls.length > 0 || installationId
+      ? knownInstalls
+      : ((
+          await sb
+            .from('github_installations')
+            .select('id, account_login, account_type')
+            .is('uninstalled_at', null)
+        ).data ?? []);
 
   const proposed: ProposedGrant[] = [];
 
