@@ -61,6 +61,7 @@ function createMockChain(data: unknown = [], singleData: unknown = null) {
     limit: vi.fn().mockReturnThis(),
     insert: vi.fn().mockReturnThis(),
     values: vi.fn().mockReturnThis(),
+    onConflictDoNothing: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),
     set: vi.fn().mockReturnThis(),
     orderBy: vi.fn().mockReturnThis(),
@@ -137,22 +138,29 @@ describe('Mentorship Chat Server Actions', () => {
         ok({ user: { id: 'user-mentor' } } as any),
       );
 
-      let callCount = 0;
+      let selectCallCount = 0;
       mockSelect.mockImplementation(() => {
         const chain = createMockChain();
         chain.then = (resolve: any) => {
-          callCount++;
-          if (callCount === 1) {
+          selectCallCount++;
+          if (selectCallCount === 1) {
             // self profile
             resolve([{ id: 'user-mentor', level: 3 }]);
-          } else if (callCount === 2) {
+          } else if (selectCallCount === 2) {
             // other profile
             resolve([{ id: 'user-mentee', level: 2 }]);
           } else {
-            // channel search
+            // channel search after insert conflict
             resolve([{ id: 'existing-channel-id' }]);
           }
         };
+        return chain;
+      });
+
+      // Insert returns empty (simulating onConflictDoNothing due to duplicate)
+      mockInsert.mockImplementation(() => {
+        const chain = createMockChain([]);
+        chain.returning = vi.fn().mockResolvedValue([]);
         return chain;
       });
 
