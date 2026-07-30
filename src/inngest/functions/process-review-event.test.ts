@@ -3,10 +3,20 @@ import { isSubstantive, processReviewEvent } from './process-review-event';
 import { insertXpEvent } from '@/lib/xp/events';
 import { sb, wire, step } from './__tests__/test-helpers';
 
+const mocks = {
+  returning: vi.fn(),
+  transaction: vi.fn(),
+};
+
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/xp/events', () => ({ insertXpEvent: vi.fn() }));
 vi.mock('@/lib/daily-challenge/progress', () => ({
   incrementChallengeProgress: vi.fn().mockResolvedValue({ ok: true }),
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  getDb: () => ({ transaction: mocks.transaction }),
+  schema: { helpRequests: {} },
 }));
 
 vi.mock('../client', () => ({
@@ -85,6 +95,19 @@ describe('isSubstantive', () => {
 describe('processReviewEvent handler tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.returning.mockResolvedValue([{ id: 'hr-1' }]);
+    mocks.transaction.mockImplementation(async (cb: Function) => {
+      const tx = {
+        update: () => ({
+          set: () => ({
+            where: () => ({
+              returning: mocks.returning,
+            }),
+          }),
+        }),
+      };
+      return cb(tx);
+    });
   });
 
   it('aborts when help request is already resolved by another concurrent review', async () => {
@@ -112,6 +135,8 @@ describe('processReviewEvent handler tests', () => {
       profiles: profilesMock,
       help_requests: helpRequestsMock,
     });
+
+    mocks.returning.mockResolvedValue([]);
 
     const result = await run({ event: ev(), step });
 
@@ -148,14 +173,6 @@ describe('processReviewEvent handler tests', () => {
     vi.mocked(insertXpEvent).mockRejectedValue(new Error('XP insertion failed'));
 
     await expect(run({ event: ev(), step })).rejects.toThrow('XP insertion failed');
-
-    expect(helpRequestsMock.update).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        status: 'open',
-        resolved_by: null,
-        resolved_at: null,
-      }),
-    );
   });
 
   it('successfully resolves help request and awards XP', async () => {
@@ -194,6 +211,7 @@ describe('processReviewEvent handler tests', () => {
         userId: 'reviewer-id',
         xpDelta: 65,
       }),
+      expect.any(Object),
     );
   });
 
@@ -236,6 +254,7 @@ describe('processReviewEvent handler tests', () => {
         xpDelta: 55, // Base (35) + Mentor bonus (20) = 55, NO Speed bonus (10)
         metadata: expect.objectContaining({ isFast: false }),
       }),
+      expect.any(Object),
     );
   });
 });

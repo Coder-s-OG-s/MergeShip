@@ -24,10 +24,7 @@ export type XpEventInsert = {
   };
 };
 
-export async function insertXpEvent(
-  event: XpEventInsert,
-  tx?: any,
-): Promise<boolean> {
+export async function insertXpEvent(event: XpEventInsert, tx?: any): Promise<boolean> {
   const db = tx ?? getDb();
 
   // Snapshot today's prior total so the tripwire check sees the value
@@ -46,14 +43,14 @@ export async function insertXpEvent(
     const { action, limit } = event.dailyCapLimit;
     const todayDate = new Date().toISOString().slice(0, 10);
 
-    const doDailyCapCheck = async (client: typeof db) => {
-      const res = await client.execute<{ count: number }>(sql`
-        insert into xp_daily_usage (user_id, date, action, count)
+    const doDailyCapCheck = async (client: any) => {
+      const res = await client.execute(
+        sql`insert into xp_daily_usage (user_id, date, action, count)
         values (${event.userId}, ${todayDate}::date, ${action}, 1)
         on conflict (user_id, date, action)
         do update set count = xp_daily_usage.count + 1
-        returning count
-      `);
+        returning count`,
+      );
       const list = Array.isArray(res) ? res : (res as any).rows;
       const count = list[0]?.count ?? 1;
 
@@ -95,7 +92,7 @@ export async function insertXpEvent(
       inserted = await doDailyCapCheck(tx);
     } else {
       try {
-        inserted = await db.transaction(async (innerTx) => {
+        inserted = await db.transaction(async (innerTx: any) => {
           return doDailyCapCheck(innerTx);
         });
       } catch (err: any) {
@@ -153,9 +150,9 @@ export async function insertXpEvent(
   return inserted;
 }
 
-async function sumXpToday(userId: string, db?: any): Promise<number> {
-  const client = db ?? getDb();
-  const rows = await client.execute<{ sum: number | null }>(
+async function sumXpToday(userId: string, client?: any): Promise<number> {
+  const dbClient = client ?? getDb();
+  const rows = await dbClient.execute(
     sql`select coalesce(sum(xp_delta), 0)::int as sum
         from xp_events
         where user_id = ${userId}

@@ -156,10 +156,7 @@ export const processReviewEvent = inngest.createFunction(
               resolvedAt: new Date(),
             })
             .where(
-              and(
-                eq(schema.helpRequests.id, helpReq.id),
-                eq(schema.helpRequests.status, 'open'),
-              ),
+              and(eq(schema.helpRequests.id, helpReq.id), eq(schema.helpRequests.status, 'open')),
             )
             .returning({ id: schema.helpRequests.id });
 
