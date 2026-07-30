@@ -227,4 +227,30 @@ describe('prBackfill', () => {
       errors: ['install-token: API quota exceeded'],
     });
   });
+
+  it('clears sync cursor when pagination iterator throws an error', async () => {
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: null } }),
+    });
+    wire({ github_installations: installs });
+
+    const iterator = (async function* () {
+      throw new Error('502 Bad Gateway');
+    })();
+
+    const octokit = {
+      paginate: { iterator: vi.fn().mockReturnValue(iterator) },
+      pulls: { list: vi.fn() },
+    };
+    vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
+
+    const result = await run({ event: evRepo(), step });
+
+    expect(clearSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests');
+    expect(result).toEqual({
+      repo: 'test-org/repo-1',
+      prs: 0,
+      errors: ['pulls.list: 502 Bad Gateway'],
+    });
+  });
 });

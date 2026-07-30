@@ -258,6 +258,7 @@ async function backfillSingleRepo(
     await clearSyncCursor(installationId, repoFullName, 'pull_requests');
   } catch (e) {
     errors.push(`pulls.list: ${(e as Error).message}`);
+    await clearSyncCursor(installationId, repoFullName, 'pull_requests');
   }
 
   return { repo: repoFullName, prs: totalUpserts, errors: errors.slice(0, 10) };
