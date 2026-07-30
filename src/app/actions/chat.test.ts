@@ -78,28 +78,24 @@ describe('Mentorship Chat Server Actions', () => {
   });
 
   describe('validateMentorshipRelationship', () => {
-    it('allows Level 2 to guide Level 1', () => {
-      const { isValid } = validateMentorshipRelationship(2, 1);
+    it('allows Level 2 to guide Level 1', async () => {
+      const { isValid } = await validateMentorshipRelationship(2, 1);
       expect(isValid).toBe(true);
     });
-
-    it('allows Level 3 to guide Level 2', () => {
-      const { isValid } = validateMentorshipRelationship(3, 2);
+    it('allows Level 3 to guide Level 2', async () => {
+      const { isValid } = await validateMentorshipRelationship(3, 2);
       expect(isValid).toBe(true);
     });
-
-    it('disallows Level 1 to guide Level 2', () => {
-      const { isValid } = validateMentorshipRelationship(1, 2);
+    it('disallows Level 1 to guide Level 2', async () => {
+      const { isValid } = await validateMentorshipRelationship(1, 2);
       expect(isValid).toBe(true); // Since it automatically resolves higher as mentor
     });
-
-    it('disallows Level 1 to guide Level 1', () => {
-      const { isValid } = validateMentorshipRelationship(1, 1);
+    it('disallows Level 1 to guide Level 1', async () => {
+      const { isValid } = await validateMentorshipRelationship(1, 1);
       expect(isValid).toBe(false);
     });
-
-    it('disallows Level 0 mentor even if difference exists', () => {
-      const { isValid } = validateMentorshipRelationship(1, 0);
+    it('disallows Level 0 mentor even if difference exists', async () => {
+      const { isValid } = await validateMentorshipRelationship(1, 0);
       expect(isValid).toBe(false); // Mentor must be level >= 2
     });
   });

@@ -7,14 +7,14 @@ import { ok, err, type Result } from '@/lib/result';
 import { revalidatePath } from 'next/cache';
 
 // Helper to determine if levels are eligible for mentorship chat
-export function validateMentorshipRelationship(
+export async function validateMentorshipRelationship(
   levelA: number,
   levelB: number,
-): {
+): Promise<{
   isValid: boolean;
   mentorLevel: number;
   menteeLevel: number;
-} {
+}> {
   const mentorLevel = Math.max(levelA, levelB);
   const menteeLevel = Math.min(levelA, levelB);
 
@@ -54,7 +54,7 @@ export async function getOrCreateChatChannel(
   }
 
   // Validate relationship eligibility
-  const { isValid } = validateMentorshipRelationship(profileSelf.level, profileOther.level);
+  const { isValid } = await validateMentorshipRelationship(profileSelf.level, profileOther.level);
 
   if (!isValid) {
     return err(

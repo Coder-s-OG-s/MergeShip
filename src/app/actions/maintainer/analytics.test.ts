@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bucketPrVolumeTimeSeries } from './analytics';
+import { bucketPrVolumeTimeSeries } from '@/lib/maintainer/pr-volume-bucketing';
 
 describe('bucketPrVolumeTimeSeries', () => {
   it('buckets merged PRs correctly', () => {
