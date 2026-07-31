@@ -11,14 +11,18 @@ import {
 import { cacheGet, cacheSet } from '@/lib/cache';
 
 /**
- * Discovers every install + repo the user has admin/maintain access to and
- * reconciles the github_installation_users + installation_user_repos tables.
+ * Revalidates a user's installs + repos and reconciles the
+ * github_installation_users + installation_user_repos tables.
  *
- * Triggered from:
- *   - bootstrapProfile (sign-in) — fire-and-forget
- *   - installation.created — for the install creator
- *   - membership.added / member.added webhooks — for newly granted users
- *   - daily revalidation cron
+ * Discovery scope depends on the trigger:
+ *   - Webhook triggers (installation.created, membership.added,
+ *     member.added) pass an installationId and can pick up NEW grants,
+ *     including installs not yet in the user's junction table.
+ *   - bootstrapProfile (sign-in) and the daily cron carry no specific
+ *     install, so they only revalidate installs already known for the
+ *     user — new grants for those users arrive via the webhook paths.
+ *   - First discovery (no known installs, no installationId) falls back
+ *     to a full scan of all active installs.
  *
  * Idempotent. Dedup window via Redis (1h) to avoid spamming GitHub on
  * page reloads.
