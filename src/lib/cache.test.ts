@@ -10,6 +10,30 @@ import {
   UpstashBackend,
 } from './cache';
 
+const redisRegistry = vi.hoisted(() => ({
+  instance: null as any,
+  handlers: new Map<string, (err?: Error) => void>(),
+}));
+
+vi.mock('ioredis', () => ({
+  default: class MockRedis {
+    on = vi.fn((event: string, handler: (err?: Error) => void) => {
+      redisRegistry.handlers.set(event, handler);
+      return this;
+    });
+    get = vi.fn().mockResolvedValue(null);
+    set = vi.fn().mockResolvedValue('OK');
+    del = vi.fn().mockResolvedValue(1);
+    scan = vi.fn().mockResolvedValue(['0', []]);
+    incr = vi.fn().mockResolvedValue(1);
+    expire = vi.fn().mockResolvedValue(1);
+    ttl = vi.fn().mockResolvedValue(60);
+    constructor() {
+      redisRegistry.instance = this;
+    }
+  },
+}));
+
 beforeEach(() => {
   __setMemoryCache();
   vi.clearAllMocks();
@@ -275,5 +299,41 @@ describe('UpstashBackend', () => {
     const result = await backend.rateLimitHitSlidingWindow('rl:key', 60, 10, 2000);
     expect(result.count).toBe(Number.MAX_SAFE_INTEGER);
     expect(result.resetAt).toBe(2000 + 60 * 1000);
+  });
+});
+
+describe('pickDefaultBackend (REDIS_URL path) — regression for #843', () => {
+  it('keeps routing through the same IoRedisBackend after a redis error event', async () => {
+    vi.resetModules();
+    const prevUrl = process.env.REDIS_URL;
+    process.env.REDIS_URL = 'redis://localhost:6379';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      // Fresh module load picks the IoRedis backend via REDIS_URL.
+      const cache = await import('./cache');
+
+      const redis = redisRegistry.instance;
+      expect(redis).not.toBeNull();
+      expect(redis.on).toHaveBeenCalledWith('error', expect.any(Function));
+
+      // Emit a synthetic redis error event (the exact path the bug lived in).
+      const errorHandler = redisRegistry.handlers.get('error');
+      expect(errorHandler).toBeDefined();
+      errorHandler?.(new Error('ECONNREFUSED'));
+      expect(warnSpy).toHaveBeenCalled();
+
+      // cacheGet must still route through the same IoRedis client, not swap
+      // to a MemoryBackend.
+      await cache.cacheGet('regression-key');
+      expect(redis.get).toHaveBeenCalledWith('regression-key');
+
+      // Rate limiting must still route through the same IoRedis client.
+      await cache.cacheRateLimitHit('regression-rl', 60, 1000);
+      expect(redis.incr).toHaveBeenCalledWith('regression-rl');
+    } finally {
+      if (prevUrl) process.env.REDIS_URL = prevUrl;
+      else delete process.env.REDIS_URL;
+      warnSpy.mockRestore();
+    }
   });
 });
