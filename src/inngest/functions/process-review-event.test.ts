@@ -3,20 +3,32 @@ import { isSubstantive, processReviewEvent } from './process-review-event';
 import { insertXpEvent } from '@/lib/xp/events';
 import { sb, wire, step } from './__tests__/test-helpers';
 
-const mocks = {
-  returning: vi.fn(),
-  transaction: vi.fn(),
-};
-
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/xp/events', () => ({ insertXpEvent: vi.fn() }));
 vi.mock('@/lib/daily-challenge/progress', () => ({
   incrementChallengeProgress: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
+const dbMock = vi.hoisted(() => {
+  const returning = vi.fn();
+  const where = vi.fn(() => ({ returning }));
+  const set = vi.fn(() => ({ where }));
+  const update = vi.fn(() => ({ set }));
+  return { update, set, where, returning };
+});
+
 vi.mock('@/lib/db/client', () => ({
-  getDb: () => ({ transaction: mocks.transaction }),
-  schema: { helpRequests: {} },
+  getDb: () => ({
+    transaction: async (cb: (tx: any) => Promise<unknown>) => cb({ update: dbMock.update }),
+  }),
+  schema: {
+    helpRequests: {
+      id: 'id',
+      status: 'status',
+      resolvedBy: 'resolvedBy',
+      resolvedAt: 'resolvedAt',
+    },
+  },
 }));
 
 vi.mock('../client', () => ({
@@ -95,22 +107,13 @@ describe('isSubstantive', () => {
 describe('processReviewEvent handler tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.returning.mockResolvedValue([{ id: 'hr-1' }]);
-    mocks.transaction.mockImplementation(async (cb: Function) => {
-      const tx = {
-        update: () => ({
-          set: () => ({
-            where: () => ({
-              returning: mocks.returning,
-            }),
-          }),
-        }),
-      };
-      return cb(tx);
-    });
+    // Default: the atomic help-request update claims the row.
+    dbMock.returning.mockResolvedValue([{ id: 'hr-1' }]);
   });
 
   it('aborts when help request is already resolved by another concurrent review', async () => {
+    dbMock.returning.mockResolvedValue([]);
+
     const profilesMock = sb({
       maybeSingle: vi
         .fn()
@@ -136,15 +139,13 @@ describe('processReviewEvent handler tests', () => {
       help_requests: helpRequestsMock,
     });
 
-    mocks.returning.mockResolvedValue([]);
-
     const result = await run({ event: ev(), step });
 
     expect(result).toEqual({ xpAwarded: 0, reason: 'help_request_already_resolved' });
     expect(insertXpEvent).not.toHaveBeenCalled();
   });
 
-  it('rolls back help request status to open when insertXpEvent fails', async () => {
+  it('rejects when insertXpEvent fails so the whole transaction rolls back', async () => {
     const profilesMock = sb({
       maybeSingle: vi
         .fn()
@@ -159,11 +160,6 @@ describe('processReviewEvent handler tests', () => {
       }),
       update: vi.fn().mockReturnThis(),
     });
-
-    helpRequestsMock.select = vi
-      .fn()
-      .mockImplementationOnce(() => helpRequestsMock)
-      .mockResolvedValueOnce({ data: [{ id: 'hr-1' }], error: null });
 
     wire({
       profiles: profilesMock,
@@ -211,7 +207,7 @@ describe('processReviewEvent handler tests', () => {
         userId: 'reviewer-id',
         xpDelta: 65,
       }),
-      expect.any(Object),
+      expect.anything(), // caller-managed tx
     );
   });
 
@@ -254,7 +250,7 @@ describe('processReviewEvent handler tests', () => {
         xpDelta: 55, // Base (35) + Mentor bonus (20) = 55, NO Speed bonus (10)
         metadata: expect.objectContaining({ isFast: false }),
       }),
-      expect.any(Object),
+      expect.anything(), // caller-managed tx
     );
   });
 });

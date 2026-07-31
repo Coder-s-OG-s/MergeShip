@@ -1,6 +1,10 @@
 import { sql, TransactionRollbackError } from 'drizzle-orm';
 import { getDb, schema } from '../db/client';
+import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { shouldFireTripwire, TRIPWIRE_THRESHOLD } from './tripwire';
+
+type DbClient = PostgresJsDatabase<typeof schema>;
+type DbTransaction = Parameters<Parameters<DbClient['transaction']>[0]>[0];
 
 /**
  * Insert an XP event. Idempotent via UNIQUE(user_id, source, ref_id) on the table.
@@ -24,7 +28,7 @@ export type XpEventInsert = {
   };
 };
 
-export async function insertXpEvent(event: XpEventInsert, tx?: any): Promise<boolean> {
+export async function insertXpEvent(event: XpEventInsert, tx?: DbTransaction): Promise<boolean> {
   const db = tx ?? getDb();
 
   // Snapshot today's prior total so the tripwire check sees the value
@@ -43,14 +47,31 @@ export async function insertXpEvent(event: XpEventInsert, tx?: any): Promise<boo
     const { action, limit } = event.dailyCapLimit;
     const todayDate = new Date().toISOString().slice(0, 10);
 
-    const doDailyCapCheck = async (client: any) => {
-      const res = await client.execute(
-        sql`insert into xp_daily_usage (user_id, date, action, count)
+    const doDailyCapCheck = async (client: DbTransaction) => {
+      // Check for an existing row BEFORE bumping the daily counter. When a
+      // caller-provided `tx` hits a duplicate we can't roll back (that would
+      // kill the caller's transaction), so avoiding the increment on the
+      // sequential-duplicate path is the only safe way to keep the cap exact.
+      const existing = await client.execute<{ id: string }>(sql`
+        select 1 as id
+        from xp_events
+        where user_id = ${event.userId}
+          and source = ${event.source}
+          and ref_id = ${event.refId}
+        limit 1
+      `);
+      const existingList = Array.isArray(existing) ? existing : (existing as any).rows;
+      if (existingList.length > 0) {
+        return false;
+      }
+
+      const res = await client.execute<{ count: number }>(sql`
+        insert into xp_daily_usage (user_id, date, action, count)
         values (${event.userId}, ${todayDate}::date, ${action}, 1)
         on conflict (user_id, date, action)
         do update set count = xp_daily_usage.count + 1
-        returning count`,
-      );
+        returning count
+      `);
       const list = Array.isArray(res) ? res : (res as any).rows;
       const count = list[0]?.count ?? 1;
 
@@ -77,7 +98,10 @@ export async function insertXpEvent(event: XpEventInsert, tx?: any): Promise<boo
         .returning({ id: schema.xpEvents.id });
 
       if (result.length === 0) {
-        // Duplicate insertion, undo the daily count increment
+        // Lost a race to a concurrent identical insert. On the standalone path
+        // roll the inner transaction back so the bump is undone too; with a
+        // caller-provided `tx` do nothing — the pre-check above already
+        // prevented the sequential duplicate from inflating the counter.
         if (!tx) {
           client.rollback();
         }
@@ -92,7 +116,7 @@ export async function insertXpEvent(event: XpEventInsert, tx?: any): Promise<boo
       inserted = await doDailyCapCheck(tx);
     } else {
       try {
-        inserted = await db.transaction(async (innerTx: any) => {
+        inserted = await getDb().transaction(async (innerTx) => {
           return doDailyCapCheck(innerTx);
         });
       } catch (err: any) {
@@ -150,9 +174,9 @@ export async function insertXpEvent(event: XpEventInsert, tx?: any): Promise<boo
   return inserted;
 }
 
-async function sumXpToday(userId: string, client?: any): Promise<number> {
-  const dbClient = client ?? getDb();
-  const rows = await dbClient.execute(
+async function sumXpToday(userId: string, db?: DbClient | DbTransaction): Promise<number> {
+  const client = db ?? getDb();
+  const rows = await client.execute<{ sum: number | null }>(
     sql`select coalesce(sum(xp_delta), 0)::int as sum
         from xp_events
         where user_id = ${userId}
