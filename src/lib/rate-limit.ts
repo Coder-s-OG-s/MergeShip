@@ -1,6 +1,7 @@
 import {
   cacheRateLimitHitSlidingWindow,
   isSharedCacheAvailable,
+  isProductionDeploy,
   blockedRateLimitBucket,
 } from './cache';
 
@@ -37,7 +38,7 @@ export async function rateLimit(opts: RateLimitOptions): Promise<RateLimitResult
   const bucketKey = `rl:v3:${opts.namespace}:${opts.key}`;
   const now = Date.now();
 
-  if (process.env.NODE_ENV === 'production' && !isSharedCacheAvailable()) {
+  if (isProductionDeploy() && !isSharedCacheAvailable()) {
     console.error(
       '[rate-limit] CRITICAL: No shared cache configured in production — blocking request. Set KV_REST_API_URL/KV_REST_API_TOKEN or REDIS_URL.',
     );
