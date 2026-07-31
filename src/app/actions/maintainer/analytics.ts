@@ -5,7 +5,14 @@ import { requireMaintainer } from '@/lib/action-auth';
 import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerRepos } from '@/lib/maintainer/detect';
 import { tryGetDb } from '@/lib/db/client';
-import { profiles, xpEvents, pullRequests, githubInstallations, issues } from '@/lib/db/schema';
+import {
+  profiles,
+  xpEvents,
+  pullRequests,
+  githubInstallations,
+  issues,
+  reportSnapshots,
+} from '@/lib/db/schema';
 import { eq, inArray, sum, desc, and, count, gte, lte, isNotNull, sql } from 'drizzle-orm';
 import { computeTimeSaved, type TimeSavedBreakdown } from '@/lib/maintainer/time-saved';
 import { cacheGet, cacheSet } from '@/lib/cache';
@@ -1505,4 +1512,141 @@ export async function getPrVolumeTimeSeries(
     .where(and(inArray(pullRequests.repoFullName, repos), lte(pullRequests.githubCreatedAt, to)));
 
   return ok(bucketPrVolumeTimeSeries(prs, range, from, to, now));
+}
+// ---------- Export Report (#719) ----------
+
+export async function exportAnalyticsReport(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<string>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:csv', ...RATE_LIMIT_TIERS.STRICT },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) return ok('');
+
+  const [statsRes, volumeRes, breakdownRes] = await Promise.all([
+    getAnalyticsStats(installationId, range),
+    getPrVolumeTimeSeries(installationId, range),
+    getRepoAnalyticsBreakdown(installationId, range),
+  ]);
+  if (!statsRes.ok) return statsRes;
+  if (!volumeRes.ok) return volumeRes;
+  if (!breakdownRes.ok) return breakdownRes;
+
+  const escapeCsv = (v: string | number) => {
+    const str = String(v);
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const row = (cells: (string | number)[]) => cells.map(escapeCsv).join(',');
+
+  const stats = statsRes.data;
+  const lines: string[] = [];
+
+  lines.push('Section: Summary');
+  lines.push(row(['Period', range]));
+  lines.push(row(['PRs Merged', stats.prsMerged.value]));
+  lines.push(row(['Avg Review Time (h)', stats.avgReviewTimeHours.value]));
+  lines.push(row(['Queue Signal Rate (%)', stats.queueSignalRate.value]));
+  lines.push(row(['AI PRs Blocked', stats.aiPrsBlocked.value]));
+  lines.push(row(['Contributors Leveled Up', stats.contributorsLeveledUp.value]));
+  lines.push(row(['Maintainer Time Saved (h)', stats.maintainerTimeSavedHours.value]));
+  lines.push('');
+
+  lines.push('Section: PR Volume by Day');
+  lines.push(row(['Date', 'Merged', 'AI Blocked', 'Stalled']));
+  for (const b of volumeRes.data) {
+    lines.push(row([b.dateIso, b.merged, b.aiBlocked, b.stalled]));
+  }
+  lines.push('');
+
+  lines.push('Section: Breakdown by Repo');
+  lines.push(
+    row([
+      'Repository',
+      'PRs Merged',
+      'Avg Review (h)',
+      'AI Blocked',
+      'Active Contributors',
+      'Signal Rate',
+    ]),
+  );
+  for (const r of breakdownRes.data) {
+    lines.push(
+      row([
+        r.repoFullName,
+        r.prsMerged,
+        r.avgReviewHours ?? '',
+        r.aiBlocked,
+        r.activeContributors,
+        r.signalRate,
+      ]),
+    );
+  }
+
+  return ok(lines.join('\n'));
+}
+
+// ---------- Share Report (#719) ----------
+
+const SNAPSHOT_TTL_DAYS = 30;
+
+export async function createReportSnapshot(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<{ url: string }>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:share-report', ...RATE_LIMIT_TIERS.STRICT },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return err('no_repos', 'No repositories to report on for this installation');
+  }
+
+  const [statsRes, volumeRes, breakdownRes] = await Promise.all([
+    getAnalyticsStats(installationId, range),
+    getPrVolumeTimeSeries(installationId, range),
+    getRepoAnalyticsBreakdown(installationId, range),
+  ]);
+  if (!statsRes.ok) return statsRes;
+  if (!volumeRes.ok) return volumeRes;
+  if (!breakdownRes.ok) return breakdownRes;
+
+  const db = tryGetDb();
+  if (!db) return err('db_error', 'No database connection');
+
+  const token = randomBytes(12).toString('base64url');
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SNAPSHOT_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  const snapshotData = {
+    range,
+    stats: statsRes.data,
+    prVolume: volumeRes.data,
+    repoBreakdown: breakdownRes.data,
+    generatedAt: now.toISOString(),
+  };
+
+  try {
+    await db.insert(reportSnapshots).values({
+      token,
+      installationId,
+      range,
+      snapshotData,
+      createdBy: user.id,
+      expiresAt,
+    });
+  } catch {
+    return err('db_error', 'Failed to create report snapshot');
+  }
+
+  return ok({ url: `/report/${token}` });
 }

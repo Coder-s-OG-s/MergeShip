@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { Sidebar } from './sidebar';
+import { MainScrollArea } from './main-scroll-area';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { getMaintainerInstalls } from '@/app/actions/maintainer';
@@ -121,7 +122,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <MainScrollArea>{children}</MainScrollArea>
       </div>
     </ToastProvider>
   );

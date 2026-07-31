@@ -10,6 +10,7 @@ import { cacheGet, cacheSet, cacheDel } from '@/lib/cache';
 import { filterAndRank, type ScoredIssue } from '@/lib/pipeline/recommend';
 import { capDifficulty, getAllowedDifficulties } from '@/lib/pipeline/difficulty';
 import { getInstallationToken } from '@/lib/github/app';
+import { listMaintainerInstalls, listMaintainerRepos } from '@/lib/maintainer/detect';
 
 /**
  * Server actions for the recommendation lifecycle.
@@ -207,14 +208,23 @@ export async function linkPrToRec(recId: number, prUrl: string): Promise<Result<
 
   let token: string | undefined;
   try {
+    const userInstalls = await listMaintainerInstalls(user.id);
+    const authorizedInstallIds = new Set(userInstalls.map((i) => i.installationId));
+
     const { data: repoInsts } = await service
       .from('installation_repositories')
       .select('installation_id')
       .eq('repo_full_name', `${owner}/${repo}`)
-      .limit(1);
-    const installationId = repoInsts?.[0]?.installation_id;
+      .limit(10);
+    const matchingInstall = (repoInsts ?? []).find((r) =>
+      authorizedInstallIds.has(r.installation_id),
+    );
+    const installationId = matchingInstall?.installation_id;
     if (installationId) {
-      token = await getInstallationToken(installationId);
+      const userRepos = await listMaintainerRepos(user.id, installationId);
+      if (userRepos.includes(`${owner}/${repo}`)) {
+        token = await getInstallationToken(installationId);
+      }
     }
   } catch {
     // fall back
