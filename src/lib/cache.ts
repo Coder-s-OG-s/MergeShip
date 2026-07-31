@@ -280,17 +280,6 @@ export class IoRedisBackend implements CacheBackend {
 
 let backend: CacheBackend = pickDefaultBackend();
 
-/**
- * True on a real production deploy. `next build` sets NODE_ENV=production on
- * Vercel Preview deployments too, so gate on VERCEL_ENV first (only set to
- * 'production' on production deploys) and fall back to NODE_ENV off-Vercel.
- */
-export function isProductionDeploy(): boolean {
-  return process.env.VERCEL_ENV
-    ? process.env.VERCEL_ENV === 'production'
-    : process.env.NODE_ENV === 'production';
-}
-
 function pickDefaultBackend(): CacheBackend {
   const upstashUrl = process.env.KV_REST_API_URL;
   const upstashToken = process.env.KV_REST_API_TOKEN;
@@ -318,7 +307,7 @@ function pickDefaultBackend(): CacheBackend {
   // across concurrent invocations. Rate limiting is effectively disabled.
   // Set KV_REST_API_URL + KV_REST_API_TOKEN (Upstash) or REDIS_URL to enable
   // shared, durable rate limiting.
-  if (isProductionDeploy()) {
+  if (process.env.NODE_ENV === 'production') {
     console.error(
       '[cache] MISCONFIGURATION: No Redis or Upstash backend is configured. ' +
         'Falling back to MemoryBackend. Rate limiting is NOT shared across ' +
