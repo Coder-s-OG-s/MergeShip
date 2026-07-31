@@ -206,32 +206,46 @@ export async function getContributorSummary(
     return ok(null);
   }
 
-  const { data: profile } = await service
+  const { data: profile, error: profileError } = await service
     .from('profiles')
     .select('github_handle, level')
     .eq('id', userId)
     .maybeSingle();
 
+  if (profileError) {
+    return err('db_error', profileError.message);
+  }
+
   if (!profile) {
     return ok(null);
   }
 
-  type PrStateRow = { id: number; state: 'open' | 'closed' | 'merged' };
-  const { data: authoredPrs } = await service
+  const { count: totalPrs, error: totalError } = await service
     .from('pull_requests')
-    .select('id, state')
+    .select('id', { count: 'exact', head: true })
     .eq('author_user_id', userId)
     .in('repo_full_name', repos);
 
-  const rows = (authoredPrs ?? []) as unknown as PrStateRow[];
-  const totalPrs = rows.length;
-  const mergedPrs = rows.filter((r) => r.state === 'merged').length;
+  if (totalError) {
+    return err('db_error', totalError.message);
+  }
+
+  const { count: mergedPrs, error: mergedError } = await service
+    .from('pull_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('author_user_id', userId)
+    .eq('state', 'merged')
+    .in('repo_full_name', repos);
+
+  if (mergedError) {
+    return err('db_error', mergedError.message);
+  }
 
   return ok({
     handle: profile.github_handle,
     level: profile.level ?? 0,
-    totalPrs,
-    mergedPrs,
+    totalPrs: totalPrs ?? 0,
+    mergedPrs: mergedPrs ?? 0,
   });
 }
 

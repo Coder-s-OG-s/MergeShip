@@ -129,7 +129,7 @@ vi.mock('@/lib/github/app', () => ({
 }));
 
 // Chainable Supabase query mock — every method returns self, await resolves to { data, error }
-function chain(data: unknown = [], error: unknown = null) {
+function chain(data: unknown = [], error: unknown = null, count: number | null = null) {
   const c: Record<string, unknown> = {};
   const pass = () => c;
   c.select = vi.fn(pass);
@@ -150,7 +150,7 @@ function chain(data: unknown = [], error: unknown = null) {
   c.limit = vi.fn(pass);
   c.gte = vi.fn(pass);
   c.lte = vi.fn(pass);
-  c.then = (resolve: (v: unknown) => void) => resolve({ data, error });
+  c.then = (resolve: (v: unknown) => void) => resolve({ data, error, count });
   return c;
 }
 
@@ -2039,20 +2039,50 @@ describe('maintainer actions', () => {
       }
     });
 
+    it('returns a db_error when the profile lookup fails', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      mockFrom.mockImplementation((table) => {
+        if (table === 'profiles') return chain(null, { message: 'connection reset' });
+        return chain([]);
+      });
+
+      const res = await getContributorSummary('user-alice', 1);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('db_error');
+      }
+    });
+
+    it('returns a db_error when a PR count query fails', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo']);
+      const mockProfile = { github_handle: 'arjun.kr', level: 2 };
+      mockFrom.mockImplementation((table) => {
+        if (table === 'profiles') return chain(mockProfile);
+        if (table === 'pull_requests') return chain(null, { message: 'timeout' }, null);
+        return chain([]);
+      });
+
+      const res = await getContributorSummary('user-alice', 1);
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error.code).toBe('db_error');
+      }
+    });
+
     it('returns handle, level, and total-vs-merged PR counts scoped to the install', async () => {
       vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo', 'org/other']);
 
       const mockProfile = { github_handle: 'arjun.kr', level: 2 };
-      const mockPrs = [
-        { id: 1, state: 'merged' },
-        { id: 2, state: 'merged' },
-        { id: 3, state: 'open' },
-        { id: 4, state: 'closed' },
-      ];
+      let mockPullRequestsCallCount = 0;
 
       mockFrom.mockImplementation((table) => {
         if (table === 'profiles') return chain(mockProfile);
-        if (table === 'pull_requests') return chain(mockPrs);
+        if (table === 'pull_requests') {
+          // Both the total and merged counts hit this table; distinguish via
+          // the mock's own call count since both are `.count`-only queries.
+          const call = mockPullRequestsCallCount++;
+          return chain(null, null, call === 0 ? 4 : 2);
+        }
         return chain([]);
       });
 
