@@ -157,18 +157,50 @@ describe('Mentorship Chat Server Actions', () => {
         return chain;
       });
 
-      // Insert returns empty (simulating onConflictDoNothing due to duplicate)
-      mockInsert.mockImplementation(() => {
-        const chain = createMockChain([]);
-        chain.returning = vi.fn().mockResolvedValue([]);
-        return chain;
-      });
+      // Insert conflicts (channel already exists) → no row returned.
+      mockInsert.mockImplementation(() => createMockChain([]));
 
       const res = await getOrCreateChatChannel('user-mentee');
       expect(res.ok).toBe(true);
       if (res.ok) {
         expect(res.data.channelId).toBe('existing-channel-id');
       }
+    });
+
+    it('returns new channel id immediately on a fresh insert (no conflict fallback)', async () => {
+      vi.mocked(actionAuth.requireUser).mockResolvedValue(
+        ok({ user: { id: 'user-mentor' } } as any),
+      );
+
+      let callCount = 0;
+      mockSelect.mockImplementation(() => {
+        const chain = createMockChain();
+        chain.then = (resolve: any) => {
+          callCount++;
+          if (callCount === 1) {
+            // self profile
+            resolve([{ id: 'user-mentor', level: 3 }]);
+          } else {
+            // other profile
+            resolve([{ id: 'user-mentee', level: 2 }]);
+          }
+        };
+        return chain;
+      });
+
+      mockInsert.mockImplementation(() => {
+        // Fresh insert succeeds — onConflictDoNothing returns the new row.
+        return createMockChain([{ id: 'fresh-channel-id' }]);
+      });
+
+      const res = await getOrCreateChatChannel('user-mentee');
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.channelId).toBe('fresh-channel-id');
+      }
+      // Only the two profile lookups ran — the conflict fallback select
+      // must not fire when the insert path short-circuits.
+      expect(mockSelect).toHaveBeenCalledTimes(2);
     });
   });
 
