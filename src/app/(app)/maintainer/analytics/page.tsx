@@ -17,6 +17,7 @@ import RangeTabs from './range-tabs';
 import QueueSignalPanel from './queue-signal-panel';
 import { StatsHeader } from './stats-header';
 import { PrVolumeChart } from './pr-volume-chart';
+import { ExportReportButton } from './export-report-button';
 import SummaryBanner from './summary-banner';
 import type { AnalyticsRange } from '@/lib/maintainer/time-saved';
 
@@ -63,6 +64,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     installs.find((i) => i.installationId === Number(resolvedSearchParams.install))
       ? Number(resolvedSearchParams.install)
       : installs[0]!.installationId;
+  const activeInstall = installs.find((i) => i.installationId === activeInstallId) ?? installs[0]!;
 
   const rawRange = resolvedSearchParams.range;
   const range: AnalyticsRange =
@@ -121,6 +123,11 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
           <h1 className="font-display text-3xl font-bold">Analytics</h1>
           <div className="flex items-center gap-4">
             <RangeTabs currentRange={range} />
+            <ExportReportButton
+              installationId={activeInstallId}
+              range={range}
+              orgLogin={activeInstall.accountLogin}
+            />
           </div>
         </header>
 

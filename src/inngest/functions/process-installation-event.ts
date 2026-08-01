@@ -220,6 +220,7 @@ export const processInstallationEvent = inngest.createFunction(
               userId: (row as { user_id: string }).user_id,
               githubHandle: p.github_handle,
               force: true,
+              installationId: install.id,
             },
           });
         }

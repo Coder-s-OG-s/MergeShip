@@ -35,6 +35,18 @@ export async function getMaintainerInstalls(
   return settingsActions.getMaintainerInstalls(...args);
 }
 
+export async function exportAnalyticsReport(
+  ...args: Parameters<typeof analyticsActions.exportAnalyticsReport>
+): ReturnType<typeof analyticsActions.exportAnalyticsReport> {
+  return analyticsActions.exportAnalyticsReport(...args);
+}
+
+export async function createReportSnapshot(
+  ...args: Parameters<typeof analyticsActions.createReportSnapshot>
+): ReturnType<typeof analyticsActions.createReportSnapshot> {
+  return analyticsActions.createReportSnapshot(...args);
+}
+
 export async function getInstallationSettings(
   ...args: Parameters<typeof settingsActions.getInstallationSettings>
 ): ReturnType<typeof settingsActions.getInstallationSettings> {

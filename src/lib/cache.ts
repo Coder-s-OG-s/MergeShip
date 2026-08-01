@@ -294,9 +294,9 @@ function pickDefaultBackend(): CacheBackend {
       retryStrategy: () => null, // Do not keep retrying connection
     });
     client.on('error', (err: Error) => {
-      console.warn(`[cache] Local Redis error: ${err.message}. Falling back to memory.`);
-      backend = new MemoryBackend();
-      client.disconnect();
+      console.warn(
+        `[cache] Local Redis error: ${err.message}. Operations will fail over to null/blocked fallback per call.`,
+      );
     });
     return new IoRedisBackend(client);
   }

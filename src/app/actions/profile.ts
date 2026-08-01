@@ -119,10 +119,11 @@ export async function bootstrapProfile(): Promise<Result<BootstrapOutput>> {
     }
   }
 
-  // Fire-and-forget maintainer discovery so this user picks up admin
-  // permissions across every install (including orgs where they were
-  // added as admin after a different teammate created the install).
-  // Idempotent + Redis-deduped at 1h.
+  // Fire-and-forget maintainer revalidation so this user's known installs get
+  // their permission levels refreshed. New grants (e.g. orgs where they were
+  // added as admin after a different teammate created the install) are picked
+  // up by the installation.created / membership / member webhooks, which pass
+  // an installationId. Idempotent + Redis-deduped at 1h.
   void inngest.send({
     name: 'maintainer/discover',
     data: { userId: profile.id, githubHandle: profile.github_handle },

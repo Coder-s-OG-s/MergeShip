@@ -1,5 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { getDb, schema } from '@/lib/db/client';
+import { eq, and } from 'drizzle-orm';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_REWARDS, DAILY_CAPS, XP_SOURCE, refIds } from '@/lib/xp/sources';
 
@@ -139,65 +141,56 @@ export const processReviewEvent = inngest.createFunction(
 
       const refId = refIds.helpReview(helpReq.id, payload.review.user.login);
 
-      // Optimistically resolve the help request first.
-      // This prevents concurrent reviews from claiming the same help request.
-      const { data: updateRes, error: updateErr } = await sb
-        .from('help_requests')
-        .update({
-          status: 'resolved',
-          resolved_by: reviewer.id,
-          resolved_at: new Date().toISOString(),
-        })
-        .eq('id', helpReq.id)
-        .eq('status', 'open')
-        .select('id');
+      // Use a single Drizzle transaction for atomic help request resolution
+      // and XP event insertion — both succeed or both roll back together.
+      const db = getDb();
 
-      if (updateErr) {
-        throw new Error(`Failed to resolve help request: ${updateErr.message}`);
-      }
-
-      // If the help request was already resolved/modified, abort.
-      if (!updateRes || updateRes.length === 0) {
-        return { xpAwarded: 0, reason: 'help_request_already_resolved' };
-      }
-
-      let inserted = false;
       try {
-        inserted = await insertXpEvent({
-          userId: reviewer.id,
-          source: XP_SOURCE.HELP_REVIEW,
-          refType: 'review',
-          refId,
-          repo: payload.pull_request.base.repo.full_name,
-          xpDelta: xp,
-          metadata: { isMentor, isFast, menteeLevel },
-          dailyCapLimit: {
-            action: 'review',
-            limit: DAILY_CAPS.REVIEWS,
-          },
+        const result = await db.transaction(async (tx) => {
+          // Update help request (optimistic lock via status = 'open')
+          const [updated] = await tx
+            .update(schema.helpRequests)
+            .set({
+              status: 'resolved',
+              resolvedBy: reviewer.id,
+              resolvedAt: new Date(),
+            })
+            .where(
+              and(eq(schema.helpRequests.id, helpReq.id), eq(schema.helpRequests.status, 'open')),
+            )
+            .returning({ id: schema.helpRequests.id });
+
+          if (!updated) {
+            return { xpAwarded: 0, reason: 'help_request_already_resolved' };
+          }
+
+          const inserted = await insertXpEvent(
+            {
+              userId: reviewer.id,
+              source: XP_SOURCE.HELP_REVIEW,
+              refType: 'review',
+              refId,
+              repo: payload.pull_request.base.repo.full_name,
+              xpDelta: xp,
+              metadata: { isMentor, isFast, menteeLevel },
+              dailyCapLimit: {
+                action: 'review',
+                limit: DAILY_CAPS.REVIEWS,
+              },
+            },
+            tx,
+          );
+
+          return { xpAwarded: inserted ? xp : 0, isMentor, isFast };
         });
+
+        return result;
       } catch (err: any) {
-        // Roll back the help request status if XP insertion failed
-        const { error: rollbackErr } = await sb
-          .from('help_requests')
-          .update({
-            status: 'open',
-            resolved_by: null,
-            resolved_at: null,
-          })
-          .eq('id', helpReq.id);
-
-        if (rollbackErr) {
-          console.error(`Failed to rollback help request status: ${rollbackErr.message}`);
-        }
-
         if (err.message === 'daily_review_cap_reached') {
           return { skipped: true, reason: 'daily_review_cap_reached' };
         }
         throw err;
       }
-
-      return { xpAwarded: inserted ? xp : 0, isMentor, isFast };
     });
   },
 );

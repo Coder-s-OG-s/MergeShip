@@ -71,15 +71,8 @@ export async function getFailedWebhookEvents(args: {
 
   // only keep events whose payload references a repo in this scope
   const scoped = rawEvents.filter((evt) => {
-    const payload = evt.payload as Record<string, unknown>;
-    // Webhook payloads nest the repo under payload.payload.repository
-    const innerPayload = (payload?.payload ?? payload) as Record<string, unknown>;
-    const repoName =
-      (innerPayload?.repository as Record<string, unknown>)?.full_name ??
-      ((innerPayload?.pull_request as Record<string, unknown>)?.base as Record<string, unknown>)
-        ?.repo;
-    if (typeof repoName === 'string' && repos.includes(repoName)) return true;
-    return false;
+    const repoName = extractRepoFullName(evt.payload);
+    return repoName !== null && repos.includes(repoName);
   });
 
   const rows: FailedWebhookEventRow[] = scoped.slice(0, limit).map((evt) => ({
@@ -93,6 +86,27 @@ export async function getFailedWebhookEvents(args: {
   }));
 
   return ok({ count: scoped.length, rows });
+}
+
+/**
+ * Helper to safely extract the repository full_name from various GitHub webhook payload structures.
+ */
+function extractRepoFullName(payload: Record<string, unknown>): string | null {
+  const innerPayload = (payload?.payload ?? payload) as Record<string, unknown>;
+
+  // 1. Direct repository object/string in payload (e.g. payload.repository.full_name)
+  const repoObj = innerPayload?.repository as Record<string, unknown> | string | undefined;
+  if (typeof repoObj === 'string') return repoObj;
+  if (typeof repoObj?.full_name === 'string') return repoObj.full_name;
+
+  // 2. Pull request payload where repository is nested under pull_request.base.repo
+  const prObj = innerPayload?.pull_request as Record<string, unknown> | undefined;
+  const baseObj = prObj?.base as Record<string, unknown> | undefined;
+  const baseRepoObj = baseObj?.repo as Record<string, unknown> | string | undefined;
+  if (typeof baseRepoObj === 'string') return baseRepoObj;
+  if (typeof baseRepoObj?.full_name === 'string') return baseRepoObj.full_name;
+
+  return null;
 }
 
 /**
@@ -121,14 +135,9 @@ export async function retryFailedWebhookEvent(args: {
 
   if (!failedEvent) return err('not_found', 'Event not found');
 
-  const payload = failedEvent.payload as Record<string, unknown>;
-  const innerPayload = (payload?.payload ?? payload) as Record<string, unknown>;
-  const repoName =
-    (innerPayload?.repository as Record<string, unknown>)?.full_name ??
-    ((innerPayload?.pull_request as Record<string, unknown>)?.base as Record<string, unknown>)
-      ?.repo;
+  const repoName = extractRepoFullName(failedEvent.payload as Record<string, unknown>);
 
-  if (typeof repoName !== 'string' || !repos.includes(repoName)) {
+  if (!repoName || !repos.includes(repoName)) {
     return err('forbidden', 'You do not have access to this event');
   }
 

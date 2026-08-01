@@ -78,7 +78,7 @@ describe('rateLimit production guard', () => {
     vi.unstubAllEnvs();
   });
 
-  it('allows requests when NODE_ENV=production and no shared cache configured (falls back to memory cache)', async () => {
+  it('blocks requests when NODE_ENV=production and no shared cache configured (fail-closed)', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     delete process.env.KV_REST_API_URL;
     delete process.env.KV_REST_API_TOKEN;
@@ -87,14 +87,45 @@ describe('rateLimit production guard', () => {
     const { rateLimit: rl } = await import('./rate-limit');
 
     const result = await rl({ namespace: 'test', key: 'u1', limit: 5, windowSec: 60 });
-    // In production without a shared cache, requests are allowed but fall back
-    // to memory-based rate limiting.
+    // In production without a shared cache, requests are blocked to prevent
+    // silent rate-limit bypass.
+    expect(result.ok).toBe(false);
+    expect(result.remaining).toBe(0);
+  });
+
+  it('blocks requests on a Vercel production deploy without a shared cache', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    delete process.env.KV_REST_API_URL;
+    delete process.env.KV_REST_API_TOKEN;
+    delete process.env.REDIS_URL;
+
+    const { rateLimit: rl } = await import('./rate-limit');
+
+    const result = await rl({ namespace: 'test', key: 'u1', limit: 5, windowSec: 60 });
+    expect(result.ok).toBe(false);
+    expect(result.remaining).toBe(0);
+  });
+
+  it('does not block on a Vercel preview deploy even when NODE_ENV=production', async () => {
+    // `next build` sets NODE_ENV=production on previews too; only real
+    // production deploys should fail closed without a shared cache.
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    delete process.env.KV_REST_API_URL;
+    delete process.env.KV_REST_API_TOKEN;
+    delete process.env.REDIS_URL;
+
+    const { rateLimit: rl } = await import('./rate-limit');
+
+    const result = await rl({ namespace: 'test', key: 'u1', limit: 5, windowSec: 60 });
     expect(result.ok).toBe(true);
     expect(result.remaining).toBe(4);
   });
 
   it('allows requests when NODE_ENV is not production even without shared cache', async () => {
     vi.stubEnv('NODE_ENV', 'development');
+    delete process.env.VERCEL_ENV;
 
     const { rateLimit: rl } = await import('./rate-limit');
 
