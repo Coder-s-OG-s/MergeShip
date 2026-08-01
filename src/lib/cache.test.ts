@@ -12,6 +12,7 @@ import {
 
 const redisRegistry = vi.hoisted(() => ({
   instance: null as any,
+  options: null as any,
   handlers: new Map<string, (err?: Error) => void>(),
 }));
 
@@ -28,8 +29,9 @@ vi.mock('ioredis', () => ({
     incr = vi.fn().mockResolvedValue(1);
     expire = vi.fn().mockResolvedValue(1);
     ttl = vi.fn().mockResolvedValue(60);
-    constructor() {
+    constructor(_url: string, options?: unknown) {
       redisRegistry.instance = this;
+      redisRegistry.options = options;
     }
   },
 }));
@@ -335,5 +337,122 @@ describe('pickDefaultBackend (REDIS_URL path) — regression for #843', () => {
       else delete process.env.REDIS_URL;
       warnSpy.mockRestore();
     }
+  });
+});
+
+describe('pickDefaultBackend fail-closed (regression for #861)', () => {
+  function withEnv(
+    env: Record<string, string | undefined>,
+    fn: () => Promise<void>,
+  ): Promise<void> {
+    const prev = new Map<string, string | undefined>();
+    return (async () => {
+      for (const [k, v] of Object.entries(env)) {
+        prev.set(k, process.env[k]);
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      try {
+        await fn();
+      } finally {
+        for (const [k, v] of prev) {
+          if (v === undefined) delete process.env[k];
+          else process.env[k] = v;
+        }
+      }
+    })();
+  }
+
+  it('blocks all rate-limit hits on a production deploy with no shared cache', async () => {
+    await withEnv(
+      {
+        KV_REST_API_URL: undefined,
+        KV_REST_API_TOKEN: undefined,
+        REDIS_URL: undefined,
+        VERCEL_ENV: 'production',
+        NODE_ENV: 'production',
+      },
+      async () => {
+        vi.resetModules();
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+          const cache = await import('./cache');
+
+          const fixed = await cache.cacheRateLimitHit('rl:prod', 60, 1000);
+          expect(fixed.count).toBe(Number.MAX_SAFE_INTEGER);
+          expect(fixed.resetAt).toBe(1000 + 60 * 1000);
+
+          const sliding = await cache.cacheRateLimitHitSlidingWindow('rl:prod', 60, 5, 2000);
+          expect(sliding.count).toBe(Number.MAX_SAFE_INTEGER);
+          expect(sliding.resetAt).toBe(2000 + 60 * 1000);
+        } finally {
+          errorSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  it('makes non-rate-limit cache ops safe no-ops when failing closed', async () => {
+    await withEnv(
+      {
+        KV_REST_API_URL: undefined,
+        KV_REST_API_TOKEN: undefined,
+        REDIS_URL: undefined,
+        VERCEL_ENV: 'production',
+        NODE_ENV: 'production',
+      },
+      async () => {
+        vi.resetModules();
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+          const cache = await import('./cache');
+          await cache.cacheSet('k', 'v', 60);
+          expect(await cache.cacheGet('k')).toBeNull();
+          await cache.cacheDel('k');
+          await cache.cacheDelByPrefix('k:');
+        } finally {
+          errorSpy.mockRestore();
+        }
+      },
+    );
+  });
+
+  it('keeps the memory backend on a Vercel preview deploy without a shared cache', async () => {
+    await withEnv(
+      {
+        KV_REST_API_URL: undefined,
+        KV_REST_API_TOKEN: undefined,
+        REDIS_URL: undefined,
+        VERCEL_ENV: 'preview',
+        NODE_ENV: 'production',
+      },
+      async () => {
+        vi.resetModules();
+        const cache = await import('./cache');
+        const result = await cache.cacheRateLimitHit('rl:preview', 60, 1000);
+        expect(result.count).toBe(1);
+      },
+    );
+  });
+
+  it('configures a bounded reconnect retryStrategy instead of giving up permanently', async () => {
+    await withEnv({ REDIS_URL: 'redis://localhost:6379' }, async () => {
+      vi.resetModules();
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        await import('./cache');
+        expect(redisRegistry.options).not.toBeNull();
+        const retryStrategy = redisRegistry.options?.retryStrategy as (
+          times: number,
+        ) => number | null;
+        expect(retryStrategy).toBeTypeOf('function');
+        expect(retryStrategy(1)).toBeGreaterThanOrEqual(250);
+        expect(retryStrategy(1)).toBeLessThanOrEqual(5000);
+        expect(retryStrategy(10)).toBeLessThanOrEqual(5000);
+        expect(retryStrategy(11)).toBeNull();
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
   });
 });

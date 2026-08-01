@@ -3,6 +3,11 @@
  * Tests + local dev = in-memory map (no network, deterministic).
  *
  * Swap providers later by replacing the backend below — call sites never change.
+ *
+ * Fail-closed: if a real production deploy has no distributed backend configured,
+ * rate limiting must NOT silently degrade to a per-invocation MemoryBackend (which
+ * disables webhook/action throttling on serverless). Instead every rate-limit hit
+ * reports over the limit so calls are blocked, and other cache ops become safe no-ops.
  */
 
 import { Redis as UpstashRedis } from '@upstash/redis';
@@ -104,6 +109,36 @@ class MemoryBackend implements CacheBackend {
     const resetAt = now + windowMs;
     this.store.set(key, { value: bounded, expiresAt: resetAt });
     return { count: bounded.length, resetAt };
+  }
+}
+
+/**
+ * Fail-closed backend for a production deploy with no shared cache configured.
+ * Every rate-limit hit reports over the limit (blocking), and all other cache
+ * operations are safe no-ops so nothing reads stale or cross-tenant state.
+ */
+class BlockingBackend implements CacheBackend {
+  async get<T>(): Promise<T | null> {
+    return null;
+  }
+
+  async set(): Promise<void> {}
+
+  async del(): Promise<void> {}
+
+  async scanDel(): Promise<void> {}
+
+  async rateLimitHit(_key: string, windowSec: number, now: number): Promise<RateLimitBucket> {
+    return blockedRateLimitBucket(windowSec, now);
+  }
+
+  async rateLimitHitSlidingWindow(
+    _key: string,
+    windowSec: number,
+    _limit: number,
+    now: number,
+  ): Promise<RateLimitBucket> {
+    return blockedRateLimitBucket(windowSec, now);
   }
 }
 
@@ -291,7 +326,13 @@ function pickDefaultBackend(): CacheBackend {
   if (redisUrl) {
     const client = new Redis(redisUrl, {
       maxRetriesPerRequest: 1,
-      retryStrategy: () => null, // Do not keep retrying connection
+      // Reconnect with bounded backoff instead of giving up permanently: a
+      // transient Redis blip must not kill the client (and with it rate
+      // limiting) for the life of a warm serverless instance.
+      retryStrategy: (times: number) => {
+        if (times > 10) return null;
+        return Math.min(times * 250, 5000);
+      },
     });
     client.on('error', (err: Error) => {
       console.warn(
@@ -301,21 +342,34 @@ function pickDefaultBackend(): CacheBackend {
     return new IoRedisBackend(client);
   }
 
-  // No distributed backend configured. Fall back to in-process MemoryBackend.
-  // In Vercel (and any other serverless runtime), each function invocation runs
-  // in an isolated process with its own memory, so counters are never shared
-  // across concurrent invocations. Rate limiting is effectively disabled.
-  // Set KV_REST_API_URL + KV_REST_API_TOKEN (Upstash) or REDIS_URL to enable
-  // shared, durable rate limiting.
-  if (process.env.NODE_ENV === 'production') {
+  if (isProductionDeploy()) {
+    // No distributed backend on a real production deploy. Do NOT silently
+    // degrade to MemoryBackend: each serverless invocation would get its own
+    // counter, effectively disabling webhook/action throttling. Fail closed so
+    // rate limiting blocks every call and nothing runs unthrottled.
     console.error(
-      '[cache] MISCONFIGURATION: No Redis or Upstash backend is configured. ' +
-        'Falling back to MemoryBackend. Rate limiting is NOT shared across ' +
-        'serverless invocations and is effectively disabled in production. ' +
-        'Set KV_REST_API_URL + KV_REST_API_TOKEN (Upstash) or REDIS_URL.',
+      '[cache] CRITICAL MISCONFIGURATION: No Redis or Upstash backend is configured on a production deploy. ' +
+        'Rate limiting is failing CLOSED (all calls blocked). ' +
+        'Set KV_REST_API_URL + KV_REST_API_TOKEN (Upstash) or REDIS_URL immediately.',
     );
+    return new BlockingBackend();
   }
+
+  // No distributed backend outside a production deploy (local dev, tests, Vercel
+  // preview). Use an in-process MemoryBackend — deterministic for tests, and fine
+  // for ephemeral dev/preview traffic.
   return new MemoryBackend();
+}
+
+/**
+ * True on a real production deploy. `next build` sets NODE_ENV=production on
+ * Vercel Preview deployments too, so gate on VERCEL_ENV first (only set to
+ * 'production' on production deploys) and fall back to NODE_ENV off-Vercel.
+ */
+export function isProductionDeploy(): boolean {
+  return process.env.VERCEL_ENV
+    ? process.env.VERCEL_ENV === 'production'
+    : process.env.NODE_ENV === 'production';
 }
 
 /** True when a distributed cache backend (Upstash or Redis) is configured. */
