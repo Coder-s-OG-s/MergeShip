@@ -404,12 +404,12 @@ describe('maintainer actions', () => {
 
       mockFrom
         .mockReturnValueOnce(chain({ min_contributor_level: 2 }))
-        .mockReturnValueOnce(chain([lowPr, seniorPr]))
+        // Profiles pre-query: only level >= 2 profiles clear the filter, so
+        // the SQL filter excludes low-user before the pull_requests read.
+        .mockReturnValueOnce(chain([{ id: 'senior-user' }]))
+        .mockReturnValueOnce(chain([seniorPr]))
         .mockReturnValueOnce(
-          chain([
-            { id: 'low-user', github_handle: 'low', level: 1, xp: 50 },
-            { id: 'senior-user', github_handle: 'senior', level: 2, xp: 500 },
-          ]),
+          chain([{ id: 'senior-user', github_handle: 'senior', level: 2, xp: 500 }]),
         )
         .mockReturnValueOnce(chain([]));
 

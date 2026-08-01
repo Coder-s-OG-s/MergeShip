@@ -87,11 +87,31 @@ export async function getMaintainerPrQueue(args: {
 
   const minContributorLevel = await readMinContributorLevel(service, args.installationId);
 
+  // Author-level filters are pushed into SQL (profiles.level) so pagination
+  // windows only ever contain rows the maintainer wants to see. In-app the
+  // author level is `profiles.level ?? 0` — a PR whose author has no MergeShip
+  // profile behaves as level 0, so it must survive when level 0 is allowed.
+  let allowedAuthorIds: string[] | null = null;
+  let allowNullAuthor = false;
+  if (minContributorLevel > 0 || filters.authorLevel.length > 0) {
+    let pq = service.from('profiles').select('id').gte('level', minContributorLevel);
+    if (filters.authorLevel.length > 0) pq = pq.in('level', filters.authorLevel);
+    const { data: profs } = await pq;
+    allowedAuthorIds = (profs ?? []).map((p) => p.id);
+    allowNullAuthor =
+      minContributorLevel === 0 &&
+      (filters.authorLevel.length === 0 || filters.authorLevel.includes(0));
+    if (allowedAuthorIds.length === 0 && !allowNullAuthor) {
+      return ok({ rows: [], hasMore: false });
+    }
+  }
+
   let q = service
     .from('pull_requests')
     .select(
       'id, repo_full_name, number, title, url, state, draft, author_login, ' +
         'author_user_id, mentor_verified, mentor_reviewer_id, github_updated_at, ai_flagged',
+      { count: 'exact' },
     )
     .in('repo_full_name', scopedRepos);
 
@@ -101,6 +121,13 @@ export async function getMaintainerPrQueue(args: {
   if (filters.aiFlagged === 'yes') q = q.eq('ai_flagged', true);
   else if (filters.aiFlagged === 'no') q = q.eq('ai_flagged', false);
   if (filters.authorLogin) q = q.eq('author_login', filters.authorLogin);
+  if (allowedAuthorIds) {
+    const orConds: string[] = [];
+    if (allowedAuthorIds.length > 0)
+      orConds.push(`author_user_id.in.(${allowedAuthorIds.join(',')})`);
+    if (allowNullAuthor) orConds.push('author_user_id.is.null');
+    q = q.or(orConds.join(','));
+  }
 
   // Pull a generous slice; we re-sort by tier client-side.
   type RawPr = {
@@ -118,7 +145,7 @@ export async function getMaintainerPrQueue(args: {
     github_updated_at: string;
     ai_flagged: boolean;
   };
-  const { data: prs } = await q
+  const { data: prs, count } = await q
     .order('github_updated_at', { ascending: false })
     .range(
       Math.floor(page / 4) * PAGE_SIZE * 4,
@@ -189,23 +216,18 @@ export async function getMaintainerPrQueue(args: {
     };
   });
 
-  // Apply author-level filter after the join (since author level isn't on
-  // the pull_requests row).
-  let filtered = rows.filter((row) => (row.authorLevel ?? 0) >= minContributorLevel);
-  if (filters.authorLevel.length > 0) {
-    filtered = filtered.filter((row) => filters.authorLevel.includes(row.authorLevel ?? 0));
-  }
-  if (filters.aiFlagged === 'yes') {
-    filtered = filtered.filter((row) => row.aiFlagged);
-  } else if (filters.aiFlagged === 'no') {
-    filtered = filtered.filter((row) => !row.aiFlagged);
-  }
-
+  // state/mentor/ai/author-level filters are all applied in SQL above, so every
+  // row in this window is a candidate — all that remains is the tier sort.
+  const filtered = rows;
   filtered.sort(comparePrRows);
 
   const startIdx = (page % 4) * PAGE_SIZE;
   const page_rows = filtered.slice(startIdx, startIdx + PAGE_SIZE);
-  const hasMore = startIdx + PAGE_SIZE < filtered.length || prRows.length === PAGE_SIZE * 4;
+  // `count` is the exact total of the SQL-filtered set, so `hasMore` no longer
+  // guesses from a full 100-row window (which made pages 1-3 empty and hid
+  // rows beyond offset 100).
+  const total = count ?? filtered.length;
+  const hasMore = startIdx + PAGE_SIZE < total;
   return ok({ rows: page_rows, hasMore });
 }
 
@@ -238,7 +260,6 @@ export async function getMaintainerIssueQueue(args: {
     ISSUE_BUCKETS.has(b),
   );
 
-  // Pull a generous slice — we classify in app code, can't filter buckets in SQL.
   const page = Math.max(0, args.page ?? 0);
   const states: ('open' | 'closed')[] = buckets.includes('closed') ? ['open', 'closed'] : ['open'];
 
@@ -257,6 +278,10 @@ export async function getMaintainerIssueQueue(args: {
     github_created_at: string | null;
   };
 
+  // Pull every candidate that could classify into a requested bucket — bucket
+  // assignment happens in-app (labels + staleness), so limiting the DB read to
+  // a window would make matching rows past the window unreachable. The set is
+  // bounded by the maintainer's own repos.
   const { data: issuesRaw } = await service
     .from('issues')
     .select(
@@ -265,11 +290,7 @@ export async function getMaintainerIssueQueue(args: {
     )
     .in('repo_full_name', scopedRepos)
     .in('state', states)
-    .order('last_event_at', { ascending: false, nullsFirst: false })
-    .range(
-      Math.floor(page / 4) * PAGE_SIZE * 4,
-      Math.floor(page / 4) * PAGE_SIZE * 4 + PAGE_SIZE * 4 - 1,
-    );
+    .order('last_event_at', { ascending: false, nullsFirst: false });
 
   const rows: MaintainerIssueRow[] = ((issuesRaw ?? []) as unknown as RawIssue[]).map((r) => {
     const triage = classifyTriage({
@@ -313,10 +334,10 @@ export async function getMaintainerIssueQueue(args: {
     return bt - at;
   });
 
-  const startIdx = (page % 4) * PAGE_SIZE;
+  // The full candidate set is in memory, so the offset is a plain page offset.
+  const startIdx = page * PAGE_SIZE;
   const pageRows = filtered.slice(startIdx, startIdx + PAGE_SIZE);
-  const hasMore =
-    startIdx + PAGE_SIZE < filtered.length || (issuesRaw?.length ?? 0) === PAGE_SIZE * 4;
+  const hasMore = startIdx + PAGE_SIZE < filtered.length;
   return ok({ rows: pageRows, hasMore });
 }
 
