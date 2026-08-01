@@ -1,20 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getInstallationToken } from '@/lib/github/app';
+import { getInstallOctokit } from '@/lib/github/app';
 import {
   fetchMergedCount,
   fetchContributionStreak,
   fetchContributionCalendar,
+  fetchAndBackfillPRs,
 } from '@/app/actions/github-sync-helpers';
 import { cacheDel, cacheSet } from '@/lib/cache';
 import { githubStatsSync } from './github-stats-sync';
 import { sb, wire, step } from './__tests__/test-helpers';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
-vi.mock('@/lib/github/app', () => ({ getInstallationToken: vi.fn() }));
+vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn() }));
 vi.mock('@/app/actions/github-sync-helpers', () => ({
   fetchMergedCount: vi.fn(),
   fetchContributionStreak: vi.fn(),
   fetchContributionCalendar: vi.fn(),
+  fetchAndBackfillPRs: vi.fn(),
 }));
 vi.mock('@/lib/cache', () => ({ cacheDel: vi.fn(), cacheSet: vi.fn() }));
 vi.mock('../client', () => ({
@@ -49,12 +51,13 @@ describe('githubStatsSync', () => {
       profiles,
     });
 
-    vi.mocked(getInstallationToken).mockResolvedValue('fake-token');
+    vi.mocked(getInstallOctokit).mockResolvedValue({} as never);
     vi.mocked(fetchMergedCount).mockResolvedValue(5);
     vi.mocked(fetchContributionStreak).mockResolvedValue(10);
     vi.mocked(fetchContributionCalendar).mockResolvedValue([
       { date: '2026-06-01', contributionCount: 2 },
     ]);
+    vi.mocked(fetchAndBackfillPRs).mockResolvedValue([]);
 
     const result = await run({ event: ev(), step });
 

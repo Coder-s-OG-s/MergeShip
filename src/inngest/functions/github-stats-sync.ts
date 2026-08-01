@@ -1,10 +1,11 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
-import { getInstallationToken } from '@/lib/github/app';
+import { getInstallOctokit } from '@/lib/github/app';
 import {
   fetchMergedCount,
   fetchContributionStreak,
   fetchContributionCalendar,
+  fetchAndBackfillPRs,
 } from '@/app/actions/github-sync-helpers';
 import { cacheDel, cacheSet } from '@/lib/cache';
 
@@ -36,11 +37,12 @@ export const githubStatsSync = inngest.createFunction(
       const installId = (install as { id: number }[] | null)?.[0]?.id;
       if (!installId) throw new Error('no GitHub App installation found');
 
-      const token = await getInstallationToken(installId);
+      const octokit = await getInstallOctokit(installId);
       const [merges, streak, calendar] = await Promise.all([
-        fetchMergedCount(token, githubHandle),
-        fetchContributionStreak(token, githubHandle),
-        fetchContributionCalendar(token, githubHandle),
+        fetchMergedCount(octokit, githubHandle),
+        fetchContributionStreak(octokit, githubHandle),
+        fetchContributionCalendar(octokit, githubHandle),
+        fetchAndBackfillPRs(sb, userId, githubHandle, installId),
       ]);
 
       await cacheSet(`gh:contrib:${userId}`, { days: calendar }, 86_400);

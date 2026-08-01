@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getInstallOctokit, getInstallationToken } from '@/lib/github/app';
+import { getInstallOctokit } from '@/lib/github/app';
 import { fetchContributionCalendar } from '@/app/actions/github-sync-helpers';
 import { insertXpEvent } from '@/lib/xp/events';
 import { computeAuditScore } from '@/lib/xp/audit';
@@ -12,7 +12,6 @@ import { sb, wire, step } from './__tests__/test-helpers';
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/github/app', () => ({
   getInstallOctokit: vi.fn(),
-  getInstallationToken: vi.fn(),
 }));
 vi.mock('@/app/actions/github-sync-helpers', () => ({
   fetchContributionCalendar: vi.fn(),
@@ -63,7 +62,6 @@ const happy = () => {
   });
   wire({ profiles });
   vi.mocked(getInstallOctokit).mockResolvedValue(gh() as never);
-  vi.mocked(getInstallationToken).mockResolvedValue('fake-token');
   vi.mocked(fetchContributionCalendar).mockResolvedValue([
     { date: '2025-07-01', contributionCount: 5 },
     { date: '2025-07-02', contributionCount: 3 },
@@ -112,7 +110,7 @@ describe('auditRun', () => {
     // happy() mocks fetchContributionCalendar → [{5}, {3}] = 8 total
     await run({ event: ev({ installationId: 1 }), step });
 
-    expect(fetchContributionCalendar).toHaveBeenCalledWith('fake-token', 'alice');
+    expect(fetchContributionCalendar).toHaveBeenCalledWith(expect.anything(), 'alice');
     expect(computeAuditScore).toHaveBeenCalledWith(
       expect.objectContaining({ yearlyContributions: 8 }),
     );

@@ -2,120 +2,25 @@
 
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
-import { getInstallationToken } from '@/lib/github/app';
+import { getInstallOctokit } from '@/lib/github/app';
 import { cacheDel, cacheSet } from '@/lib/cache';
 import { ok, err, type Result } from '@/lib/result';
 import {
   fetchMergedCount,
   fetchContributionStreak,
   fetchContributionCalendar,
+  fetchAndBackfillPRs,
 } from './github-sync-helpers';
 
-export type GitHubPR = {
-  id: number;
-  github_pr_id: number;
-  repo_full_name: string;
-  number: number;
-  title: string;
-  state: 'open' | 'closed' | 'merged';
-  url: string;
-  github_created_at: string;
-  merged_at: string | null;
-};
-
-export type GitHubSearchItem = {
-  id: number;
-  number: number;
-  title: string;
-  html_url: string;
-  state: string;
-  created_at: string;
-  updated_at: string;
-  pull_request?: { merged_at: string | null; url: string };
-  repository_url: string;
-};
+// Backfill + types live in github-sync-helpers so the Inngest background job
+// and the user-triggered action share one implementation.
+export { fetchAndBackfillPRs } from './github-sync-helpers';
+export type { GitHubPR, GitHubSearchItem } from './github-sync-helpers';
 
 export type SyncOutput = {
   merges: number;
   streak: number;
 };
-
-export async function fetchAndBackfillPRs(
-  service: NonNullable<ReturnType<typeof getServiceSupabase>>,
-  userId: string,
-  githubHandle: string,
-  installId: number | null,
-): Promise<GitHubPR[]> {
-  const headers: Record<string, string> = {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-  };
-
-  if (installId) {
-    try {
-      const token = await getInstallationToken(installId);
-      headers['Authorization'] = `Bearer ${token}`;
-    } catch {
-      // proceed without auth — public PRs still visible
-    }
-  }
-
-  // Fetch up to 100 PRs authored by this user across all of GitHub
-  const url = `https://api.github.com/search/issues?q=is:pr+author:${encodeURIComponent(githubHandle)}&sort=created&order=desc&per_page=100`;
-  let items: GitHubSearchItem[] = [];
-  try {
-    const res = await fetch(url, { headers });
-    if (res.ok) {
-      const data = (await res.json()) as { items?: GitHubSearchItem[] };
-      items = data.items ?? [];
-    }
-  } catch {
-    return [];
-  }
-
-  if (items.length === 0) return [];
-
-  // Map to pull_requests row shape
-  const rows = items.map((item) => {
-    const repoFullName = item.repository_url.replace('https://api.github.com/repos/', '');
-    const mergedAt = item.pull_request?.merged_at ?? null;
-    const state: 'open' | 'closed' | 'merged' = mergedAt
-      ? 'merged'
-      : item.state === 'open'
-        ? 'open'
-        : 'closed';
-
-    return {
-      github_pr_id: item.id,
-      repo_full_name: repoFullName,
-      number: item.number,
-      title: item.title,
-      author_login: githubHandle,
-      author_user_id: userId,
-      state,
-      url: item.html_url,
-      github_created_at: item.created_at,
-      github_updated_at: item.updated_at ?? item.created_at,
-      merged_at: mergedAt,
-    };
-  });
-
-  // Upsert into pull_requests so webhook-future events will also exist
-  await service
-    .from('pull_requests')
-    .upsert(rows, { onConflict: 'github_pr_id', ignoreDuplicates: false });
-
-  // Re-query to get DB-assigned ids
-  const { data: saved } = await service
-    .from('pull_requests')
-    .select(
-      'id, github_pr_id, repo_full_name, number, title, state, url, github_created_at, merged_at',
-    )
-    .eq('author_user_id', userId)
-    .order('github_created_at', { ascending: false });
-
-  return (saved ?? []) as GitHubPR[];
-}
 
 export async function syncGitHubStats(): Promise<Result<SyncOutput>> {
   const sb = await getServerSupabase();
@@ -136,7 +41,8 @@ export async function syncGitHubStats(): Promise<Result<SyncOutput>> {
     .single();
   if (!profile) return err('no_profile', 'Profile not found');
 
-  // Get the GitHub App installation token — does not expire after 1h like provider_token
+  // Find the GitHub App installation — install token does not expire after
+  // 1h like the OAuth provider_token, so it's the stable auth source.
   const { data: installRows } = await service
     .from('github_installations')
     .select('id')
@@ -154,12 +60,12 @@ export async function syncGitHubStats(): Promise<Result<SyncOutput>> {
   }
 
   try {
-    const token = await getInstallationToken(installId);
+    const octokit = await getInstallOctokit(installId);
 
     const [merges, streak, calendar] = await Promise.all([
-      fetchMergedCount(token, profile.github_handle),
-      fetchContributionStreak(token, profile.github_handle),
-      fetchContributionCalendar(token, profile.github_handle),
+      fetchMergedCount(octokit, profile.github_handle),
+      fetchContributionStreak(octokit, profile.github_handle),
+      fetchContributionCalendar(octokit, profile.github_handle),
       fetchAndBackfillPRs(service, user.id, profile.github_handle, installId),
     ]);
 
