@@ -1,5 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { getInstallOctokit } from '@/lib/github/app';
+import { handleMerge, type MergePrShape } from './process-pr-event';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_REWARDS, XP_SOURCE, refIds } from '@/lib/xp/sources';
 import {
@@ -166,6 +168,29 @@ export const activityLogCleanup = inngest.createFunction(
       if (!sb) throw new Error('service role missing');
       const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
       const { data } = await sb.from('activity_log').delete().lt('created_at', cutoff).select('id');
+      return { deleted: data?.length ?? 0 };
+    });
+  },
+);
+
+/**
+ * webhook_deliveries keeps 30 days of idempotency records. GitHub redelivery is
+ * only available for ~3 days, so anything older than 30d can never be replayed
+ * and is pure storage growth — prune it daily like activity_log.
+ */
+export const webhookDeliveriesCleanup = inngest.createFunction(
+  { id: 'webhook-deliveries-cleanup' },
+  { cron: '20 0 * * *' }, // 00:20 UTC daily
+  async ({ step }) => {
+    return await step.run('cleanup-webhook-deliveries', async () => {
+      const sb = getServiceSupabase();
+      if (!sb) throw new Error('service role missing');
+      const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+      const { data } = await sb
+        .from('webhook_deliveries')
+        .delete()
+        .lt('received_at', cutoff)
+        .select('id');
       return { deleted: data?.length ?? 0 };
     });
   },
@@ -429,6 +454,106 @@ export const autoUnclaimStale = inngest.createFunction(
     });
 
     return { ...unclaimResult, ...warnResult };
+  },
+);
+
+const RECONCILE_MERGE_WINDOW_DAYS = 7;
+const RECONCILE_MAX_INSTALLS = 50;
+const RECONCILE_REPOS_PER_INSTALL = 20;
+const RECONCILE_PAGE_SIZE = 100;
+
+/**
+ * Reconcile merged-PR XP. GitHub does not auto-redeliver failed webhook
+ * deliveries, so a busy installation that got rate-limited (or hit a transient
+ * DB/send error) could permanently lose a `pull_request` merge event — no XP,
+ * no completed recommendation, and the stale-claim job later frees the claim.
+ *
+ * Daily, for the most recently updated closed PRs on each installation's repos,
+ * re-award merge XP for any merged PR from the last 7 days that has no
+ * xp_events row. handleMerge is idempotent (xp_events UNIQUE + rec status
+ * checks), so this is safe to run repeatedly.
+ */
+export const reconcileMergedPrXp = inngest.createFunction(
+  { id: 'reconcile-merged-pr-xp' },
+  { cron: '45 1 * * *' }, // 01:45 UTC daily
+  async ({ step }) => {
+    return await step.run('reconcile-merged-pr-xp', async () => {
+      const sb = getServiceSupabase();
+      if (!sb) throw new Error('service role missing');
+
+      const { data: installs } = await sb
+        .from('github_installations')
+        .select('id')
+        .is('uninstalled_at', null)
+        .order('id', { ascending: true })
+        .limit(RECONCILE_MAX_INSTALLS);
+
+      const windowStart = new Date(Date.now() - RECONCILE_MERGE_WINDOW_DAYS * 24 * 3600 * 1000);
+      let scanned = 0;
+      let missing = 0;
+      let awarded = 0;
+      let errors = 0;
+
+      for (const install of installs ?? []) {
+        const installationId = Number(install.id);
+        if (!Number.isFinite(installationId)) continue;
+
+        const { data: repos } = await sb
+          .from('installation_repositories')
+          .select('repo_full_name')
+          .eq('installation_id', installationId)
+          .order('repo_full_name', { ascending: true })
+          .limit(RECONCILE_REPOS_PER_INSTALL);
+
+        for (const { repo_full_name: repo } of repos ?? []) {
+          if (!repo) continue;
+          const [owner, name] = repo.split('/');
+          if (!owner || !name) continue;
+
+          try {
+            const octokit = await getInstallOctokit(installationId);
+            const { data: closedPulls } = await octokit.pulls.list({
+              owner,
+              repo: name,
+              state: 'closed',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: RECONCILE_PAGE_SIZE,
+            });
+
+            for (const pull of closedPulls) {
+              // pulls.list's closed-PR payload has merged_at (null if closed
+              // without merging) but no `merged` boolean — non-null is the merge signal.
+              if (!pull.merged_at) continue;
+              const mergedAt = new Date(pull.merged_at);
+              if (mergedAt < windowStart) continue;
+              scanned += 1;
+
+              const { data: existing } = await sb
+                .from('xp_events')
+                .select('id')
+                .in('source', [XP_SOURCE.RECOMMENDED_MERGE, XP_SOURCE.UNRECOMMENDED_MERGE])
+                .eq('ref_id', refIds.pr(repo, pull.number))
+                .limit(1);
+              if (existing && existing.length > 0) continue;
+              missing += 1;
+
+              const result = await handleMerge(
+                pull.html_url,
+                repo,
+                pull as unknown as MergePrShape,
+              );
+              if (result.xpAwarded) awarded += 1;
+            }
+          } catch (err) {
+            errors += 1;
+            console.error(`[reconcile-merged-pr-xp] failed for ${repo}`, err);
+          }
+        }
+      }
+
+      return { scanned, missing, awarded, errors };
+    });
   },
 );
 

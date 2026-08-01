@@ -58,6 +58,8 @@ type PrPayload = {
   };
 };
 
+export type MergePrShape = PrPayload['pull_request'];
+
 const ISSUE_REF = /(?:close[sd]?|fixe[sd]?|resolve[sd]?)\s+#(\d+)/gi;
 
 export function extractIssueNumbers(text: string | null | undefined): number[] {
@@ -340,10 +342,10 @@ async function linkPrToClaim(
   return { linked: false };
 }
 
-async function handleMerge(
+export async function handleMerge(
   prUrl: string,
   repo: string,
-  pr: PrPayload['pull_request'],
+  pr: MergePrShape,
 ): Promise<{ xpAwarded: boolean; recId?: number; reason?: string }> {
   const sb = getServiceSupabase();
   if (!sb) throw new Error('service role missing');
