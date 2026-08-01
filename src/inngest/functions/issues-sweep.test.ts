@@ -24,6 +24,37 @@ vi.mock('../client', () => ({
 
 const run = issuesSweep as unknown as (ctx: { step: typeof step }) => Promise<unknown>;
 
+const installsMock = () =>
+  sb({ limit: vi.fn().mockResolvedValue({ data: [{ id: 1, account_login: 'test-org' }] }) });
+
+const reposMock = (rows: Array<{ repo_full_name: string }>) =>
+  sb({ limit: vi.fn().mockResolvedValue({ data: rows }) });
+
+const baseOctokit = () => ({
+  repos: {
+    get: vi.fn().mockResolvedValue({ data: { fork: false, parent: null } }),
+  },
+  issues: {
+    listForRepo: vi.fn().mockResolvedValue({
+      data: [
+        {
+          number: 101,
+          title: 'Fix bug',
+          body: 'Bug description',
+          html_url: 'https://github.com/test-org/repo-1/issues/101',
+          comments: 2,
+          labels: ['bug'],
+        },
+        {
+          number: 102,
+          title: 'Is a PR',
+          pull_request: {}, // Should be skipped
+        },
+      ],
+    }),
+  },
+});
+
 describe('issuesSweep', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -32,48 +63,12 @@ describe('issuesSweep', () => {
   it('sweeps issues and triggers recommendations build', async () => {
     const issues = sb({ upsert: vi.fn().mockResolvedValue({}) });
     wire({
-      github_installations: sb({
-        select: vi.fn().mockReturnThis(),
-        is: vi.fn().mockReturnValue({
-          is: vi.fn().mockResolvedValue({ data: [{ id: 1, account_login: 'test-org' }] }),
-        }),
-      }),
-      installation_repositories: sb({
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({
-          data: [{ repo_full_name: 'test-org/repo-1' }],
-        }),
-      }),
+      github_installations: installsMock(),
+      installation_repositories: reposMock([{ repo_full_name: 'test-org/repo-1' }]),
       issues,
     });
 
-    const octokit = {
-      repos: {
-        get: vi.fn().mockResolvedValue({
-          data: { fork: false, parent: null },
-        }),
-      },
-      issues: {
-        listForRepo: vi.fn().mockResolvedValue({
-          data: [
-            {
-              number: 101,
-              title: 'Fix bug',
-              body: 'Bug description',
-              html_url: 'https://github.com/test-org/repo-1/issues/101',
-              comments: 2,
-              labels: ['bug'],
-            },
-            {
-              number: 102,
-              title: 'Is a PR',
-              pull_request: {}, // Should be skipped
-            },
-          ],
-        }),
-      },
-    };
-    vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
+    vi.mocked(getInstallOctokit).mockResolvedValue(baseOctokit() as never);
     vi.mocked(fetchRepoMetrics).mockResolvedValue({ language: 'TypeScript' } as never);
     vi.mocked(repoHealth).mockReturnValue(85);
     vi.mocked(scoreDifficulty).mockResolvedValue({
@@ -108,18 +103,8 @@ describe('issuesSweep', () => {
 
   it('handles github api errors gracefully', async () => {
     wire({
-      github_installations: sb({
-        select: vi.fn().mockReturnThis(),
-        is: vi.fn().mockReturnValue({
-          is: vi.fn().mockResolvedValue({ data: [{ id: 1, account_login: 'test-org' }] }),
-        }),
-      }),
-      installation_repositories: sb({
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({
-          data: [{ repo_full_name: 'test-org/repo-1' }],
-        }),
-      }),
+      github_installations: installsMock(),
+      installation_repositories: reposMock([{ repo_full_name: 'test-org/repo-1' }]),
     });
 
     vi.mocked(getInstallOctokit).mockRejectedValue(new Error('Bad credentials'));
@@ -142,15 +127,9 @@ describe('issuesSweep', () => {
   it('self-heals empty installation_repositories by discovering repos via GitHub API and triggering pr-backfill', async () => {
     const reposUpsert = vi.fn().mockResolvedValue({});
     wire({
-      github_installations: sb({
-        select: vi.fn().mockReturnThis(),
-        is: vi.fn().mockReturnValue({
-          is: vi.fn().mockResolvedValue({ data: [{ id: 1, account_login: 'test-org' }] }),
-        }),
-      }),
+      github_installations: installsMock(),
       installation_repositories: sb({
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({ data: [] }), // Initially empty!
+        limit: vi.fn().mockResolvedValue({ data: [] }),
         upsert: reposUpsert,
       }),
     });
@@ -168,6 +147,8 @@ describe('issuesSweep', () => {
       },
     };
     vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
+    vi.mocked(fetchRepoMetrics).mockResolvedValue({ language: 'TypeScript' } as never);
+    vi.mocked(repoHealth).mockReturnValue(85);
 
     const result = await run({ step });
 
@@ -190,5 +171,79 @@ describe('issuesSweep', () => {
         ]),
       }),
     );
+  });
+
+  it('reuses cached difficulty without invoking the LLM', async () => {
+    const issuesUpsert = vi.fn().mockResolvedValue({});
+    wire({
+      github_installations: installsMock(),
+      installation_repositories: reposMock([{ repo_full_name: 'test-org/repo-1' }]),
+      issues: sb({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({
+          data: [
+            {
+              github_issue_number: 101,
+              difficulty: 'H',
+              difficulty_source: 'label',
+              xp_reward: 250,
+              scored_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+            },
+          ],
+        }),
+        upsert: issuesUpsert,
+      }),
+    });
+
+    vi.mocked(getInstallOctokit).mockResolvedValue(baseOctokit() as never);
+    vi.mocked(fetchRepoMetrics).mockResolvedValue({ language: 'TypeScript' } as never);
+    vi.mocked(repoHealth).mockReturnValue(85);
+
+    await run({ step });
+
+    expect(scoreDifficulty).not.toHaveBeenCalled();
+    expect(issuesUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        github_issue_number: 101,
+        difficulty: 'H',
+        difficulty_source: 'label',
+        xp_reward: 250,
+      }),
+      { onConflict: 'repo_full_name,github_issue_number' },
+    );
+  });
+
+  it('skips re-scoring issues attempted within the last 24h', async () => {
+    const issuesUpsert = vi.fn().mockResolvedValue({});
+    wire({
+      github_installations: installsMock(),
+      installation_repositories: reposMock([{ repo_full_name: 'test-org/repo-1' }]),
+      issues: sb({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({
+          data: [
+            {
+              github_issue_number: 101,
+              difficulty: null,
+              difficulty_source: null,
+              xp_reward: 0,
+              scored_at: new Date().toISOString(),
+            },
+          ],
+        }),
+        upsert: issuesUpsert,
+      }),
+    });
+
+    vi.mocked(getInstallOctokit).mockResolvedValue(baseOctokit() as never);
+    vi.mocked(fetchRepoMetrics).mockResolvedValue({ language: 'TypeScript' } as never);
+    vi.mocked(repoHealth).mockReturnValue(85);
+
+    await run({ step });
+
+    expect(scoreDifficulty).not.toHaveBeenCalled();
+    expect(issuesUpsert).not.toHaveBeenCalled();
   });
 });
