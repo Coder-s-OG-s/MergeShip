@@ -1,5 +1,6 @@
 import {
   cacheRateLimitHitSlidingWindow,
+  isProductionDeploy,
   isSharedCacheAvailable,
   blockedRateLimitBucket,
 } from './cache';
@@ -24,19 +25,6 @@ export type RateLimitResult = {
   remaining: number;
   resetAt: number;
 };
-
-/**
- * True on a real production deploy. `next build` sets NODE_ENV=production on
- * Vercel Preview deployments too, so gate on VERCEL_ENV first (only set to
- * 'production' on production deploys) and fall back to NODE_ENV off-Vercel.
- * Kept local (rather than imported from cache.ts) so tests that partially mock
- * '@/lib/cache' don't break on the missing export.
- */
-function isProductionDeploy(): boolean {
-  return process.env.VERCEL_ENV
-    ? process.env.VERCEL_ENV === 'production'
-    : process.env.NODE_ENV === 'production';
-}
 
 /**
  * Sliding-window counter. Every hit in the trailing `windowSec` seconds counts,

@@ -28,6 +28,8 @@ vi.mock('@/lib/cache', () => ({
   cacheGet: mocks.mockCacheGet,
   cacheSet: mocks.mockCacheSet,
   cacheRateLimitHitSlidingWindow: mocks.mockCacheRateLimitHitSlidingWindow,
+  isProductionDeploy: () => false,
+  isSharedCacheAvailable: () => true,
 }));
 
 vi.mock('@/lib/github/app', () => ({
