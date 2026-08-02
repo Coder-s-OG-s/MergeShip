@@ -178,7 +178,10 @@ export const issuesSweep = inngest.createFunction(
             sweepRepo(
               install.id,
               repo.repo_full_name,
-              MAX_ISSUES_PER_SWEEP - totalIssuesSeen,
+              Math.min(
+                MAX_ISSUES_PER_SWEEP - totalIssuesSeen,
+                MAX_ISSUES_PER_INSTALL - issuesThisInstall,
+              ),
               seenTargets,
             ),
         );
