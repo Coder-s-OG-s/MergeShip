@@ -71,7 +71,7 @@ export async function getInstallOctokit(installationId: number): Promise<Octokit
   octokit.hook.wrap('request', async (request, options) => {
     const MAX_ATTEMPTS = 3;
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    for (let attempt = 1; ; attempt++) {
       try {
         const response = await request(options);
         const remaining = response.headers['x-ratelimit-remaining'];
@@ -117,8 +117,6 @@ export async function getInstallOctokit(installationId: number): Promise<Octokit
         throw error;
       }
     }
-
-    throw new Error('Exhausted retry attempts for GitHub request');
   });
 
   return octokit;
