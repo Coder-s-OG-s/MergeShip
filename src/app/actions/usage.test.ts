@@ -91,6 +91,34 @@ describe('getUsage', () => {
     });
   });
 
+  it('uses the current UTC calendar week (Monday 00:00) as the week window', async () => {
+    mocks.mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    mocks.mockRateLimit.mockResolvedValue({ ok: true });
+
+    const logChain = makeChain();
+    logChain.limit = vi.fn().mockResolvedValue({ data: [], error: null });
+
+    const todayChain = makeChain();
+    todayChain.gte = vi.fn().mockResolvedValue({ data: [], error: null });
+
+    const weekChain = makeChain();
+    const weekGte = vi.fn().mockResolvedValue({ data: [], error: null });
+    weekChain.gte = weekGte;
+
+    mocks.mockServiceFrom
+      .mockReturnValueOnce(logChain)
+      .mockReturnValueOnce(todayChain)
+      .mockReturnValueOnce(weekChain);
+
+    await getUsage();
+
+    const weekBoundary = weekGte.mock.calls[0]?.[1] as string;
+    const boundary = new Date(weekBoundary);
+    expect(boundary.getUTCDay()).toBe(1); // Monday (UTC)
+    expect(weekBoundary).toMatch(/T00:00:00.000Z$/); // start of a calendar day
+    expect(boundary.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
   it('respects limit parameter', async () => {
     mocks.mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
     mocks.mockRateLimit.mockResolvedValue({ ok: true });

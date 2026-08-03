@@ -41,8 +41,16 @@ export async function getUsage(limit = 100): Promise<UsageSummary> {
   const service = getServiceSupabase();
   if (!service) return empty;
 
-  const dayStart = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z').toISOString();
-  const weekStart = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  // Calendar-aligned windows. dayStart = today 00:00 UTC; weekStart = the
+  // current UTC calendar week's Monday 00:00 (same date_trunc('week')
+  // boundaries the maintainer analytics use), so the week total is stable
+  // within a day and comparable to the weekly chart.
+  const now = new Date();
+  const dayStart = new Date(now.toISOString().slice(0, 10) + 'T00:00:00Z').toISOString();
+  const daysSinceMonday = (now.getUTCDay() + 6) % 7; // 0 = Sunday
+  const weekStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysSinceMonday),
+  ).toISOString();
 
   const [logRes, todayRes, weekRes] = await Promise.all([
     service
