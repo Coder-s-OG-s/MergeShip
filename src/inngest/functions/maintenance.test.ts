@@ -340,22 +340,16 @@ describe('reconcileMergedPrXp', () => {
     const installsTable = sb({
       select: vi.fn(() => ({
         is: vi.fn(() => ({
-          order: vi.fn(() => ({
-            limit: vi.fn().mockResolvedValue({ data: [{ id: 1 }], error: null }),
-          })),
+          order: vi.fn().mockResolvedValue({ data: [{ id: 1 }], error: null }),
         })),
       })),
     });
     const reposTable = sb({
       select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          order: vi.fn(() => ({
-            limit: vi.fn().mockResolvedValue({
-              data: [{ repo_full_name: 'org/repo' }],
-              error: null,
-            }),
-          })),
-        })),
+        eq: vi.fn().mockResolvedValue({
+          data: [{ repo_full_name: 'org/repo' }],
+          error: null,
+        }),
       })),
     });
     const xpEventsTable = sb({
@@ -473,23 +467,17 @@ describe('reconcileMergedPrXp', () => {
     // succeeds. A single failing repo must not abort the whole sweep.
     const reposTable = sb({
       select: vi.fn(() => ({
-        eq: vi.fn(() => ({
-          order: vi.fn(() => ({
-            limit: vi.fn().mockResolvedValue({
-              data: [{ repo_full_name: 'org/broken' }, { repo_full_name: 'org/healthy' }],
-              error: null,
-            }),
-          })),
-        })),
+        eq: vi.fn().mockResolvedValue({
+          data: [{ repo_full_name: 'org/broken' }, { repo_full_name: 'org/healthy' }],
+          error: null,
+        }),
       })),
     });
     wire({
       github_installations: sb({
         select: vi.fn(() => ({
           is: vi.fn(() => ({
-            order: vi.fn(() => ({
-              limit: vi.fn().mockResolvedValue({ data: [{ id: 1 }], error: null }),
-            })),
+            order: vi.fn().mockResolvedValue({ data: [{ id: 1 }], error: null }),
           })),
         })),
       }),
@@ -536,5 +524,92 @@ describe('reconcileMergedPrXp', () => {
     } finally {
       errorSpy.mockRestore();
     }
+  });
+
+  it('awards merge XP for PRs on later pages, paginating past the first page', async () => {
+    const { getInstallOctokit } = await import('@/lib/github/app');
+    const { handleMerge } = await import('./process-pr-event');
+    vi.mocked(handleMerge).mockResolvedValue({ xpAwarded: true });
+
+    wireTables([]);
+
+    const withinWindow = () => new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+    const stale = () => new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString();
+
+    // Page 1 is full (100 items) and its newest item was updated within the
+    // window, so the sweep must keep going past it. All page-1 PRs are closed
+    // without merging so they contribute nothing.
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      number: 1000 + i,
+      html_url: `https://github.com/org/repo/pull/${1000 + i}`,
+      title: 'Closed unmerged',
+      body: null,
+      state: 'closed',
+      merged_at: null,
+      user: { login: 'contributor' },
+      base: { repo: { full_name: 'org/repo' } },
+      updated_at: withinWindow(),
+    }));
+    // Page 2 is not full. #1102 was merged within the window and must be
+    // awarded even though it lives past the first page.
+    const page2 = [
+      {
+        number: 1101,
+        html_url: 'https://github.com/org/repo/pull/1101',
+        title: 'Closed unmerged',
+        body: null,
+        state: 'closed',
+        merged_at: null,
+        user: { login: 'contributor' },
+        base: { repo: { full_name: 'org/repo' } },
+        updated_at: withinWindow(),
+      },
+      {
+        number: 1102,
+        html_url: 'https://github.com/org/repo/pull/1102',
+        title: 'Deep merge',
+        body: null,
+        state: 'closed',
+        merged_at: withinWindow(),
+        user: { login: 'contributor' },
+        base: { repo: { full_name: 'org/repo' } },
+        updated_at: withinWindow(),
+      },
+      {
+        number: 1103,
+        html_url: 'https://github.com/org/repo/pull/1103',
+        title: 'Stale',
+        body: null,
+        state: 'closed',
+        merged_at: stale(),
+        user: { login: 'contributor' },
+        base: { repo: { full_name: 'org/repo' } },
+        updated_at: stale(),
+      },
+    ];
+
+    const pullsList = vi
+      .fn()
+      .mockImplementation((opts: { page?: number }) =>
+        Promise.resolve({ data: (opts?.page ?? 1) > 1 ? page2 : page1 }),
+      );
+    vi.mocked(getInstallOctokit).mockResolvedValue({
+      pulls: { list: pullsList },
+    } as never);
+
+    const result = await runReconcileMergedPrXp({ step });
+
+    expect(pullsList).toHaveBeenCalledTimes(2);
+    expect(pullsList).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ owner: 'org', repo: 'repo', page: 2 }),
+    );
+    expect(result).toEqual({ scanned: 1, missing: 1, awarded: 1, errors: 0 });
+    expect(handleMerge).toHaveBeenCalledTimes(1);
+    expect(handleMerge).toHaveBeenCalledWith(
+      'https://github.com/org/repo/pull/1102',
+      'org/repo',
+      expect.objectContaining({ number: 1102 }),
+    );
   });
 });

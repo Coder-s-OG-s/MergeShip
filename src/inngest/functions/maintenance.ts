@@ -458,9 +458,8 @@ export const autoUnclaimStale = inngest.createFunction(
 );
 
 const RECONCILE_MERGE_WINDOW_DAYS = 7;
-const RECONCILE_MAX_INSTALLS = 50;
-const RECONCILE_REPOS_PER_INSTALL = 20;
 const RECONCILE_PAGE_SIZE = 100;
+const RECONCILE_MAX_PAGES = 10;
 
 /**
  * Reconcile merged-PR XP. GitHub does not auto-redeliver failed webhook
@@ -481,12 +480,13 @@ export const reconcileMergedPrXp = inngest.createFunction(
       const sb = getServiceSupabase();
       if (!sb) throw new Error('service role missing');
 
+      // Scan every active installation (no hard cap) so no install is
+      // permanently skipped; newest-first biases toward active installs.
       const { data: installs } = await sb
         .from('github_installations')
         .select('id')
         .is('uninstalled_at', null)
-        .order('id', { ascending: true })
-        .limit(RECONCILE_MAX_INSTALLS);
+        .order('id', { ascending: false });
 
       const windowStart = new Date(Date.now() - RECONCILE_MERGE_WINDOW_DAYS * 24 * 3600 * 1000);
       let scanned = 0;
@@ -498,12 +498,11 @@ export const reconcileMergedPrXp = inngest.createFunction(
         const installationId = Number(install.id);
         if (!Number.isFinite(installationId)) continue;
 
+        // Every repo on the install, not just the first 20 alphabetically.
         const { data: repos } = await sb
           .from('installation_repositories')
           .select('repo_full_name')
-          .eq('installation_id', installationId)
-          .order('repo_full_name', { ascending: true })
-          .limit(RECONCILE_REPOS_PER_INSTALL);
+          .eq('installation_id', installationId);
 
         for (const { repo_full_name: repo } of repos ?? []) {
           if (!repo) continue;
@@ -512,38 +511,63 @@ export const reconcileMergedPrXp = inngest.createFunction(
 
           try {
             const octokit = await getInstallOctokit(installationId);
-            const { data: closedPulls } = await octokit.pulls.list({
-              owner,
-              repo: name,
-              state: 'closed',
-              sort: 'updated',
-              direction: 'desc',
-              per_page: RECONCILE_PAGE_SIZE,
-            });
 
-            for (const pull of closedPulls) {
-              // pulls.list's closed-PR payload has merged_at (null if closed
-              // without merging) but no `merged` boolean — non-null is the merge signal.
-              if (!pull.merged_at) continue;
-              const mergedAt = new Date(pull.merged_at);
-              if (mergedAt < windowStart) continue;
-              scanned += 1;
+            // Paginate closed PRs past page 1. PRs are sorted by `updated`
+            // descending, so keep fetching while the newest item on the page
+            // was updated within the window: a merged-at-within-window PR must
+            // have updated_at >= merged_at, so once the newest updated_at is
+            // older than windowStart no later page can hold an in-window merge.
+            let page = 1;
+            while (true) {
+              const { data: closedPulls } = await octokit.pulls.list({
+                owner,
+                repo: name,
+                state: 'closed',
+                sort: 'updated',
+                direction: 'desc',
+                per_page: RECONCILE_PAGE_SIZE,
+                page,
+              });
 
-              const { data: existing } = await sb
-                .from('xp_events')
-                .select('id')
-                .in('source', [XP_SOURCE.RECOMMENDED_MERGE, XP_SOURCE.UNRECOMMENDED_MERGE])
-                .eq('ref_id', refIds.pr(repo, pull.number))
-                .limit(1);
-              if (existing && existing.length > 0) continue;
-              missing += 1;
+              const batch = closedPulls ?? [];
+              let newestUpdatedAt: Date | null = null;
 
-              const result = await handleMerge(
-                pull.html_url,
-                repo,
-                pull as unknown as MergePrShape,
-              );
-              if (result.xpAwarded) awarded += 1;
+              for (const pull of batch) {
+                if (pull.updated_at) {
+                  const updatedAt = new Date(pull.updated_at);
+                  if (!newestUpdatedAt || updatedAt > newestUpdatedAt) {
+                    newestUpdatedAt = updatedAt;
+                  }
+                }
+
+                // pulls.list's closed-PR payload has merged_at (null if closed
+                // without merging) but no `merged` boolean — non-null is the merge signal.
+                if (!pull.merged_at) continue;
+                const mergedAt = new Date(pull.merged_at);
+                if (mergedAt < windowStart) continue;
+                scanned += 1;
+
+                const { data: existing } = await sb
+                  .from('xp_events')
+                  .select('id')
+                  .in('source', [XP_SOURCE.RECOMMENDED_MERGE, XP_SOURCE.UNRECOMMENDED_MERGE])
+                  .eq('ref_id', refIds.pr(repo, pull.number))
+                  .limit(1);
+                if (existing && existing.length > 0) continue;
+                missing += 1;
+
+                const result = await handleMerge(
+                  pull.html_url,
+                  repo,
+                  pull as unknown as MergePrShape,
+                );
+                if (result.xpAwarded) awarded += 1;
+              }
+
+              if (batch.length < RECONCILE_PAGE_SIZE) break;
+              if (!newestUpdatedAt || newestUpdatedAt < windowStart) break;
+              if (page >= RECONCILE_MAX_PAGES) break;
+              page += 1;
             }
           } catch (err) {
             errors += 1;
