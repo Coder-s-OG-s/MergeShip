@@ -12,7 +12,11 @@ vi.mock('@/lib/maintainer/discover', () => ({
   decideRepoGrant: vi.fn(),
   reconcileGrants: vi.fn(),
 }));
-vi.mock('@/lib/cache', () => ({ cacheGet: vi.fn(), cacheSet: vi.fn() }));
+vi.mock('@/lib/cache', () => ({
+  cacheGet: vi.fn(),
+  cacheSet: vi.fn(),
+  cacheDel: vi.fn(),
+}));
 
 const mockSend = vi.fn();
 vi.mock('../client', () => ({

@@ -8,7 +8,7 @@ import {
   reconcileGrants,
   type ProposedGrant,
 } from '@/lib/maintainer/discover';
-import { cacheGet, cacheSet } from '@/lib/cache';
+import { cacheGet, cacheSet, cacheDel } from '@/lib/cache';
 
 /**
  * Revalidates a user's installs + repos and reconciles the
@@ -267,7 +267,7 @@ async function discoverForUser(
   }
 
   await cacheSet(`maint:discovered:${userId}`, { ranAt: Date.now() }, DEDUP_TTL_S);
-  await cacheSet(`maint:status:${userId}`, false, 1);
+  await cacheDel(`maint:status:${userId}`);
 
   return {
     user: userId,
