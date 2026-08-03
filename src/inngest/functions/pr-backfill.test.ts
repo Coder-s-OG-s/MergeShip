@@ -4,6 +4,7 @@ import { buildPrRow, isWithinBackfillWindow } from '@/lib/maintainer/pr-ingest';
 import { prBackfill } from './pr-backfill';
 import { sb, wire, step } from './__tests__/test-helpers';
 import { getSyncCursor, setSyncCursor, clearSyncCursor } from '@/lib/maintainer/sync-cursor';
+import { classifyPrAsAi } from '@/lib/maintainer/pr-classify';
 
 vi.mock('@/lib/supabase/service', () => ({ getServiceSupabase: vi.fn() }));
 vi.mock('@/lib/github/app', () => ({ getInstallOctokit: vi.fn() }));
@@ -15,6 +16,9 @@ vi.mock('@/lib/maintainer/sync-cursor', () => ({
   getSyncCursor: vi.fn(),
   setSyncCursor: vi.fn(),
   clearSyncCursor: vi.fn(),
+}));
+vi.mock('@/lib/maintainer/pr-classify', () => ({
+  classifyPrAsAi: vi.fn(),
 }));
 vi.mock('../client', () => ({
   inngest: { createFunction: (_c: unknown, _t: unknown, h: Function) => h },
@@ -252,5 +256,65 @@ describe('prBackfill', () => {
       prs: 0,
       errors: ['pulls.list: 502 Bad Gateway'],
     });
+  });
+
+  it('handles classifyPrAsAi error gracefully without breaking backfill', async () => {
+    const pull_requests = sb({ upsert: vi.fn().mockResolvedValue({}) });
+    const installs = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { uninstalled_at: null } }),
+    });
+    const settings = sb({
+      maybeSingle: vi.fn().mockResolvedValue({ data: { ai_pr_detection: true } }),
+    });
+
+    wire({
+      pull_requests,
+      github_installations: installs,
+      installation_settings: settings,
+      profiles: sb({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+      }),
+    });
+
+    const iterator = (async function* () {
+      yield {
+        data: [
+          {
+            id: 105,
+            number: 5,
+            html_url: 'https://github.com/test-org/repo-1/pull/5',
+            title: 'Test PR with AI classification failure',
+            state: 'open',
+            user: { login: 'carol' },
+            updated_at: new Date().toISOString(),
+          },
+        ],
+      };
+    })();
+
+    const octokit = {
+      paginate: { iterator: vi.fn().mockReturnValue(iterator) },
+      pulls: {
+        list: vi.fn(),
+        listReviews: vi.fn().mockResolvedValue({ data: [] }),
+      },
+    };
+    vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
+    vi.mocked(isWithinBackfillWindow).mockReturnValue(true);
+    vi.mocked(buildPrRow).mockReturnValue({ repo_full_name: 'test-org/repo-1', number: 5 } as any);
+    vi.mocked(getSyncCursor).mockResolvedValue(null);
+    vi.mocked(classifyPrAsAi).mockRejectedValue(new Error('Classification timeout'));
+
+    const result = await run({ event: evRepo(), step });
+
+    expect(result).toEqual({
+      repo: 'test-org/repo-1',
+      prs: 1,
+      errors: ['classifyPr #5: Classification timeout'],
+    });
+    expect(setSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests', 1);
+    expect(clearSyncCursor).toHaveBeenCalledWith(1, 'test-org/repo-1', 'pull_requests');
   });
 });
