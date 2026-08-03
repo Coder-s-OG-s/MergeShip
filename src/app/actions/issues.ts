@@ -7,6 +7,7 @@ import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { cacheDel, cacheGet, cacheSet } from '@/lib/cache';
 import { repoFilterPattern } from './issues-helpers';
 import { getInstallOctokit } from '@/lib/github/app';
+import { isSelfMerge } from '@/lib/xp/self-merge';
 
 const PAGE_SIZE = 10;
 const DIFFICULTY_VALUES = ['E', 'M', 'H'] as const;
@@ -317,6 +318,18 @@ export async function claimIssue(issueId: number): Promise<Result<{ recId: numbe
     .eq('id', issueId)
     .single();
   if (!issue) return err('not_found', 'issue not found');
+
+  // Anti-abuse (doc rule — self-actions on own repo don't count): reject
+  // claims on issues in a repository the user owns, so the
+  // claim -> merge -> recommended-XP loop can never be entered.
+  const { data: profile } = await service
+    .from('profiles')
+    .select('github_handle')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (profile?.github_handle && isSelfMerge(issue.repo_full_name, profile.github_handle)) {
+    return err('forbidden', 'you cannot claim issues in a repository you own');
+  }
 
   // Validate that the issue belongs to a repo the user has access to.
   const repoOptsRes = await getRepoOptions();

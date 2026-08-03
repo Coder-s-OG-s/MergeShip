@@ -261,6 +261,13 @@ describe('Recommendations Server Actions', () => {
   describe('claimRecommendation', () => {
     it('updates status to claimed and sets claimed_at, invalidating cache', async () => {
       mocks.mockServiceFrom
+        .mockReturnValueOnce(createMockChain(null, { data: { github_handle: 'contributor' } })) // profile
+        .mockReturnValueOnce(
+          createMockChain(null, {
+            data: { id: 1, issue_id: 10, issues: { repo_full_name: 'other/repo' } },
+            error: null,
+          }),
+        ) // rec + repo
         .mockReturnValueOnce(createMockChain({ count: 0 })) // count claims
         .mockReturnValueOnce(createMockChain(null, { data: { id: 1 }, error: null })) // update
         .mockReturnValueOnce(createMockChain({})); // insert activity_log
@@ -273,6 +280,13 @@ describe('Recommendations Server Actions', () => {
 
     it('returns already_claimed error if status is not open', async () => {
       mocks.mockServiceFrom
+        .mockReturnValueOnce(createMockChain(null, { data: { github_handle: 'contributor' } })) // profile
+        .mockReturnValueOnce(
+          createMockChain(null, {
+            data: { id: 1, issue_id: 10, issues: { repo_full_name: 'other/repo' } },
+            error: null,
+          }),
+        ) // rec + repo
         .mockReturnValueOnce(createMockChain({ count: 0 })) // count claims
         .mockReturnValueOnce(createMockChain(null, { data: null, error: null })); // update returns null row
 
@@ -285,7 +299,15 @@ describe('Recommendations Server Actions', () => {
     });
 
     it('returns claim_limit error if user has 3 or more claims', async () => {
-      mocks.mockServiceFrom.mockReturnValueOnce(createMockChain({ count: 3 })); // count claims
+      mocks.mockServiceFrom
+        .mockReturnValueOnce(createMockChain(null, { data: { github_handle: 'contributor' } })) // profile
+        .mockReturnValueOnce(
+          createMockChain(null, {
+            data: { id: 1, issue_id: 10, issues: { repo_full_name: 'other/repo' } },
+            error: null,
+          }),
+        ) // rec + repo
+        .mockReturnValueOnce(createMockChain({ count: 3 })); // count claims
 
       const result = await claimRecommendation(1);
 
@@ -304,8 +326,31 @@ describe('Recommendations Server Actions', () => {
       if (!result.ok) expect(result.error.code).toBe('not_configured');
     });
 
+    it('rejects claims on issues in a repository the user owns', async () => {
+      mocks.mockServiceFrom
+        .mockReturnValueOnce(createMockChain(null, { data: { github_handle: 'owner' } })) // profile
+        .mockReturnValueOnce(
+          createMockChain(null, {
+            data: { id: 1, issue_id: 10, issues: { repo_full_name: 'owner/repo' } },
+            error: null,
+          }),
+        ); // rec + repo
+
+      const result = await claimRecommendation(1);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('forbidden');
+    });
+
     it('returns persist_failed error if update fails', async () => {
       mocks.mockServiceFrom
+        .mockReturnValueOnce(createMockChain(null, { data: { github_handle: 'contributor' } })) // profile
+        .mockReturnValueOnce(
+          createMockChain(null, {
+            data: { id: 1, issue_id: 10, issues: { repo_full_name: 'other/repo' } },
+            error: null,
+          }),
+        ) // rec + repo
         .mockReturnValueOnce(createMockChain({ count: 0 })) // count claims
         .mockReturnValueOnce(createMockChain(null, { data: null, error: new Error('DB Error') }));
 

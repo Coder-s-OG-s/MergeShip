@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   mockGetSession: vi.fn(),
   mockServiceFrom: vi.fn(),
   mockGetInstallOctokit: vi.fn(),
+  mockRateLimit: vi.fn(),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -47,9 +48,17 @@ vi.mock('@/lib/cache', () => ({
   cacheDel: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { getIssuesPage, getRepoOptions } from './issues';
+vi.mock('@/lib/rate-limit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/rate-limit')>();
+  return {
+    ...actual,
+    rateLimit: mocks.mockRateLimit,
+  };
+});
 
-const createMockChain = (result: unknown) => {
+import { getIssuesPage, getRepoOptions, claimIssue } from './issues';
+
+const createMockChain = (result: unknown, singleResult: unknown = null) => {
   const chain: Record<string, unknown> = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
@@ -57,6 +66,10 @@ const createMockChain = (result: unknown) => {
     ilike: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     range: vi.fn().mockReturnThis(),
+    insert: vi.fn().mockReturnThis(),
+    update: vi.fn().mockReturnThis(),
+    single: vi.fn(() => Promise.resolve(singleResult)),
+    maybeSingle: vi.fn(() => Promise.resolve(singleResult)),
     then: (resolve: (v: unknown) => void) => Promise.resolve(result).then(resolve),
   };
   return chain;
@@ -285,5 +298,68 @@ describe('getIssuesPage', () => {
       ascending: true,
       nullsFirst: false,
     });
+  });
+});
+
+describe('claimIssue', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    mocks.mockGetUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+    });
+    mocks.mockGetSession.mockResolvedValue({
+      data: { session: null },
+    });
+    mocks.mockGetInstallOctokit.mockResolvedValue({
+      repos: { get: vi.fn().mockResolvedValue({ data: { fork: false } }) },
+    });
+    mocks.mockRateLimit.mockResolvedValue({ ok: true, remaining: 19, resetAt: 0 });
+  });
+
+  it('creates a claim for an issue in a repo the user does not own', async () => {
+    mocks.mockServiceFrom
+      .mockReturnValueOnce(
+        createMockChain(
+          {},
+          {
+            data: { id: 1, difficulty: 'E', xp_reward: 50, repo_full_name: 'other/repo' },
+            error: null,
+          },
+        ),
+      ) // issues single
+      .mockReturnValueOnce(
+        createMockChain({}, { data: { github_handle: 'contributor' }, error: null }),
+      ) // profiles maybeSingle
+      .mockReturnValueOnce(createMockChain({ data: [{ id: 10 }] })) // github_installations
+      .mockReturnValueOnce(
+        createMockChain({ data: [{ repo_full_name: 'other/repo', installation_id: 10 }] }),
+      ) // installation_repositories
+      .mockReturnValueOnce(createMockChain({}, { data: null, error: null })) // recommendations lookup
+      .mockReturnValueOnce(createMockChain({}, { data: { id: 5 }, error: null })) // insert
+      .mockReturnValueOnce(createMockChain({})); // activity_log
+
+    const result = await claimIssue(1);
+
+    expect(result).toEqual({ ok: true, data: { recId: 5 } });
+  });
+
+  it('rejects claims on issues in a repository the user owns', async () => {
+    mocks.mockServiceFrom
+      .mockReturnValueOnce(
+        createMockChain(
+          {},
+          {
+            data: { id: 1, difficulty: 'E', xp_reward: 50, repo_full_name: 'owner/repo' },
+            error: null,
+          },
+        ),
+      ) // issues single
+      .mockReturnValueOnce(createMockChain({}, { data: { github_handle: 'owner' }, error: null })); // profiles maybeSingle
+
+    const result = await claimIssue(1);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('forbidden');
   });
 });

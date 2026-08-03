@@ -2,6 +2,7 @@ import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { insertXpEvent } from '@/lib/xp/events';
 import { XP_SOURCE, xpForMerge, refIds, XP_REWARDS } from '@/lib/xp/sources';
+import { isSelfMerge } from '@/lib/xp/self-merge';
 import { cacheDelByPrefix } from '@/lib/cache';
 
 import { buildPrRow, type IngestiblePr } from '@/lib/maintainer/pr-ingest';
@@ -350,6 +351,11 @@ export async function handleMerge(
   const sb = getServiceSupabase();
   if (!sb) throw new Error('service role missing');
 
+  // Anti-abuse (doc rule — self-actions on own repo don't count): a user can
+  // never earn merge XP for a PR they merged into a repository they own, on
+  // the recommended path or the unrecommended path.
+  if (isSelfMerge(repo, pr.user.login)) return { xpAwarded: false, reason: 'self_merge' };
+
   // First try the linked rec.
   const { data: rec } = await sb
     .from('recommendations')
@@ -378,12 +384,7 @@ export async function handleMerge(
     }
   }
 
-  // Truly unrecommended. Anti-abuse: no XP when the author merges into
-  // their own repo (doc rule — self-actions on own repo don't count).
-  const repoOwner = repo.split('/')[0]?.toLowerCase();
-  const author = pr.user.login.toLowerCase();
-  if (repoOwner === author) return { xpAwarded: false, reason: 'self_merge' };
-
+  // Truly unrecommended: award baseline XP to the PR author.
   const { data: profile } = await sb
     .from('profiles')
     .select('id')
@@ -409,7 +410,13 @@ async function awardRecommendedMerge(
   rec: { id: number; user_id: string; difficulty: string; xp_reward: number | null },
   repo: string,
   pr: PrPayload['pull_request'],
-): Promise<{ xpAwarded: boolean; recId: number }> {
+): Promise<{ xpAwarded: boolean; recId: number; reason?: string }> {
+  // Same anti-abuse rule as the unrecommended path. handleMerge already guards
+  // this, but keep it here too so the award site can never drift.
+  if (isSelfMerge(repo, pr.user.login)) {
+    return { xpAwarded: false, recId: rec.id, reason: 'self_merge' };
+  }
+
   const difficulty = rec.difficulty as 'E' | 'M' | 'H';
   const tierCap =
     XP_REWARDS.RECOMMENDED_MERGE[difficulty as keyof typeof XP_REWARDS.RECOMMENDED_MERGE] ??

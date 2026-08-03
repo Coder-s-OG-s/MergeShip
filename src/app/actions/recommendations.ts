@@ -11,6 +11,8 @@ import { filterAndRank, type ScoredIssue } from '@/lib/pipeline/recommend';
 import { capDifficulty, getAllowedDifficulties } from '@/lib/pipeline/difficulty';
 import { getInstallationToken } from '@/lib/github/app';
 import { listMaintainerInstalls, listMaintainerRepos } from '@/lib/maintainer/detect';
+import { unwrapJoin } from '@/lib/supabase/inner-join';
+import { isSelfMerge } from '@/lib/xp/self-merge';
 
 /**
  * Server actions for the recommendation lifecycle.
@@ -112,6 +114,33 @@ export async function claimRecommendation(recId: number): Promise<Result<{ id: n
     ...RATE_LIMIT_TIERS.MEDIUM,
   });
   if (!rateRes.ok) return err('rate_limited', 'slow down', true, rateRes.resetAt);
+
+  // Anti-abuse (doc rule — self-actions on own repo don't count): reject
+  // claims on issues in a repository the user owns, so the
+  // claim -> merge -> recommended-XP loop can never be entered.
+  const { data: profile } = await service
+    .from('profiles')
+    .select('github_handle')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const { data: recRow } = await service
+    .from('recommendations')
+    .select('id, issue_id, issues!inner(repo_full_name)')
+    .eq('id', recId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  const recIssue = unwrapJoin<{ repo_full_name?: string }>(
+    (recRow as unknown as { issues?: unknown }).issues,
+  );
+  if (
+    profile?.github_handle &&
+    recIssue?.repo_full_name &&
+    isSelfMerge(recIssue.repo_full_name, profile.github_handle)
+  ) {
+    return err('forbidden', 'you cannot claim issues in a repository you own');
+  }
 
   // Fast pre-check: reject early if the user is obviously at the limit.
   // This is not authoritative — two concurrent requests can both pass it —

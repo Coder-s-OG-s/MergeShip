@@ -26,7 +26,7 @@ const prRun = processPrEvent as unknown as (ctx: {
 }) => Promise<unknown>;
 
 // Factory for a pull_request closed & merged event.
-const ev = (prUrl: string, repo: string, number: number) => ({
+const ev = (prUrl: string, repo: string, number: number, login = 'contributor') => ({
   data: {
     payload: {
       action: 'closed',
@@ -43,7 +43,7 @@ const ev = (prUrl: string, repo: string, number: number) => ({
         closed_at: '2026-01-01T00:00:00Z',
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
-        user: { login: 'contributor' },
+        user: { login },
         base: { repo: { full_name: repo } },
       },
     },
@@ -279,6 +279,24 @@ describe('processPrEvent - awardRecommendedMerge XP capping', () => {
         }),
       }),
     );
+  });
+
+  it('denies recommended merge XP when the PR author owns the repo (self_merge)', async () => {
+    const { activityLogMock } = setupMock({
+      id: 99,
+      user_id: 'owner-user',
+      difficulty: 'H',
+      xp_reward: 400,
+      status: 'claimed',
+    });
+
+    await prRun({
+      event: ev('https://github.com/owner/repo/pull/99', 'owner/repo', 99, 'owner'),
+      step,
+    });
+
+    expect(insertXpEvent).not.toHaveBeenCalled();
+    expect(activityLogMock.insert).not.toHaveBeenCalled();
   });
 });
 
