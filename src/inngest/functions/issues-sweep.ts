@@ -17,8 +17,8 @@ import { getSyncCursor, setSyncCursor, clearSyncCursor } from '@/lib/maintainer/
  * single Inngest run trace tells us exactly what's happening.
  *
  * Cost bounds (per run):
- *   - installs capped (round-robin by id across runs)
- *   - repos per install capped
+ *   - installs capped (rotated round-robin by least-recently-swept)
+ *   - repos per install capped (rotated round-robin by least-recently-swept)
  *   - issues per install and per sweep capped
  *   - issues scored within the last 24h are skipped (scored_at cooldown)
  *   - each repo is its own step.run so a failure only retries that repo
@@ -62,6 +62,9 @@ export const issuesSweep = inngest.createFunction(
         .select('id, account_login')
         .is('uninstalled_at', null)
         .is('suspended_at', null)
+        // Least-recently-swept first so every install rotates through the cap
+        // instead of the same top-50 by id being swept every run.
+        .order('last_swept_at', { ascending: true, nullsFirst: true })
         .order('id', { ascending: true })
         .limit(MAX_INSTALLS_PER_SWEEP);
       return data ?? [];
@@ -89,6 +92,9 @@ export const issuesSweep = inngest.createFunction(
           .from('installation_repositories')
           .select('repo_full_name')
           .eq('installation_id', install.id)
+          // Least-recently-swept first so repos past the per-install cap still
+          // get swept on later runs instead of an alphabetical top-20 forever.
+          .order('last_swept_at', { ascending: true, nullsFirst: true })
           .order('repo_full_name', { ascending: true })
           .limit(MAX_REPOS_PER_INSTALL);
 
@@ -150,6 +156,7 @@ export const issuesSweep = inngest.createFunction(
       const seenTargets = new Set<string>();
       const reports: RepoReport[] = [];
       let issuesThisInstall = 0;
+      let reposProcessed = 0;
 
       for (const repo of setup.repos) {
         if (
@@ -186,8 +193,24 @@ export const issuesSweep = inngest.createFunction(
             ),
         );
         reports.push(report);
+        reposProcessed += 1;
         issuesThisInstall += report.issues;
         totalIssuesSeen += report.issues;
+      }
+
+      // Rotate the install to the back of the queue so it isn't re-picked until
+      // the other installs have had a turn. Only if at least one repo was
+      // actually processed — a fully budget-blocked install stays eligible so
+      // its repos get reached on the next sweep.
+      if (reposProcessed > 0) {
+        await step.run(`mark-install-swept-${install.id}`, async () => {
+          const sb = getServiceSupabase();
+          if (!sb) return;
+          await sb
+            .from('github_installations')
+            .update({ last_swept_at: new Date().toISOString() })
+            .eq('id', install.id);
+        });
       }
 
       perInstallReport.push({
@@ -215,6 +238,16 @@ export const issuesSweep = inngest.createFunction(
     };
   },
 );
+
+async function markRepoSwept(installationId: number, repoFullName: string): Promise<void> {
+  const sb = getServiceSupabase();
+  if (!sb) return;
+  await sb
+    .from('installation_repositories')
+    .update({ last_swept_at: new Date().toISOString() })
+    .eq('installation_id', installationId)
+    .eq('repo_full_name', repoFullName);
+}
 
 async function sweepRepo(
   installationId: number,
@@ -291,6 +324,9 @@ async function sweepRepo(
   }
 
   if (seenTargets.has(target)) {
+    // Handled (cheap repos.get only) — rotate it so it isn't re-picked every
+    // run while the upstream is already being swept elsewhere in the install.
+    await markRepoSwept(installationId, repoFullName);
     return {
       repo: repoFullName,
       target,
@@ -391,10 +427,16 @@ async function sweepRepo(
   const now = Date.now();
   let issuesSeen = 0;
   let upserts = 0;
+  let budgetTruncated = false;
 
   for (const issue of issues) {
     if (issue.pull_request) continue;
-    if (issuesSeen >= issueBudget) break;
+    if (issuesSeen >= issueBudget) {
+      // Hit the per-repo budget mid-page. A full page can still hold
+      // unprocessed issues past the budget, so flag it and keep the cursor.
+      budgetTruncated = true;
+      break;
+    }
     issuesSeen += 1;
 
     const labels = (issue.labels ?? []).map((l) => (typeof l === 'string' ? l : (l.name ?? '')));
@@ -459,12 +501,21 @@ async function sweepRepo(
   }
 
   // Advance the cursor; clear it once we've caught up so the next sweep
-  // starts from page 1 again.
-  if (issues.length < ISSUES_PER_REPO_PAGE) {
-    await clearSyncCursor(installationId, target, SYNC_TYPE);
-  } else {
-    await setSyncCursor(installationId, target, SYNC_TYPE, startingPage);
+  // starts from page 1 again. Only when the page was fully drained: if the
+  // loop was budget-truncated, a full page still has unprocessed issues on
+  // it, so leave the cursor in place and retry the same page next sweep
+  // instead of skipping whatever was left over.
+  if (!budgetTruncated) {
+    if (issues.length < ISSUES_PER_REPO_PAGE) {
+      await clearSyncCursor(installationId, target, SYNC_TYPE);
+    } else {
+      await setSyncCursor(installationId, target, SYNC_TYPE, startingPage);
+    }
   }
+
+  // Rotate the repo to the back of the per-install queue so repos past the
+  // cap still get swept on later runs.
+  await markRepoSwept(installationId, repoFullName);
 
   return {
     repo: repoFullName,

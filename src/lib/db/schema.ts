@@ -100,10 +100,12 @@ export const githubInstallations = pgTable(
     installedAt: timestamp('installed_at', { withTimezone: true }).notNull().defaultNow(),
     suspendedAt: timestamp('suspended_at', { withTimezone: true }),
     uninstalledAt: timestamp('uninstalled_at', { withTimezone: true }),
+    lastSweptAt: timestamp('last_swept_at', { withTimezone: true }),
   },
   (t) => ({
     userIdx: index('github_installations_user_idx').on(t.userId),
     accountIdx: index('github_installations_account_idx').on(t.accountLogin),
+    lastSweptIdx: index('github_installations_last_swept_idx').on(t.lastSweptAt),
   }),
 );
 
@@ -119,9 +121,14 @@ export const installationRepositories = pgTable(
     // onboarding repo picker). Distinct from "installed" — GitHub tells us what's
     // installed; this is the opt-in. Defaults true so existing installs are unaffected.
     managed: boolean('managed').notNull().default(true),
+    lastSweptAt: timestamp('last_swept_at', { withTimezone: true }),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.installationId, t.repoFullName] }),
+    lastSweptIdx: index('installation_repositories_last_swept_idx').on(
+      t.installationId,
+      t.lastSweptAt,
+    ),
   }),
 );
 

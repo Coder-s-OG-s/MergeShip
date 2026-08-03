@@ -246,4 +246,51 @@ describe('issuesSweep', () => {
     expect(scoreDifficulty).not.toHaveBeenCalled();
     expect(issuesUpsert).not.toHaveBeenCalled();
   });
+
+  it('does not advance the per-repo cursor when the issue budget truncates a full page', async () => {
+    const cursorUpsert = vi.fn().mockResolvedValue({});
+    const cursorDelete = vi.fn().mockResolvedValue({});
+    wire({
+      github_installations: installsMock(),
+      installation_repositories: reposMock([
+        { repo_full_name: 'test-org/repo-1' },
+        { repo_full_name: 'test-org/repo-2' },
+        { repo_full_name: 'test-org/repo-3' },
+        { repo_full_name: 'test-org/repo-4' },
+      ]),
+      issues: sb({ upsert: vi.fn().mockResolvedValue({}) }),
+      repo_sync_cursors: sb({ upsert: cursorUpsert, delete: cursorDelete }),
+    });
+
+    const fullPage = Array.from({ length: 30 }, (_, i) => ({
+      number: 100 + i,
+      title: `issue ${i}`,
+      body: 'body',
+      html_url: 'https://github.com/test-org/repo-1/issues/100',
+      comments: 0,
+      labels: [],
+    }));
+
+    const octokit = {
+      repos: { get: vi.fn().mockResolvedValue({ data: { fork: false, parent: null } }) },
+      issues: { listForRepo: vi.fn().mockResolvedValue({ data: fullPage }) },
+    };
+    vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
+    vi.mocked(fetchRepoMetrics).mockResolvedValue({ language: 'TypeScript' } as never);
+    vi.mocked(repoHealth).mockReturnValue(85);
+    vi.mocked(scoreDifficulty).mockResolvedValue({
+      difficulty: 'M',
+      source: 'llm',
+      confidence: 1,
+      xpReward: 100,
+    });
+
+    await run({ step });
+
+    // Repos 1-3 drain full pages (30/30) and advance their cursors; repo-4
+    // hits the install-wide budget mid-page (10/30), so its cursor must be
+    // left in place so the unprocessed issues are retried next sweep.
+    expect(cursorUpsert).toHaveBeenCalledTimes(3);
+    expect(cursorDelete).not.toHaveBeenCalled();
+  });
 });
