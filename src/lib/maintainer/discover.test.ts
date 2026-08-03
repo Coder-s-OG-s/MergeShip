@@ -3,6 +3,7 @@ import {
   decideOrgGrant,
   decideRepoGrant,
   reconcileGrants,
+  reconcileRepoGrants,
   type ExistingGrant,
   type ProposedGrant,
 } from './discover';
@@ -98,5 +99,57 @@ describe('reconcileGrants', () => {
     );
     expect(toUpsert.map((g) => g.installationId)).toEqual([3]); // 1 unchanged, 3 new
     expect(toDelete).toEqual([2]); // no longer confirmed
+  });
+});
+
+describe('reconcileRepoGrants', () => {
+  const existing = (repoFullName: string, permissionLevel: 'admin' | 'maintain') => ({
+    repoFullName,
+    permissionLevel,
+  });
+
+  it('adds a new per-repo grant', () => {
+    const { toUpsert, toDelete } = reconcileRepoGrants(
+      [],
+      [{ repoFullName: 'a/repo', permissionLevel: 'admin' }],
+    );
+    expect(toUpsert).toEqual([{ repoFullName: 'a/repo', permissionLevel: 'admin' }]);
+    expect(toDelete).toHaveLength(0);
+  });
+
+  it('deletes every stale row on a full revocation (empty proposed set)', () => {
+    const { toUpsert, toDelete } = reconcileRepoGrants(
+      [existing('a/repo', 'admin'), existing('b/repo', 'maintain')],
+      [],
+    );
+    expect(toUpsert).toHaveLength(0);
+    expect(toDelete.sort()).toEqual(['a/repo', 'b/repo']);
+  });
+
+  it('drops only the repos no longer granted (partial revocation)', () => {
+    const { toUpsert, toDelete } = reconcileRepoGrants(
+      [existing('a/repo', 'admin'), existing('b/repo', 'maintain')],
+      [{ repoFullName: 'a/repo', permissionLevel: 'admin' }],
+    );
+    expect(toUpsert).toHaveLength(0);
+    expect(toDelete).toEqual(['b/repo']);
+  });
+
+  it('keeps unchanged grants out of the upsert list (no churn)', () => {
+    const { toUpsert, toDelete } = reconcileRepoGrants(
+      [existing('a/repo', 'admin')],
+      [{ repoFullName: 'a/repo', permissionLevel: 'admin' }],
+    );
+    expect(toUpsert).toHaveLength(0);
+    expect(toDelete).toHaveLength(0);
+  });
+
+  it('upserts when the permission level changes', () => {
+    const { toUpsert, toDelete } = reconcileRepoGrants(
+      [existing('a/repo', 'admin')],
+      [{ repoFullName: 'a/repo', permissionLevel: 'maintain' }],
+    );
+    expect(toUpsert).toEqual([{ repoFullName: 'a/repo', permissionLevel: 'maintain' }]);
+    expect(toDelete).toHaveLength(0);
   });
 });

@@ -73,3 +73,45 @@ export function reconcileGrants(
 
   return { toUpsert, toDelete };
 }
+
+export type ExistingRepoGrant = {
+  repoFullName: string;
+  permissionLevel: 'admin' | 'maintain';
+};
+
+export type ProposedRepoGrant = {
+  repoFullName: string;
+  permissionLevel: 'admin' | 'maintain';
+};
+
+/**
+ * Diff existing `installation_user_repos` rows against the freshly-computed
+ * per-repo grants for one (installation_id, user_id) pair and return what to
+ * insert vs delete. Runs unconditionally so a full revocation (empty proposed
+ * set) deletes every stale row instead of silently keeping access.
+ */
+export function reconcileRepoGrants(
+  existing: readonly ExistingRepoGrant[],
+  proposed: readonly ProposedRepoGrant[],
+): { toUpsert: ProposedRepoGrant[]; toDelete: string[] } {
+  const existingMap = new Map<string, ExistingRepoGrant>();
+  for (const g of existing) existingMap.set(g.repoFullName, g);
+
+  const proposedMap = new Map<string, ProposedRepoGrant>();
+  for (const g of proposed) proposedMap.set(g.repoFullName, g);
+
+  const toUpsert: ProposedRepoGrant[] = [];
+  for (const [repo, prop] of proposedMap) {
+    const ex = existingMap.get(repo);
+    if (!ex || ex.permissionLevel !== prop.permissionLevel) {
+      toUpsert.push(prop);
+    }
+  }
+
+  const toDelete: string[] = [];
+  for (const repo of existingMap.keys()) {
+    if (!proposedMap.has(repo)) toDelete.push(repo);
+  }
+
+  return { toUpsert, toDelete };
+}

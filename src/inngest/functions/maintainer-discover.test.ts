@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getInstallOctokit } from '@/lib/github/app';
-import { decideOrgGrant, reconcileGrants } from '@/lib/maintainer/discover';
+import {
+  decideOrgGrant,
+  decideRepoGrant,
+  reconcileGrants,
+  reconcileRepoGrants,
+} from '@/lib/maintainer/discover';
 import { cacheGet } from '@/lib/cache';
 import { maintainerDiscover } from './maintainer-discover';
 import { sb, wire } from './__tests__/test-helpers';
@@ -11,6 +16,7 @@ vi.mock('@/lib/maintainer/discover', () => ({
   decideOrgGrant: vi.fn(),
   decideRepoGrant: vi.fn(),
   reconcileGrants: vi.fn(),
+  reconcileRepoGrants: vi.fn(),
 }));
 vi.mock('@/lib/cache', () => ({ cacheGet: vi.fn(), cacheSet: vi.fn() }));
 
@@ -184,6 +190,8 @@ describe('maintainerDiscover', () => {
     };
     vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
     vi.mocked(decideOrgGrant).mockReturnValue(null);
+    vi.mocked(decideRepoGrant).mockReturnValue(null);
+    vi.mocked(reconcileRepoGrants).mockReturnValue({ toUpsert: [], toDelete: [] });
     vi.mocked(reconcileGrants).mockReturnValue({
       toUpsert: [],
       toDelete: [1],
@@ -192,6 +200,107 @@ describe('maintainerDiscover', () => {
     const result = await run({ event: ev(), step });
 
     expect(installUsers.delete).toHaveBeenCalled();
+    expect(installUsers.in).toHaveBeenCalledWith('installation_id', [1]);
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        user: 'u1',
+        installs: 1,
+        toUpsert: 0,
+        toDelete: 1,
+      }),
+    );
+  });
+
+  it('deletes stale per-repo grants when a user is fully revoked', async () => {
+    const installUsers = sb({
+      delete: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      in: vi.fn().mockResolvedValue({}),
+    });
+
+    const userRepos = sb({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      delete: vi.fn().mockReturnThis(),
+      in: vi.fn().mockResolvedValue({}),
+      insert: vi.fn().mockResolvedValue({}),
+      then: (resolve: (v: unknown) => void) =>
+        Promise.resolve({
+          data: [{ repo_full_name: 'test-org/repo-1', permission_level: 'admin' }],
+          error: null,
+        }).then(resolve),
+    });
+
+    wire({
+      github_installation_users: installUsers,
+      installation_repositories: sb({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockResolvedValue({
+          data: [{ repo_full_name: 'test-org/repo-1' }],
+        }),
+      }),
+      installation_user_repos: userRepos,
+    });
+
+    let selectCallCount = 0;
+    installUsers.select = vi.fn().mockReturnThis();
+    installUsers.eq = vi.fn().mockImplementation(() => {
+      selectCallCount += 1;
+      if (selectCallCount <= 2) {
+        return {
+          ...installUsers,
+          then: (resolve: (v: unknown) => void) => {
+            if (selectCallCount === 1) {
+              return Promise.resolve({
+                data: [
+                  {
+                    installation_id: 1,
+                    github_installations: {
+                      id: 1,
+                      account_type: 'Organization',
+                      account_login: 'test-org',
+                      uninstalled_at: null,
+                    },
+                  },
+                ],
+              }).then(resolve);
+            }
+            return Promise.resolve({ data: [] }).then(resolve);
+          },
+        };
+      }
+      return installUsers;
+    });
+
+    const octokit = {
+      orgs: {
+        getMembershipForUser: vi.fn().mockRejectedValue(new Error('404')),
+      },
+      repos: {
+        getCollaboratorPermissionLevel: vi.fn().mockResolvedValue({ data: { permission: 'read' } }),
+      },
+    };
+    vi.mocked(getInstallOctokit).mockResolvedValue(octokit as never);
+    vi.mocked(decideOrgGrant).mockReturnValue(null);
+    vi.mocked(decideRepoGrant).mockReturnValue(null);
+    vi.mocked(reconcileRepoGrants).mockReturnValue({
+      toUpsert: [],
+      toDelete: ['test-org/repo-1'],
+    });
+    vi.mocked(reconcileGrants).mockReturnValue({
+      toUpsert: [],
+      toDelete: [1],
+    });
+
+    const result = await run({ event: ev(), step });
+
+    expect(reconcileRepoGrants).toHaveBeenCalledWith(
+      [{ repoFullName: 'test-org/repo-1', permissionLevel: 'admin' }],
+      [],
+    );
+    expect(userRepos.in).toHaveBeenCalledWith('repo_full_name', ['test-org/repo-1']);
+    expect(userRepos.insert).not.toHaveBeenCalled();
     expect(installUsers.in).toHaveBeenCalledWith('installation_id', [1]);
 
     expect(result).toEqual(
