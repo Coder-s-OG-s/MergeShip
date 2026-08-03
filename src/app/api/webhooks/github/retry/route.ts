@@ -125,8 +125,23 @@ export async function POST(req: Request) {
   // indefinitely. retry_count is incremented each time the endpoint
   // is called; once it exceeds MAX_RETRIES the event is considered
   // permanently failed and must be investigated manually.
-  const currentRetries: number = failedEvent.retry_count ?? 0;
-  if (currentRetries >= MAX_RETRIES) {
+  // Use an atomic RPC call to prevent race conditions where
+  // concurrent retries both pass the check before incrementing.
+  const { data: rpcResult, error: rpcError } = await service.rpc('increment_webhook_retry_count', {
+    event_id: id,
+    max_retries: MAX_RETRIES,
+  });
+
+  if (rpcError || !rpcResult) {
+    // If the RPC failed, it likely means the retry limit was exceeded.
+    // Fetch the current state to return an accurate error.
+    const { data: recheckEvent } = await service
+      .from('failed_webhook_events')
+      .select('retry_count')
+      .eq('id', id)
+      .maybeSingle();
+
+    const currentRetries: number = recheckEvent?.retry_count ?? 0;
     return NextResponse.json(
       {
         error: 'max retries exceeded',
@@ -136,14 +151,6 @@ export async function POST(req: Request) {
       { status: 409 },
     );
   }
-
-  // Increment retry_count *before* dispatching so the count is
-  // durable even if the process crashes after Inngest accepts the
-  // event but before we delete the row.
-  await service
-    .from('failed_webhook_events')
-    .update({ retry_count: currentRetries + 1 })
-    .eq('id', id);
 
   await inngest.send({
     name: eventType,

@@ -11,24 +11,29 @@ import {
 import { cacheGet, cacheSet } from '@/lib/cache';
 
 /**
- * Discovers every install + repo the user has admin/maintain access to and
- * reconciles the github_installation_users + installation_user_repos tables.
+ * Revalidates a user's installs + repos and reconciles the
+ * github_installation_users + installation_user_repos tables.
  *
- * Triggered from:
- *   - bootstrapProfile (sign-in) — fire-and-forget
- *   - installation.created — for the install creator
- *   - membership.added / member.added webhooks — for newly granted users
- *   - daily revalidation cron
+ * Discovery scope depends on the trigger:
+ *   - Webhook triggers (installation.created, membership.added,
+ *     member.added) pass an installationId and can pick up NEW grants,
+ *     including installs not yet in the user's junction table.
+ *   - bootstrapProfile (sign-in) and the daily cron carry no specific
+ *     install, so they only revalidate installs already known for the
+ *     user — new grants for those users arrive via the webhook paths.
+ *   - First discovery (no known installs, no installationId) falls back
+ *     to a full scan of all active installs.
  *
  * Idempotent. Dedup window via Redis (1h) to avoid spamming GitHub on
  * page reloads.
  */
 
 type DiscoverEvent = {
-  data: { userId: string; githubHandle: string; force?: boolean };
+  data: { userId: string; githubHandle: string; force?: boolean; installationId?: number };
 };
 
 const DEDUP_TTL_S = 60 * 60; // 1h
+const SWEEP_USER_LIMIT = 20;
 
 export const maintainerDiscover = inngest.createFunction(
   { id: 'maintainer-discover', concurrency: { key: 'event.data.userId', limit: 1 } },
@@ -42,7 +47,13 @@ export const maintainerDiscover = inngest.createFunction(
     }
     const e = event as DiscoverEvent;
     if (!e.data.userId) return await sweep();
-    return await discoverForUser(step, e.data.userId, e.data.githubHandle, e.data.force === true);
+    return await discoverForUser(
+      step,
+      e.data.userId,
+      e.data.githubHandle,
+      e.data.force === true,
+      e.data.installationId,
+    );
   },
 );
 
@@ -51,6 +62,7 @@ async function discoverForUser(
   userId: string,
   githubHandle: string,
   force: boolean,
+  installationId?: number,
 ): Promise<{ user: string; installs: number; toUpsert: number; toDelete: number }> {
   const sb = getServiceSupabase();
   if (!sb) throw new Error('service role missing');
@@ -62,11 +74,50 @@ async function discoverForUser(
     }
   }
 
-  const { data: installs } = await sb
-    .from('github_installations')
-    .select('id, account_login, account_type')
-    .is('uninstalled_at', null);
-  const installRows = installs ?? [];
+  const { data: userInstalls } = await sb
+    .from('github_installation_users')
+    .select(
+      'installation_id, github_installations!inner(id, account_login, account_type, uninstalled_at)',
+    )
+    .eq('user_id', userId);
+
+  type JoinedInstall = {
+    id: number;
+    account_login: string;
+    account_type: string;
+    uninstalled_at: string | null;
+  };
+  const knownInstalls = (userInstalls ?? [])
+    .map((r) => {
+      const joined = r.github_installations as unknown as JoinedInstall;
+      return joined && joined.uninstalled_at === null
+        ? { id: joined.id, account_login: joined.account_login, account_type: joined.account_type }
+        : null;
+    })
+    .filter(Boolean) as Array<{ id: number; account_login: string; account_type: string }>;
+
+  const targetInstall = installationId
+    ? await sb
+        .from('github_installations')
+        .select('id, account_login, account_type')
+        .eq('id', installationId)
+        .is('uninstalled_at', null)
+        .maybeSingle()
+    : null;
+
+  const dedupeById = (inst: { id: number }, idx: number, arr: { id: number }[]) =>
+    arr.findIndex((i) => i.id === inst.id) === idx;
+
+  const installRows = targetInstall?.data
+    ? [...knownInstalls, targetInstall.data].filter(dedupeById)
+    : knownInstalls.length > 0 || installationId
+      ? knownInstalls
+      : ((
+          await sb
+            .from('github_installations')
+            .select('id, account_login, account_type')
+            .is('uninstalled_at', null)
+        ).data ?? []);
 
   const proposed: ProposedGrant[] = [];
 
@@ -105,7 +156,7 @@ async function discoverForUser(
             permissionLevel: grant,
             source: 'membership_check',
           });
-          continue; // org_admin trumps any repo-level grant on the same install
+          continue;
         }
       } catch {
         // 404 = not a member; 403 = missing Members:Read perm; either way no grant
@@ -163,7 +214,6 @@ async function discoverForUser(
         source: 'membership_check',
       });
 
-      // Refresh installation_user_repos for this install/user.
       await sb
         .from('installation_user_repos')
         .delete()
@@ -180,7 +230,6 @@ async function discoverForUser(
     }
   }
 
-  // Reconcile junction.
   const { data: existing } = await sb
     .from('github_installation_users')
     .select('installation_id, permission_level')
@@ -210,7 +259,6 @@ async function discoverForUser(
       .delete()
       .eq('user_id', userId)
       .in('installation_id', toDelete);
-    // Also clear scope rows for dropped installs
     await sb
       .from('installation_user_repos')
       .delete()
@@ -219,7 +267,6 @@ async function discoverForUser(
   }
 
   await cacheSet(`maint:discovered:${userId}`, { ranAt: Date.now() }, DEDUP_TTL_S);
-  // Bust the maintainer-status boolean cache so the nav link updates next page load.
   await cacheSet(`maint:status:${userId}`, false, 1);
 
   return {
@@ -230,12 +277,10 @@ async function discoverForUser(
   };
 }
 
-async function sweep(): Promise<{ swept: number }> {
+async function sweep(): Promise<{ swept: number; skipped: number }> {
   const sb = getServiceSupabase();
   if (!sb) throw new Error('service role missing');
 
-  // Pull every distinct user with at least one junction row. Throttle by
-  // processing 100 max per cron tick to stay well under API quotas.
   const { data: rows } = await sb.from('github_installation_users').select('user_id').limit(500);
   const seen = new Set<string>();
   const userIds = (rows ?? [])
@@ -247,7 +292,14 @@ async function sweep(): Promise<{ swept: number }> {
     });
 
   let count = 0;
-  for (const userId of userIds.slice(0, 100)) {
+  let skipped = 0;
+  for (const userId of userIds.slice(0, SWEEP_USER_LIMIT)) {
+    const cached = await cacheGet<{ ranAt: number }>(`maint:discovered:${userId}`);
+    if (cached) {
+      skipped += 1;
+      continue;
+    }
+
     const { data: profile } = await sb
       .from('profiles')
       .select('github_handle')
@@ -256,9 +308,9 @@ async function sweep(): Promise<{ swept: number }> {
     if (!profile?.github_handle) continue;
     await inngest.send({
       name: 'maintainer/discover',
-      data: { userId, githubHandle: profile.github_handle, force: true },
+      data: { userId, githubHandle: profile.github_handle },
     });
     count += 1;
   }
-  return { swept: count };
+  return { swept: count, skipped };
 }

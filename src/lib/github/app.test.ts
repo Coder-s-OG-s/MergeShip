@@ -110,4 +110,81 @@ describe('github app factories', () => {
     await expect(wrapHandler(fakeRequest, {})).rejects.toThrow('Rate limit exceeded');
     expect(updateRateBudget).toHaveBeenCalledWith(999, 0, 1600003600);
   });
+
+  it('getInstallOctokit hook retries a 429 and succeeds on the next attempt', async () => {
+    process.env.GITHUB_APP_ID = '123';
+    process.env.GITHUB_APP_PRIVATE_KEY = 'secret';
+
+    const { getInstallOctokit } = await import('./app');
+    const { updateRateBudget } = await import('./rate-budget');
+
+    await getInstallOctokit(999);
+    const wrapHandler = mockWrap.mock.calls[0]![1];
+
+    const rateError: any = new Error('Rate limited');
+    rateError.status = 429;
+    rateError.response = {
+      headers: {
+        'x-ratelimit-remaining': '4999',
+        'x-ratelimit-reset': '1600003600',
+        'retry-after': '1',
+      },
+    };
+
+    const fakeRequest = vi
+      .fn()
+      .mockRejectedValueOnce(rateError)
+      .mockResolvedValueOnce({
+        headers: {
+          'x-ratelimit-remaining': '4998',
+          'x-ratelimit-reset': '1600003600',
+        },
+      });
+
+    vi.useFakeTimers();
+    try {
+      const resPromise = wrapHandler(fakeRequest, {});
+      await vi.advanceTimersByTimeAsync(1000);
+      const res = await resPromise;
+
+      expect(fakeRequest).toHaveBeenCalledTimes(2);
+      expect(res.headers).toBeTruthy();
+      expect(updateRateBudget).toHaveBeenCalledWith(999, 4998, 1600003600);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('getInstallOctokit hook rethrows the underlying 429 once MAX_ATTEMPTS is exhausted', async () => {
+    process.env.GITHUB_APP_ID = '123';
+    process.env.GITHUB_APP_PRIVATE_KEY = 'secret';
+
+    const { getInstallOctokit } = await import('./app');
+
+    await getInstallOctokit(999);
+    const wrapHandler = mockWrap.mock.calls[0]![1];
+
+    const rateError: any = new Error('Rate limited');
+    rateError.status = 429;
+    rateError.response = {
+      headers: {
+        'x-ratelimit-remaining': '0',
+        'x-ratelimit-reset': '1600003600',
+      },
+    };
+
+    const fakeRequest = vi.fn().mockRejectedValue(rateError);
+
+    vi.useFakeTimers();
+    try {
+      const resPromise = wrapHandler(fakeRequest, {});
+      const expectation = expect(resPromise).rejects.toThrow('Rate limited');
+      await vi.advanceTimersByTimeAsync(3000);
+
+      await expectation;
+      expect(fakeRequest).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

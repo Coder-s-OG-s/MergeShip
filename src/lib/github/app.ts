@@ -69,22 +69,13 @@ export async function getInstallOctokit(installationId: number): Promise<Octokit
   const octokit = new Octokit({ auth: token });
 
   octokit.hook.wrap('request', async (request, options) => {
-    try {
-      const response = await request(options);
-      const remaining = response.headers['x-ratelimit-remaining'];
-      const reset = response.headers['x-ratelimit-reset'];
-      if (remaining && reset) {
-        await updateRateBudget(
-          installationId,
-          parseInt(String(remaining), 10),
-          parseInt(String(reset), 10),
-        );
-      }
-      return response;
-    } catch (error: any) {
-      if (error.response?.headers) {
-        const remaining = error.response.headers['x-ratelimit-remaining'];
-        const reset = error.response.headers['x-ratelimit-reset'];
+    const MAX_ATTEMPTS = 3;
+
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const response = await request(options);
+        const remaining = response.headers['x-ratelimit-remaining'];
+        const reset = response.headers['x-ratelimit-reset'];
         if (remaining && reset) {
           await updateRateBudget(
             installationId,
@@ -92,8 +83,39 @@ export async function getInstallOctokit(installationId: number): Promise<Octokit
             parseInt(String(reset), 10),
           );
         }
+        return response;
+      } catch (error: any) {
+        if (error.response?.headers) {
+          const remaining = error.response.headers['x-ratelimit-remaining'];
+          const reset = error.response.headers['x-ratelimit-reset'];
+          if (remaining && reset) {
+            await updateRateBudget(
+              installationId,
+              parseInt(String(remaining), 10),
+              parseInt(String(reset), 10),
+            );
+          }
+        }
+
+        // Centralized secondary rate-limit handling: honor GitHub's
+        // Retry-After guidance (or a plain backoff) and retry a bounded
+        // number of times instead of surfacing a transient 403/429.
+        const status = error.status ?? error.response?.status;
+        const retryAfterHeader = error.response?.headers?.['retry-after'];
+        const isRateLimited =
+          status === 429 ||
+          (status === 403 && error.response?.headers?.['x-ratelimit-remaining'] === '0');
+
+        if (isRateLimited && attempt < MAX_ATTEMPTS) {
+          const delayMs = retryAfterHeader
+            ? Math.max(Number(retryAfterHeader) * 1000, 1000)
+            : 1000 * attempt;
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          continue;
+        }
+
+        throw error;
       }
-      throw error;
     }
   });
 

@@ -1,5 +1,5 @@
 import { inngest } from '../client';
-import { getInstallOctokit, getInstallationToken, getUserOctokit } from '@/lib/github/app';
+import { getInstallOctokit, getUserOctokit } from '@/lib/github/app';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { fetchContributionCalendar } from '@/app/actions/github-sync-helpers';
 import { computeAuditScore, type AuditSignals } from '@/lib/xp/audit';
@@ -16,11 +16,16 @@ const AUDIT_MAX_LEVEL = 2;
  * has UNIQUE(user_id, source, ref_id) keyed off github_id.
  *
  * Auth precedence:
- *   1. event.data.accessToken (user OAuth token, freshly minted at sign-in)
- *      — used when audit is fired during the bootstrap flow.
- *   2. install token minted from event.data.installationId
+ *   1. event.data.installationId (install token minted from the App JWT)
  *      — used when audit is fired from the install webhook handler. Install
- *      tokens are minted on demand from the App JWT and don't expire on us.
+ *      tokens are minted on demand and don't expire on us.
+ *   2. install looked up from github_installations when the audit was queued
+ *      at bootstrap before the install completed.
+ *   3. event.data.accessToken (user OAuth token, freshly minted at sign-in)
+ *      — fallback when no install is available yet.
+ *
+ * All GitHub calls go through Octokit (hard rule: no raw fetch) so rate
+ * budget tracking and secondary-rate-limit backoff stay centralized.
  *
  * The function does everything in a single step.run so retries replay the
  * whole pipeline. Combined with the xp_events UNIQUE constraint, no zombie
@@ -65,13 +70,9 @@ export const auditRun = inngest.createFunction(
 
       // Pick the auth source. Install token preferred — doesn't expire on
       // queue delay. OAuth token falls back if we don't have an install yet.
-      // We also capture a raw token string for the GraphQL contribution
-      // calendar call, which needs a bearer token rather than an Octokit.
       let gh;
-      let token: string | null = null;
       if (event.data.installationId) {
         gh = await getInstallOctokit(event.data.installationId);
-        token = await getInstallationToken(event.data.installationId);
       } else {
         // Look up install on the fly — covers the case where audit was
         // queued at bootstrap and install completed between then and now.
@@ -85,10 +86,8 @@ export const auditRun = inngest.createFunction(
         const installId = install?.[0]?.id;
         if (installId) {
           gh = await getInstallOctokit(installId);
-          token = await getInstallationToken(installId);
         } else if (event.data.accessToken) {
           gh = getUserOctokit(event.data.accessToken);
-          token = event.data.accessToken;
         } else {
           return { skipped: true, reason: 'no_auth_source' };
         }
@@ -125,16 +124,14 @@ export const auditRun = inngest.createFunction(
       const primaryLanguage = pickPrimaryLanguage(languageList);
 
       // Fetch yearly contributions from the contribution calendar.
-      // Graceful fallback to 0 if the token is missing or the API call fails
-      // so the audit always completes.
+      // Graceful fallback to 0 if the API call fails so the audit always
+      // completes.
       let yearlyContributions = 0;
-      if (token) {
-        try {
-          const calendar = await fetchContributionCalendar(token, githubHandle);
-          yearlyContributions = calendar.reduce((sum, d) => sum + d.contributionCount, 0);
-        } catch {
-          // API failure — fall back to 0 so the audit still completes.
-        }
+      try {
+        const calendar = await fetchContributionCalendar(gh, githubHandle);
+        yearlyContributions = calendar.reduce((sum, d) => sum + d.contributionCount, 0);
+      } catch {
+        // API failure — fall back to 0 so the audit still completes.
       }
 
       const signals: AuditSignals = {

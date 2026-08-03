@@ -18,10 +18,27 @@ export type MaintainerAnalyticsTrends = {
   weekly: WeeklyMaintainerTrend[];
   levelDistribution: LevelDistributionTrend[];
   avgReviewTimeHours: number | null;
+  dayOverDay: MaintainerDayOverDayStats;
+};
+
+export type MaintainerDayOverDayMetric = {
+  current: number | null;
+  previous: number | null;
+  delta: number | null;
+  direction: 'up' | 'down' | 'flat';
+};
+
+export type MaintainerDayOverDayStats = {
+  openedPrs: MaintainerDayOverDayMetric;
+  mergedPrs: MaintainerDayOverDayMetric;
+  mentorReviews: MaintainerDayOverDayMetric;
+  avgReviewTimeHours: MaintainerDayOverDayMetric;
 };
 
 export type AnalyticsMergedPullRequest = {
+  githubCreatedAt?: string | null;
   mergedAt: string | null;
+  mentorReviewAt?: string | null;
 };
 
 export type AnalyticsCompletedRecommendation = {
@@ -63,7 +80,22 @@ export function buildMaintainerAnalyticsTrends(args: {
     args.levelUps,
   );
 
-  return { weekly, levelDistribution, avgReviewTimeHours: args.avgReviewTimeHours ?? null };
+  return {
+    weekly,
+    levelDistribution,
+    avgReviewTimeHours: args.avgReviewTimeHours ?? null,
+    dayOverDay: buildDayOverDayStats(args.now, args.mergedPullRequests),
+  };
+}
+
+export function emptyMaintainerDayOverDayStats(): MaintainerDayOverDayStats {
+  const emptyMetric = makeDayOverDayMetric(null, null);
+  return {
+    openedPrs: emptyMetric,
+    mergedPrs: emptyMetric,
+    mentorReviews: emptyMetric,
+    avgReviewTimeHours: emptyMetric,
+  };
 }
 
 function buildWeeklyTrends(
@@ -153,6 +185,53 @@ function buildLevelDistribution(
   });
 }
 
+export function buildDayOverDayStats(
+  now: Date,
+  pullRequests: AnalyticsMergedPullRequest[],
+): MaintainerDayOverDayStats {
+  const todayStart = startOfUtcDay(now);
+  const tomorrowStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+  const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+
+  const todayReviewDurations: number[] = [];
+  const yesterdayReviewDurations: number[] = [];
+
+  let openedToday = 0;
+  let openedYesterday = 0;
+  let mergedToday = 0;
+  let mergedYesterday = 0;
+  let reviewedToday = 0;
+  let reviewedYesterday = 0;
+
+  for (const pr of pullRequests) {
+    if (isInUtcRange(pr.githubCreatedAt, todayStart, tomorrowStart)) openedToday += 1;
+    else if (isInUtcRange(pr.githubCreatedAt, yesterdayStart, todayStart)) openedYesterday += 1;
+
+    if (isInUtcRange(pr.mergedAt, todayStart, tomorrowStart)) mergedToday += 1;
+    else if (isInUtcRange(pr.mergedAt, yesterdayStart, todayStart)) mergedYesterday += 1;
+
+    if (isInUtcRange(pr.mentorReviewAt, todayStart, tomorrowStart)) {
+      reviewedToday += 1;
+      const duration = reviewDurationHours(pr);
+      if (duration !== null) todayReviewDurations.push(duration);
+    } else if (isInUtcRange(pr.mentorReviewAt, yesterdayStart, todayStart)) {
+      reviewedYesterday += 1;
+      const duration = reviewDurationHours(pr);
+      if (duration !== null) yesterdayReviewDurations.push(duration);
+    }
+  }
+
+  return {
+    openedPrs: makeDayOverDayMetric(openedToday, openedYesterday),
+    mergedPrs: makeDayOverDayMetric(mergedToday, mergedYesterday),
+    mentorReviews: makeDayOverDayMetric(reviewedToday, reviewedYesterday),
+    avgReviewTimeHours: makeDayOverDayMetric(
+      averageOrNull(todayReviewDurations),
+      averageOrNull(yesterdayReviewDurations),
+    ),
+  };
+}
+
 function levelAtSnapshot(currentLevel: number, userLevelUps: AnalyticsLevelUp[], snapshotAt: Date) {
   let level = currentLevel;
   const snapshotTime = snapshotAt.getTime();
@@ -171,6 +250,42 @@ function startOfUtcWeek(date: Date): Date {
   const daysSinceMonday = (start.getUTCDay() + 6) % 7;
   start.setUTCDate(start.getUTCDate() - daysSinceMonday);
   return start;
+}
+
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function isInUtcRange(value: string | null | undefined, start: Date, end: Date): boolean {
+  if (!value) return false;
+  const time = Date.parse(value);
+  return Number.isFinite(time) && time >= start.getTime() && time < end.getTime();
+}
+
+function reviewDurationHours(pr: AnalyticsMergedPullRequest): number | null {
+  if (!pr.githubCreatedAt || !pr.mentorReviewAt) return null;
+  const created = Date.parse(pr.githubCreatedAt);
+  const reviewed = Date.parse(pr.mentorReviewAt);
+  if (!Number.isFinite(created) || !Number.isFinite(reviewed) || reviewed < created) return null;
+  return (reviewed - created) / (60 * 60 * 1000);
+}
+
+function averageOrNull(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function makeDayOverDayMetric(
+  current: number | null,
+  previous: number | null,
+): MaintainerDayOverDayMetric {
+  const delta = current !== null && previous !== null ? current - previous : null;
+  return {
+    current,
+    previous,
+    delta,
+    direction: delta === null || delta === 0 ? 'flat' : delta > 0 ? 'up' : 'down',
+  };
 }
 
 function endOfUtcMonth(monthStart: Date): Date {

@@ -2,16 +2,18 @@ import { redirect } from 'next/navigation';
 import { getServerSupabase } from '@/lib/supabase/server';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { Sidebar } from './sidebar';
+import { MainScrollArea } from './main-scroll-area';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { getMaintainerInstalls } from '@/app/actions/maintainer';
 import { isOk } from '@/lib/result';
 import { ToastProvider } from '@/components/toast';
+import { getUnreadNotificationCount } from '@/app/actions/notifications';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const sb = await getServerSupabase();
   if (!sb) {
-    return <>{children}</>;
+    redirect('/');
   }
   const {
     data: { user },
@@ -92,9 +94,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // never break the layout
   }
 
+  let unreadCount = 0;
+  try {
+    const unreadRes = await getUnreadNotificationCount();
+    if (isOk(unreadRes)) {
+      unreadCount = unreadRes.data;
+    }
+  } catch {
+    // never break the layout
+  }
+
   return (
     <ToastProvider initialXp={xp} initialLevel={level}>
-      <div className="flex h-screen overflow-hidden bg-[#111318] font-mono text-white">
+      <div className="flex h-screen overflow-hidden bg-shell-bg font-mono text-white">
         <Sidebar
           handle={handle}
           profileHref={`/@${handle}`}
@@ -106,10 +118,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           isMaintainer={isMaintainer}
           mentorHandle={mentorHandle}
           installs={installs}
+          unreadCount={unreadCount}
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <MainScrollArea>{children}</MainScrollArea>
       </div>
     </ToastProvider>
   );

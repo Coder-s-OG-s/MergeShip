@@ -7,6 +7,7 @@ import {
   getMaintainerInstalls,
   getMaintainerPrQueue,
   getMaintainerAnalyticsTrends,
+  getMaintainerDashboardStats,
   getRepoHealthOverview,
   getStaleIssues,
   getStalePrs,
@@ -30,12 +31,17 @@ import {
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import type { MaintainerPrRow } from '@/lib/maintainer/queue';
-import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
+import {
+  emptyMaintainerDayOverDayStats,
+  type MaintainerAnalyticsTrends,
+  type MaintainerDayOverDayMetric,
+} from '@/lib/maintainer/analytics';
 import { isOk } from '@/lib/result';
 import RefreshButton from './refresh-button';
 import InviteContributorButton from './invite-contributor-button';
 import CiStatusBadge from './ci-status-badge';
 import AnalyticsTrends from './analytics-trends';
+import { DashboardStats } from './dashboard-stats';
 import { VerifyButton } from '../issues/verify-button';
 import ExportCsvButton from './export-csv-button';
 import QueueSettings from './queue-settings';
@@ -68,7 +74,7 @@ export default async function MaintainerPage({
   const resolvedSearchParams = await searchParams;
   const sb = await getServerSupabase();
   if (!sb) {
-    return <NotConfigured />;
+    redirect('/');
   }
   const {
     data: { user },
@@ -121,9 +127,27 @@ export default async function MaintainerPage({
   });
   const rows: MaintainerPrRow[] = isOk(queueRes) ? queueRes.data.rows : [];
   const trendsRes = await getMaintainerAnalyticsTrends({ installationId: activeInstallId });
+  const dashboardStatsRes = await getMaintainerDashboardStats({ installationId: activeInstallId });
+  const dashboardStats = isOk(dashboardStatsRes)
+    ? dashboardStatsRes.data
+    : {
+        openPrs: 0,
+        aiFlagged: 0,
+        readyToMerge: 0,
+        cleanRate: 0,
+        avgReviewTimeHours: 0,
+        contributors: 0,
+        issuesOpen: 0,
+        prsMerged: 0,
+      };
   const analyticsTrends: MaintainerAnalyticsTrends = isOk(trendsRes)
     ? trendsRes.data
-    : { weekly: [], levelDistribution: [], avgReviewTimeHours: null };
+    : {
+        weekly: [],
+        levelDistribution: [],
+        avgReviewTimeHours: null,
+        dayOverDay: emptyMaintainerDayOverDayStats(),
+      };
   const repoHealthRes = await getRepoHealthOverview({ installationId: activeInstallId });
   const repoHealthRows: RepoHealthRow[] = isOk(repoHealthRes) ? repoHealthRes.data : [];
 
@@ -190,6 +214,12 @@ export default async function MaintainerPage({
               accountLogin={activeInstall.accountLogin}
             />
             <Link
+              href={`/maintainer/analytics?install=${activeInstallId}`}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-600"
+            >
+              Analytics →
+            </Link>
+            <Link
               href={`/maintainer?install=${activeInstallId}&state=open`}
               className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-600"
             >
@@ -234,6 +264,12 @@ export default async function MaintainerPage({
           <div className="ml-auto flex items-center gap-2">
             <ExportCsvButton installationId={activeInstallId} filters={filters} />
             <Link
+              href={`/maintainer/analytics?install=${activeInstallId}`}
+              className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
+            >
+              Analytics →
+            </Link>
+            <Link
               href={`/maintainer/issues?install=${activeInstallId}`}
               className="rounded-lg border border-zinc-700 px-3 py-1 text-zinc-300 hover:border-zinc-600"
             >
@@ -266,6 +302,7 @@ export default async function MaintainerPage({
           {activeInstall.accountLogin} ({activeInstall.permissionLevel.replace('_', ' ')})
         </p>
         <QueueSettings settings={settings} />
+        <DashboardStats stats={dashboardStats} />
         <AnalyticsTrends data={analyticsTrends} />
         {promotionEligible.length > 0 && (
           <section className="mb-8 rounded-2xl border border-emerald-900/60 bg-emerald-950/20 p-5">
@@ -755,12 +792,4 @@ function formatFlagReason(reason: string) {
   };
 
   return labels[reason] ?? 'Suspicious activity';
-}
-
-function NotConfigured() {
-  return (
-    <div className="min-h-screen px-6 py-20 text-white">
-      <p className="text-gray-400">Auth not configured.</p>
-    </div>
-  );
 }

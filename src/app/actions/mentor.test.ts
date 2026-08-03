@@ -126,4 +126,44 @@ describe('verifyPrAction', () => {
       expect(res.error.message).toBe('slow down');
     }
   });
+
+  it('verifies concurrent requests - second request loses race and returns already_verified', async () => {
+    vi.mocked(xpEvents.insertXpEvent).mockResolvedValue({} as never);
+
+    // First call succeeds
+    const res1 = await verifyPrAction({ prId: 100 });
+    expect(res1.ok).toBe(true);
+
+    // Mock the update to return null (simulating the atomic check failing)
+    mockFrom.mockImplementation((table) => {
+      if (table === 'profiles') {
+        return chain({ id: USER.id, level: 2, github_handle: 'mentor' });
+      }
+      if (table === 'pull_requests') {
+        // Initial read still shows unverified
+        const readChain = chain({
+          id: 100,
+          author_user_id: 'user-2',
+          repo_full_name: 'org/repo',
+          number: 1,
+          mentor_verified: false,
+          author_login: 'mentee',
+        });
+        // But update returns null (atomic condition failed - maybeSingle returns null when no rows affected)
+        readChain.update = vi.fn(() => chain(null, null));
+        return readChain;
+      }
+      return chain();
+    });
+
+    // Second call should fail with already_verified
+    const res2 = await verifyPrAction({ prId: 100 });
+    expect(res2.ok).toBe(false);
+    if (!res2.ok) {
+      expect(res2.error.code).toBe('already_verified');
+    }
+
+    // XP should only be awarded once
+    expect(xpEvents.insertXpEvent).toHaveBeenCalledTimes(1);
+  });
 });

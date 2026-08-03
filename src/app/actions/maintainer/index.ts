@@ -1,5 +1,12 @@
 export type * from './types';
-export type { StalePrRow, AiDetectionBreakdown } from './analytics';
+export type {
+  StalePrRow,
+  AiDetectionBreakdown,
+  QueueSignalQuality,
+  AnalyticsStat,
+  AnalyticsStats,
+  PrVolumeBucket,
+} from './analytics';
 export type { ContributorListRow, ContributorStats } from './contributors';
 export type { FailedWebhookEventRow } from './failed-events';
 export type { XpPreviewBreakdown } from './xp-preview';
@@ -26,6 +33,18 @@ export async function getMaintainerInstalls(
   ...args: Parameters<typeof settingsActions.getMaintainerInstalls>
 ): ReturnType<typeof settingsActions.getMaintainerInstalls> {
   return settingsActions.getMaintainerInstalls(...args);
+}
+
+export async function exportAnalyticsReport(
+  ...args: Parameters<typeof analyticsActions.exportAnalyticsReport>
+): ReturnType<typeof analyticsActions.exportAnalyticsReport> {
+  return analyticsActions.exportAnalyticsReport(...args);
+}
+
+export async function createReportSnapshot(
+  ...args: Parameters<typeof analyticsActions.createReportSnapshot>
+): ReturnType<typeof analyticsActions.createReportSnapshot> {
+  return analyticsActions.createReportSnapshot(...args);
 }
 
 export async function getInstallationSettings(
@@ -184,6 +203,12 @@ export async function getMaintainerAnalyticsTrends(
   return analyticsActions.getMaintainerAnalyticsTrends(...args);
 }
 
+export async function getMaintainerDashboardStats(
+  ...args: Parameters<typeof analyticsActions.getMaintainerDashboardStats>
+): ReturnType<typeof analyticsActions.getMaintainerDashboardStats> {
+  return analyticsActions.getMaintainerDashboardStats(...args);
+}
+
 export async function exportPrQueueCsv(
   ...args: Parameters<typeof analyticsActions.exportPrQueueCsv>
 ): ReturnType<typeof analyticsActions.exportPrQueueCsv> {
@@ -200,6 +225,12 @@ export async function getNoiseBreakdown(
   ...args: Parameters<typeof analyticsActions.getNoiseBreakdown>
 ): ReturnType<typeof analyticsActions.getNoiseBreakdown> {
   return analyticsActions.getNoiseBreakdown(...args);
+}
+
+export async function getQueueSignalQuality(
+  ...args: Parameters<typeof analyticsActions.getQueueSignalQuality>
+): ReturnType<typeof analyticsActions.getQueueSignalQuality> {
+  return analyticsActions.getQueueSignalQuality(...args);
 }
 
 export async function getPromotionEligible(
@@ -242,4 +273,16 @@ export async function getContributorsList(
   ...args: Parameters<typeof contributorsActions.getContributorsList>
 ): ReturnType<typeof contributorsActions.getContributorsList> {
   return contributorsActions.getContributorsList(...args);
+}
+
+export async function getAnalyticsStats(
+  ...args: Parameters<typeof analyticsActions.getAnalyticsStats>
+): ReturnType<typeof analyticsActions.getAnalyticsStats> {
+  return analyticsActions.getAnalyticsStats(...args);
+}
+
+export async function getPrVolumeTimeSeries(
+  ...args: Parameters<typeof analyticsActions.getPrVolumeTimeSeries>
+): ReturnType<typeof analyticsActions.getPrVolumeTimeSeries> {
+  return analyticsActions.getPrVolumeTimeSeries(...args);
 }

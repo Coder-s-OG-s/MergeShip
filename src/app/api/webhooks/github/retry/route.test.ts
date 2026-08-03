@@ -41,6 +41,7 @@ vi.mock('@/lib/supabase/server', () => ({
 const mockMaybeSingle = vi.fn();
 const mockUpdate = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({}) });
 const mockDelete = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({}) });
+const mockRpc = vi.fn().mockResolvedValue({ data: true, error: null });
 
 vi.mock('@/lib/supabase/service', () => ({
   getServiceSupabase: () => ({
@@ -51,6 +52,7 @@ vi.mock('@/lib/supabase/service', () => ({
       update: mockUpdate,
       delete: mockDelete,
     }),
+    rpc: mockRpc,
   }),
 }));
 
@@ -84,6 +86,7 @@ describe('POST /api/webhooks/github/retry', () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: 'u1' } } });
     mockUpdate.mockReturnValue({ eq: vi.fn().mockResolvedValue({}) });
     mockDelete.mockReturnValue({ eq: vi.fn().mockResolvedValue({}) });
+    mockRpc.mockResolvedValue({ data: true, error: null });
     mockRateLimit.mockResolvedValue({ ok: true, remaining: 9, resetAt: Date.now() + 60000 });
     mockListInstalls.mockResolvedValue([
       {
@@ -195,18 +198,26 @@ describe('POST /api/webhooks/github/retry', () => {
     const res = await POST(buildRequest({ id: 'evt-4' }));
 
     expect(res.status).toBe(200);
-    expect(mockUpdate).toHaveBeenCalledWith({ retry_count: 3 });
+    expect(mockRpc).toHaveBeenCalledWith('increment_webhook_retry_count', {
+      event_id: 'evt-4',
+      max_retries: 5,
+    });
   });
 
   it('rejects retries that exceed MAX_RETRIES (409)', async () => {
-    mockMaybeSingle.mockResolvedValue({
-      data: {
-        id: 'evt-5',
-        event_type: 'github/issues',
-        payload: { issue: { number: 10 } },
-        retry_count: 5,
-      },
-    });
+    mockMaybeSingle
+      .mockResolvedValueOnce({
+        data: {
+          id: 'evt-5',
+          event_type: 'github/issues',
+          payload: { issue: { number: 10 } },
+          retry_count: 5,
+        },
+      })
+      .mockResolvedValueOnce({
+        data: { retry_count: 5 },
+      });
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'max retries exceeded' } });
 
     const { POST } = await import('./route');
     const res = await POST(buildRequest({ id: 'evt-5' }));
@@ -217,7 +228,32 @@ describe('POST /api/webhooks/github/retry', () => {
     expect(json.retry_count).toBe(5);
     expect(json.max).toBe(5);
     expect(mockSend).not.toHaveBeenCalled();
-    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('handles concurrent retry requests atomically', async () => {
+    mockMaybeSingle
+      .mockResolvedValueOnce({
+        data: {
+          id: 'evt-concurrent',
+          event_type: 'github/issues',
+          payload: { issue: { number: 1 } },
+          retry_count: 4,
+        },
+      })
+      .mockResolvedValueOnce({
+        data: { retry_count: 5 },
+      });
+    // Simulate RPC returning false (limit exceeded) due to concurrent request
+    mockRpc.mockResolvedValue({ data: false, error: null });
+
+    const { POST } = await import('./route');
+    const res = await POST(buildRequest({ id: 'evt-concurrent' }));
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.error).toBe('max retries exceeded');
+    expect(json.retry_count).toBe(5);
+    expect(mockSend).not.toHaveBeenCalled();
   });
 
   it('deletes the dead-letter row after successful dispatch', async () => {

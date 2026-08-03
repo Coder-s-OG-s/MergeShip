@@ -9,6 +9,28 @@ vi.mock('@/lib/daily-challenge/progress', () => ({
   incrementChallengeProgress: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
+const dbMock = vi.hoisted(() => {
+  const returning = vi.fn();
+  const where = vi.fn(() => ({ returning }));
+  const set = vi.fn(() => ({ where }));
+  const update = vi.fn(() => ({ set }));
+  return { update, set, where, returning };
+});
+
+vi.mock('@/lib/db/client', () => ({
+  getDb: () => ({
+    transaction: async (cb: (tx: any) => Promise<unknown>) => cb({ update: dbMock.update }),
+  }),
+  schema: {
+    helpRequests: {
+      id: 'id',
+      status: 'status',
+      resolvedBy: 'resolvedBy',
+      resolvedAt: 'resolvedAt',
+    },
+  },
+}));
+
 vi.mock('../client', () => ({
   inngest: { createFunction: (_c: unknown, _t: unknown, h: Function) => h },
 }));
@@ -85,9 +107,13 @@ describe('isSubstantive', () => {
 describe('processReviewEvent handler tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: the atomic help-request update claims the row.
+    dbMock.returning.mockResolvedValue([{ id: 'hr-1' }]);
   });
 
   it('aborts when help request is already resolved by another concurrent review', async () => {
+    dbMock.returning.mockResolvedValue([]);
+
     const profilesMock = sb({
       maybeSingle: vi
         .fn()
@@ -119,7 +145,7 @@ describe('processReviewEvent handler tests', () => {
     expect(insertXpEvent).not.toHaveBeenCalled();
   });
 
-  it('rolls back help request status to open when insertXpEvent fails', async () => {
+  it('rejects when insertXpEvent fails so the whole transaction rolls back', async () => {
     const profilesMock = sb({
       maybeSingle: vi
         .fn()
@@ -135,11 +161,6 @@ describe('processReviewEvent handler tests', () => {
       update: vi.fn().mockReturnThis(),
     });
 
-    helpRequestsMock.select = vi
-      .fn()
-      .mockImplementationOnce(() => helpRequestsMock)
-      .mockResolvedValueOnce({ data: [{ id: 'hr-1' }], error: null });
-
     wire({
       profiles: profilesMock,
       help_requests: helpRequestsMock,
@@ -148,14 +169,6 @@ describe('processReviewEvent handler tests', () => {
     vi.mocked(insertXpEvent).mockRejectedValue(new Error('XP insertion failed'));
 
     await expect(run({ event: ev(), step })).rejects.toThrow('XP insertion failed');
-
-    expect(helpRequestsMock.update).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        status: 'open',
-        resolved_by: null,
-        resolved_at: null,
-      }),
-    );
   });
 
   it('successfully resolves help request and awards XP', async () => {
@@ -194,6 +207,50 @@ describe('processReviewEvent handler tests', () => {
         userId: 'reviewer-id',
         xpDelta: 65,
       }),
+      expect.anything(), // caller-managed tx
+    );
+  });
+
+  it('does not award speed bonus when review submitted_at is earlier than help_request created_at', async () => {
+    const profilesMock = sb({
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { id: 'reviewer-id', level: 2 } })
+        .mockResolvedValueOnce({ data: { id: 'reviewer-id', level: 2 } })
+        .mockResolvedValueOnce({ data: { level: 1 } }),
+    });
+
+    const helpRequestsMock = sb({
+      maybeSingle: vi.fn().mockResolvedValue({
+        // help request created at 04:00, but review was submitted earlier at 02:00
+        data: { id: 'hr-1', user_id: 'mentee-1', created_at: '2026-05-12T04:00:00Z' },
+      }),
+      update: vi.fn().mockReturnThis(),
+    });
+
+    helpRequestsMock.select = vi
+      .fn()
+      .mockImplementationOnce(() => helpRequestsMock)
+      .mockResolvedValueOnce({ data: [{ id: 'hr-1' }], error: null });
+
+    wire({
+      profiles: profilesMock,
+      help_requests: helpRequestsMock,
+    });
+
+    vi.mocked(insertXpEvent).mockResolvedValue(true as never);
+
+    // review submitted_at is 2026-05-12T02:00:00Z (2 hours BEFORE help request was created)
+    const result = await run({ event: ev(), step });
+
+    expect(result).toEqual({ xpAwarded: 55, isMentor: true, isFast: false });
+    expect(insertXpEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'reviewer-id',
+        xpDelta: 55, // Base (35) + Mentor bonus (20) = 55, NO Speed bonus (10)
+        metadata: expect.objectContaining({ isFast: false }),
+      }),
+      expect.anything(), // caller-managed tx
     );
   });
 });

@@ -26,11 +26,13 @@ import {
   getPrActivityTimeline,
   getPrDetails,
   getNoiseBreakdown,
+  getQueueSignalQuality,
   getPromotionEligible,
   getContributorsList,
   previewMergeXp,
   getContributorStats,
   getAiDetectionBreakdown,
+  getMaintainerDashboardStats,
 } from './maintainer';
 import * as detect from '@/lib/maintainer/detect';
 import * as rateLimitLib from '@/lib/rate-limit';
@@ -135,7 +137,11 @@ function chain(data: unknown = [], error: unknown = null) {
   c.eq = vi.fn(pass);
   c.order = vi.fn(pass);
   c.range = vi.fn(pass);
+  c.gte = vi.fn(pass);
+  c.lte = vi.fn(pass);
   c.not = vi.fn(pass);
+  c.is = vi.fn(pass);
+  c.or = vi.fn(pass);
   c.update = vi.fn(pass);
   c.delete = vi.fn(pass);
   c.upsert = vi.fn(pass);
@@ -892,6 +898,56 @@ describe('maintainer actions', () => {
       if (!res.ok) expect(res.error.code).toBe('not_authorised');
     });
 
+    it('returns not_authorised if flag has a different installation_id', async () => {
+      mockFrom.mockReturnValue(
+        chain({
+          id: 1,
+          evidence: { items: [{ repoFullName: 'my-org/my-repo' }] },
+          user_id: 'user-1',
+          installation_id: 999,
+        }),
+      );
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['my-org/my-repo']);
+
+      const res = await resolveFlaggedAccount(1, 'dismissed', 1);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.code).toBe('not_authorised');
+    });
+
+    it('allows resolve when flag has matching installation_id', async () => {
+      const c1 = chain({
+        id: 1,
+        evidence: { items: [{ repoFullName: 'my-org/my-repo' }] },
+        user_id: 'user-1',
+        installation_id: 1,
+      });
+      const c2 = chain({ id: 1 });
+
+      mockFrom.mockReturnValueOnce(c1).mockReturnValueOnce(c2);
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['my-org/my-repo']);
+
+      const res = await resolveFlaggedAccount(1, 'dismissed', 1);
+      expect(res.ok).toBe(true);
+    });
+
+    it('allows resolve when flag has null installation_id (legacy)', async () => {
+      const c1 = chain({
+        id: 1,
+        evidence: { items: [{ repoFullName: 'my-org/my-repo' }] },
+        user_id: 'user-1',
+        installation_id: null,
+      });
+      const c2 = chain({ id: 1 });
+
+      mockFrom.mockReturnValueOnce(c1).mockReturnValueOnce(c2);
+
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['my-org/my-repo']);
+
+      const res = await resolveFlaggedAccount(1, 'dismissed', 1);
+      expect(res.ok).toBe(true);
+    });
+
     it('updates status when flag is in maintainer scope', async () => {
       const c1 = chain({
         id: 1,
@@ -1527,6 +1583,76 @@ describe('maintainer actions', () => {
           other: 5, // 5
           valid: 14, // 10 + 4
           total: 24,
+        });
+      }
+    });
+  });
+
+  // getQueueSignalQuality
+
+  describe('getQueueSignalQuality', () => {
+    it('returns all zeros if maintainer has no repos in install', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+
+      const res = await getQueueSignalQuality(1, '30d');
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({
+          signalRate: 0,
+          mergedAsIs: 0,
+          mergedWithEdits: 0,
+          closedRejected: 0,
+          total: 0,
+        });
+      }
+    });
+
+    it('aggregates closed PR outcomes into signal quality segments', async () => {
+      vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+      const now = new Date().toISOString();
+      const rows = [
+        {
+          state: 'merged',
+          mentor_verified: true,
+          ai_flagged: false,
+          merged_at: now,
+          closed_at: now,
+        },
+        {
+          state: 'merged',
+          mentor_verified: false,
+          ai_flagged: false,
+          merged_at: now,
+          closed_at: now,
+        },
+        {
+          state: 'merged',
+          mentor_verified: true,
+          ai_flagged: true,
+          merged_at: now,
+          closed_at: now,
+        },
+        {
+          state: 'closed',
+          mentor_verified: false,
+          ai_flagged: false,
+          merged_at: null,
+          closed_at: now,
+        },
+      ];
+      mockFrom.mockReturnValueOnce(chain(rows));
+
+      const res = await getQueueSignalQuality(1, '30d');
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data).toEqual({
+          signalRate: 75,
+          mergedAsIs: 1,
+          mergedWithEdits: 2,
+          closedRejected: 1,
+          total: 4,
         });
       }
     });
@@ -2168,5 +2294,66 @@ describe('maintainer actions', () => {
         expect(res.data.byReason.suspiciousIp).toBe(1);
       }
     });
+  });
+});
+
+describe('getMaintainerDashboardStats', () => {
+  it('returns zeroes when maintainer has no repos', async () => {
+    vi.mocked(detect.listMaintainerRepos).mockResolvedValue([]);
+    const res = await getMaintainerDashboardStats({ installationId: 1 });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data).toEqual({
+        openPrs: 0,
+        aiFlagged: 0,
+        readyToMerge: 0,
+        cleanRate: 0,
+        avgReviewTimeHours: 0,
+        contributors: 0,
+        issuesOpen: 0,
+        prsMerged: 0,
+      });
+    }
+  });
+
+  it('queries database and calculates dashboard stats correctly', async () => {
+    vi.mocked(detect.listMaintainerRepos).mockResolvedValue(['org/repo1']);
+
+    const mockWhere = (returnValue: any) => vi.fn().mockResolvedValue(returnValue);
+    mockDbSelect
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: mockWhere([{ count: 5 }]) }) })
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: mockWhere([{ count: 2 }]) }) })
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: mockWhere([{ count: 10 }]) }) })
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: mockWhere([{ count: 3 }]) }) })
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: mockWhere([{ count: 7 }]) }) })
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: mockWhere([
+            {
+              githubCreatedAt: new Date('2023-01-01T10:00:00Z'),
+              mentorReviewAt: new Date('2023-01-01T12:00:00Z'),
+            },
+            {
+              githubCreatedAt: new Date('2023-01-02T10:00:00Z'),
+              mentorReviewAt: new Date('2023-01-02T14:00:00Z'),
+            },
+          ]),
+        }),
+      });
+
+    const res = await getMaintainerDashboardStats({ installationId: 1 });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data).toEqual({
+        openPrs: 5,
+        aiFlagged: 0,
+        readyToMerge: 2,
+        cleanRate: 0,
+        avgReviewTimeHours: 3,
+        contributors: 7,
+        issuesOpen: 3,
+        prsMerged: 10,
+      });
+    }
   });
 });

@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { calculateStreak, parsePRState } from './github-sync-helpers';
 import { fetchAndBackfillPRs } from './github-sync';
+import { getInstallOctokit } from '@/lib/github/app';
 
-// Mock getInstallationToken
+// Mock getInstallOctokit so the raw GitHub API is never hit in tests.
 vi.mock('@/lib/github/app', () => ({
-  getInstallationToken: vi.fn().mockResolvedValue('mock-token'),
+  getInstallOctokit: vi.fn(),
 }));
-
-global.fetch = vi.fn() as any;
 
 describe('fetchAndBackfillPRs', () => {
   let mockService: any;
@@ -25,36 +24,31 @@ describe('fetchAndBackfillPRs', () => {
     };
   });
 
-  it('fetches from github and upserts to db', async () => {
-    (global.fetch as any).mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        items: [
-          {
-            id: 123,
-            repository_url: 'https://api.github.com/repos/org/repo',
-            number: 1,
-            title: 'Test PR',
-            state: 'open',
-            html_url: 'https://github.com/org/repo/pull/1',
-            created_at: '2026-05-01T00:00:00Z',
-            updated_at: '2026-05-02T00:00:00Z',
+  it('fetches from github via Octokit and upserts to db', async () => {
+    vi.mocked(getInstallOctokit).mockResolvedValue({
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            items: [
+              {
+                id: 123,
+                repository_url: 'https://api.github.com/repos/org/repo',
+                number: 1,
+                title: 'Test PR',
+                state: 'open',
+                html_url: 'https://github.com/org/repo/pull/1',
+                created_at: '2026-05-01T00:00:00Z',
+                updated_at: '2026-05-02T00:00:00Z',
+              },
+            ],
           },
-        ],
-      }),
-    });
+        }),
+      },
+    } as any);
 
     const result = await fetchAndBackfillPRs(mockService, 'user-1', 'testuser', 1);
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('q=is:pr+author:testuser'),
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer mock-token',
-        }),
-      }),
-    );
-
+    expect(getInstallOctokit).toHaveBeenCalledWith(1);
     expect(mockService.from).toHaveBeenCalledWith('pull_requests');
     expect(mockService.upsert).toHaveBeenCalledWith(
       [
@@ -71,29 +65,23 @@ describe('fetchAndBackfillPRs', () => {
     expect(result).toEqual([{ id: 1, title: 'Mock PR' }]);
   });
 
-  it('proceeds without auth token if installId is null', async () => {
-    (global.fetch as any).mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        items: [],
-      }),
-    });
-
-    await fetchAndBackfillPRs(mockService, 'user-1', 'testuser', null);
-
-    expect(global.fetch).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.not.objectContaining({
-        headers: expect.objectContaining({ Authorization: 'Bearer mock-token' }),
-      }),
+  it('fails closed when installId is null', async () => {
+    await expect(fetchAndBackfillPRs(mockService, 'user-1', 'testuser', null)).rejects.toThrow(
+      'No GitHub App installation id',
     );
+    expect(getInstallOctokit).not.toHaveBeenCalled();
   });
 
-  it('returns empty array if fetch fails', async () => {
-    (global.fetch as any).mockRejectedValue(new Error('Network error'));
+  it('propagates GitHub API failures instead of silently returning empty', async () => {
+    vi.mocked(getInstallOctokit).mockResolvedValue({
+      search: {
+        issuesAndPullRequests: vi.fn().mockRejectedValue(new Error('GitHub Search API 403')),
+      },
+    } as any);
 
-    const result = await fetchAndBackfillPRs(mockService, 'user-1', 'testuser', 1);
-    expect(result).toEqual([]);
+    await expect(fetchAndBackfillPRs(mockService, 'user-1', 'testuser', 1)).rejects.toThrow(
+      'GitHub Search API 403',
+    );
     expect(mockService.upsert).not.toHaveBeenCalled();
   });
 });

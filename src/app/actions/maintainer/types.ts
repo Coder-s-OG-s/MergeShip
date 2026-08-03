@@ -5,6 +5,17 @@ import type { MaintainerPrRow } from '@/lib/maintainer/queue';
 
 export type { MaintainerPrRow };
 
+export type MaintainerDashboardStats = {
+  openPrs: number;
+  aiFlagged: number;
+  readyToMerge: number;
+  cleanRate: number;
+  avgReviewTimeHours: number;
+  contributors: number;
+  issuesOpen: number;
+  prsMerged: number;
+};
+
 export type MaintainerIssueRow = {
   id: number;
   repoFullName: string;

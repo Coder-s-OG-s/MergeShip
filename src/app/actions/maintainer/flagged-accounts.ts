@@ -7,6 +7,7 @@ import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerInstalls, listMaintainerRepos } from '@/lib/maintainer/detect';
 import { type FlaggedAccountRow } from './types';
 import { logMaintainerAction } from './audit';
+import { revalidatePath } from 'next/cache';
 
 export async function getFlaggedAccounts(args?: {
   installationId?: number;
@@ -40,8 +41,9 @@ export async function getFlaggedAccounts(args?: {
 
   const { data: flags, error } = await service
     .from('flagged_accounts')
-    .select('id, user_id, reason, severity, evidence, detected_at')
+    .select('id, user_id, installation_id, reason, severity, evidence, detected_at')
     .eq('status', 'open')
+    .or(`installation_id.is.null,installation_id.eq.${installationId}`)
     .order('detected_at', { ascending: false })
     .limit(100);
 
@@ -183,12 +185,16 @@ export async function resolveFlaggedAccount(
 
   const { data: flag, error: findError } = await service
     .from('flagged_accounts')
-    .select('id, evidence, user_id')
+    .select('id, evidence, user_id, installation_id')
     .eq('id', flagId)
     .single();
 
   if (findError || !flag) {
     return err('not_found', 'Flag not found');
+  }
+
+  if (flag.installation_id != null && flag.installation_id !== installationId) {
+    return err('not_authorised', 'flag belongs to a different installation');
   }
 
   const repos = await listMaintainerRepos(user.id, installationId);
@@ -239,6 +245,8 @@ export async function resolveFlaggedAccount(
     status: 'success',
     newValues: { status },
   });
+
+  revalidatePath('/maintainer');
 
   return ok({ ok: true });
 }

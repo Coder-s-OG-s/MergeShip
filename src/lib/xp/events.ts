@@ -1,6 +1,10 @@
 import { sql, TransactionRollbackError } from 'drizzle-orm';
 import { getDb, schema } from '../db/client';
+import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { shouldFireTripwire, TRIPWIRE_THRESHOLD } from './tripwire';
+
+type DbClient = PostgresJsDatabase<typeof schema>;
+type DbTransaction = Parameters<Parameters<DbClient['transaction']>[0]>[0];
 
 /**
  * Insert an XP event. Idempotent via UNIQUE(user_id, source, ref_id) on the table.
@@ -24,15 +28,15 @@ export type XpEventInsert = {
   };
 };
 
-export async function insertXpEvent(event: XpEventInsert): Promise<boolean> {
-  const db = getDb();
+export async function insertXpEvent(event: XpEventInsert, tx?: DbTransaction): Promise<boolean> {
+  const db = tx ?? getDb();
 
   // Snapshot today's prior total so the tripwire check sees the value
   // BEFORE this event lands. Done as a separate query because the trigger
   // recompute happens atomically on insert — we can't observe it client-side.
   let priorTodayTotal = 0;
   try {
-    priorTodayTotal = await sumXpToday(event.userId);
+    priorTodayTotal = await sumXpToday(event.userId, db);
   } catch {
     // Tripwire is best-effort. Never block the XP insert.
   }
@@ -43,57 +47,87 @@ export async function insertXpEvent(event: XpEventInsert): Promise<boolean> {
     const { action, limit } = event.dailyCapLimit;
     const todayDate = new Date().toISOString().slice(0, 10);
 
-    try {
-      inserted = await db.transaction(async (tx) => {
-        // Increment the count in xp_daily_usage table atomically
-        const res = await tx.execute<{ count: number }>(sql`
-          insert into xp_daily_usage (user_id, date, action, count)
-          values (${event.userId}, ${todayDate}::date, ${action}, 1)
-          on conflict (user_id, date, action)
-          do update set count = xp_daily_usage.count + 1
-          returning count
-        `);
-        const list = Array.isArray(res) ? res : (res as any).rows;
-        const count = list[0]?.count ?? 1;
-
-        if (count > limit) {
-          throw new Error('daily_review_cap_reached');
-        }
-
-        // Insert the event
-        const result = await tx
-          .insert(schema.xpEvents)
-          .values({
-            userId: event.userId,
-            source: event.source,
-            refType: event.refType,
-            refId: event.refId,
-            repo: event.repo,
-            difficulty: event.difficulty,
-            xpDelta: event.xpDelta,
-            metadata: event.metadata as never,
-          })
-          .onConflictDoNothing({
-            target: [schema.xpEvents.userId, schema.xpEvents.source, schema.xpEvents.refId],
-          })
-          .returning({ id: schema.xpEvents.id });
-
-        if (result.length === 0) {
-          // Duplicate insertion, roll back the daily count increment!
-          tx.rollback();
-          return false;
-        }
-
-        return true;
-      });
-    } catch (err: any) {
-      if (err.message === 'daily_review_cap_reached') {
-        throw err;
+    const doDailyCapCheck = async (client: DbTransaction) => {
+      // Check for an existing row BEFORE bumping the daily counter. When a
+      // caller-provided `tx` hits a duplicate we can't roll back (that would
+      // kill the caller's transaction), so avoiding the increment on the
+      // sequential-duplicate path is the only safe way to keep the cap exact.
+      const existing = await client.execute<{ id: string }>(sql`
+        select 1 as id
+        from xp_events
+        where user_id = ${event.userId}
+          and source = ${event.source}
+          and ref_id = ${event.refId}
+        limit 1
+      `);
+      const existingList = Array.isArray(existing) ? existing : (existing as any).rows;
+      if (existingList.length > 0) {
+        return false;
       }
-      if (err instanceof TransactionRollbackError) {
-        inserted = false;
-      } else {
-        throw err;
+
+      const res = await client.execute<{ count: number }>(sql`
+        insert into xp_daily_usage (user_id, date, action, count)
+        values (${event.userId}, ${todayDate}::date, ${action}, 1)
+        on conflict (user_id, date, action)
+        do update set count = xp_daily_usage.count + 1
+        returning count
+      `);
+      const list = Array.isArray(res) ? res : (res as any).rows;
+      const count = list[0]?.count ?? 1;
+
+      if (count > limit) {
+        throw new Error('daily_review_cap_reached');
+      }
+
+      // Insert the event
+      const result = await client
+        .insert(schema.xpEvents)
+        .values({
+          userId: event.userId,
+          source: event.source,
+          refType: event.refType,
+          refId: event.refId,
+          repo: event.repo,
+          difficulty: event.difficulty,
+          xpDelta: event.xpDelta,
+          metadata: event.metadata as never,
+        })
+        .onConflictDoNothing({
+          target: [schema.xpEvents.userId, schema.xpEvents.source, schema.xpEvents.refId],
+        })
+        .returning({ id: schema.xpEvents.id });
+
+      if (result.length === 0) {
+        // Lost a race to a concurrent identical insert. On the standalone path
+        // roll the inner transaction back so the bump is undone too; with a
+        // caller-provided `tx` do nothing — the pre-check above already
+        // prevented the sequential duplicate from inflating the counter.
+        if (!tx) {
+          client.rollback();
+        }
+        return false;
+      }
+
+      return true;
+    };
+
+    if (tx) {
+      // Caller-managed transaction — use tx directly, no nested transaction
+      inserted = await doDailyCapCheck(tx);
+    } else {
+      try {
+        inserted = await getDb().transaction(async (innerTx) => {
+          return doDailyCapCheck(innerTx);
+        });
+      } catch (err: any) {
+        if (err.message === 'daily_review_cap_reached') {
+          throw err;
+        }
+        if (err instanceof TransactionRollbackError) {
+          inserted = false;
+        } else {
+          throw err;
+        }
       }
     }
   } else {
@@ -140,9 +174,9 @@ export async function insertXpEvent(event: XpEventInsert): Promise<boolean> {
   return inserted;
 }
 
-async function sumXpToday(userId: string): Promise<number> {
-  const db = getDb();
-  const rows = await db.execute<{ sum: number | null }>(
+async function sumXpToday(userId: string, db?: DbClient | DbTransaction): Promise<number> {
+  const client = db ?? getDb();
+  const rows = await client.execute<{ sum: number | null }>(
     sql`select coalesce(sum(xp_delta), 0)::int as sum
         from xp_events
         where user_id = ${userId}

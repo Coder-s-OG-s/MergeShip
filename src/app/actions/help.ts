@@ -39,6 +39,16 @@ export async function sendHelpRequest(input: HelpInput): Promise<Result<HelpOutp
   if (!limited.ok)
     return err('rate_limited', 'too many help requests this hour', true, limited.resetAt);
 
+  const { data: rec, error: recErr } = await service
+    .from('recommendations')
+    .select('id, user_id')
+    .eq('id', input.recId)
+    .maybeSingle();
+
+  if (recErr) return err('persist_failed', recErr.message);
+  if (!rec) return err('not_found', 'recommendation not found');
+  if (rec.user_id !== user.id) return err('forbidden', 'recommendation does not belong to user');
+
   const trimmed = input.prUrl.trim();
   const isGitHubUrl = PR_URL_RE.test(trimmed);
 
@@ -63,6 +73,7 @@ export async function sendHelpRequest(input: HelpInput): Promise<Result<HelpOutp
     .from('help_requests')
     .insert({
       user_id: user.id,
+      recommendation_id: rec.id,
       pr_url: cooldownKey,
       reason,
     })

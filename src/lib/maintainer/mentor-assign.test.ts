@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pickMentor, shouldAutoAssignMentor, type SeniorMaintainer } from './mentor-assign';
 
-const SENIORS: SeniorMaintainer[] = [
-  { userId: 'user-3', handle: 'carol' },
-  { userId: 'user-1', handle: 'alice' },
-  { userId: 'user-2', handle: 'bob' },
-];
-
 describe('shouldAutoAssignMentor', () => {
   it('assigns authors below the minimum contributor level', () => {
     expect(shouldAutoAssignMentor(0, 2)).toBe(true);
@@ -28,11 +22,37 @@ describe('pickMentor', () => {
     expect(pickMentor([])).toBeNull();
   });
 
-  it('picks the first maintainer by stable handle order', () => {
-    expect(pickMentor(SENIORS)).toEqual({ userId: 'user-1', handle: 'alice' });
+  it('picks the maintainer with the fewest active reviews', () => {
+    const seniors: SeniorMaintainer[] = [
+      { userId: 'user-3', handle: 'carol', activeReviewCount: 2 },
+      { userId: 'user-1', handle: 'alice', activeReviewCount: 1 },
+      { userId: 'user-2', handle: 'bob', activeReviewCount: 0 },
+    ];
+    expect(pickMentor(seniors)).toEqual({ userId: 'user-2', handle: 'bob', activeReviewCount: 0 });
+  });
+
+  it('falls back to stable handle order on tied active reviews', () => {
+    const seniors: SeniorMaintainer[] = [
+      { userId: 'user-3', handle: 'carol', activeReviewCount: 1 },
+      { userId: 'user-1', handle: 'alice', activeReviewCount: 1 },
+      { userId: 'user-2', handle: 'bob', activeReviewCount: 2 },
+    ];
+    expect(pickMentor(seniors)).toEqual({
+      userId: 'user-1',
+      handle: 'alice',
+      activeReviewCount: 1,
+    });
   });
 
   it('excludes the PR author from assignment', () => {
-    expect(pickMentor(SENIORS, 'user-1')).toEqual({ userId: 'user-2', handle: 'bob' });
+    const seniors: SeniorMaintainer[] = [
+      { userId: 'user-1', handle: 'alice', activeReviewCount: 0 },
+      { userId: 'user-2', handle: 'bob', activeReviewCount: 0 },
+    ];
+    expect(pickMentor(seniors, 'user-1')).toEqual({
+      userId: 'user-2',
+      handle: 'bob',
+      activeReviewCount: 0,
+    });
   });
 });

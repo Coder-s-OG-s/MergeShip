@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { extractIssueNumbers, processPrEvent } from './process-pr-event';
 import { insertXpEvent } from '@/lib/xp/events';
+import { cacheDelByPrefix } from '@/lib/cache';
 import { sb, wire, step } from './__tests__/test-helpers';
 
 // Mock external dependencies.
@@ -161,6 +162,7 @@ describe('processPrEvent - awardRecommendedMerge XP capping', () => {
         }),
       }),
     );
+    expect(cacheDelByPrefix).toHaveBeenCalledWith('profile:v3:');
   });
 
   it('clamps inflated rec.xp_reward to difficulty ceiling (Medium)', async () => {
@@ -428,6 +430,14 @@ describe('processPrEvent - auto-assign mentor chain', () => {
           mentor_reviewer_id: null,
         },
       }),
+    });
+    // Mock the active assignments query which terminates on .eq('mentor_verified', false)
+    const originalEq = pullRequestsMock.eq as Function;
+    pullRequestsMock.eq = vi.fn((col, val) => {
+      if (col === 'mentor_verified' && val === false) {
+        return Promise.resolve({ data: [] });
+      }
+      return originalEq(col, val);
     });
     const installationSettingsMock = sb({
       maybeSingle: vi

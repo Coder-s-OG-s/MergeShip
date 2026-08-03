@@ -9,15 +9,22 @@ import { repoFilterPattern } from './issues-helpers';
 import { getInstallOctokit } from '@/lib/github/app';
 
 const PAGE_SIZE = 10;
+const DIFFICULTY_VALUES = ['E', 'M', 'H'] as const;
+type DifficultyValue = (typeof DIFFICULTY_VALUES)[number];
+
+function isDifficultyValue(value: string): value is DifficultyValue {
+  return (DIFFICULTY_VALUES as readonly string[]).includes(value);
+}
 
 export type IssueFilter = {
   search?: string;
   state?: 'open' | 'closed';
-  difficulty?: 'E' | 'M' | 'H';
+  difficulty?: string;
   repo?: string;
   showClaimed?: boolean;
   page?: number;
   sort?: 'newest' | 'xp_desc' | 'xp_asc';
+  category?: 'all' | 'bugs' | 'docs' | 'feature' | 'tests';
 };
 
 export type IssueWithStatus = {
@@ -25,6 +32,7 @@ export type IssueWithStatus = {
   repoFullName: string;
   githubIssueNumber: number;
   title: string;
+  bodyExcerpt: string | null;
   difficulty: 'E' | 'M' | 'H' | null;
   xpReward: number | null;
   labels: string[] | null;
@@ -160,7 +168,13 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
   if (!repoOptionsRes.ok) {
     return err(repoOptionsRes.error.code, repoOptionsRes.error.message);
   }
-  const allowedRepos = repoOptionsRes.data.map((opt) => opt.value);
+  let allowedRepos = repoOptionsRes.data.map((opt) => opt.value);
+  if (filters.repo) {
+    const selectedRepos = filters.repo.split(',').filter(Boolean);
+    if (selectedRepos.length > 0) {
+      allowedRepos = allowedRepos.filter((r) => selectedRepos.includes(r));
+    }
+  }
   if (allowedRepos.length === 0) {
     return ok({
       issues: [],
@@ -177,7 +191,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
 
   query = query
     .select(
-      'id, repo_full_name, github_issue_number, title, difficulty, xp_reward, labels, state, url, fetched_at',
+      'id, repo_full_name, github_issue_number, title, body_excerpt, difficulty, xp_reward, labels, state, url, fetched_at',
       { count: 'exact' },
     )
     .eq('state', filters.state ?? 'open')
@@ -195,11 +209,33 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
   }
 
   if (filters.difficulty) {
-    query = query.eq('difficulty', filters.difficulty);
+    const diffs = filters.difficulty.split(',').filter(Boolean);
+    const standardDiffs = diffs.filter(isDifficultyValue);
+    const diffParts: string[] = [];
+    if (standardDiffs.length > 0) {
+      diffParts.push(`difficulty.in.(${standardDiffs.join(',')})`);
+    }
+    if (diffs.includes('L0')) {
+      diffParts.push('difficulty.is.null');
+    }
+    if (diffParts.length > 0) {
+      query = query.or(diffParts.join(','));
+    }
   }
-  const repoPattern = repoFilterPattern(filters.repo);
-  if (repoPattern) {
-    query = query.ilike('repo_full_name', repoPattern);
+
+  if (filters.category && filters.category !== 'all') {
+    const cat = filters.category;
+    if (cat === 'bugs') {
+      query = query.or('labels.cs.{"bug","bugs","kind/bug"},title.ilike.%bug%');
+    } else if (cat === 'docs') {
+      query = query.or(
+        'labels.cs.{"documentation","docs","doc","kind/documentation"},title.ilike.%doc%',
+      );
+    } else if (cat === 'feature') {
+      query = query.or('labels.cs.{"feature","enhancement","kind/feature"},title.ilike.%feature%');
+    } else if (cat === 'tests') {
+      query = query.or('labels.cs.{"test","tests","testing","kind/test"},title.ilike.%test%');
+    }
   }
 
   const { data, count, error } = await query;
@@ -210,6 +246,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
     repo_full_name: string;
     github_issue_number: number;
     title: string;
+    body_excerpt: string | null;
     difficulty: string | null;
     xp_reward: number | null;
     labels: string[] | null;
@@ -238,6 +275,7 @@ export async function getIssuesPage(filters: IssueFilter): Promise<Result<Issues
       repoFullName: i.repo_full_name,
       githubIssueNumber: i.github_issue_number,
       title: i.title,
+      bodyExcerpt: i.body_excerpt,
       difficulty: i.difficulty as 'E' | 'M' | 'H' | null,
       xpReward: i.xp_reward,
       labels: i.labels,

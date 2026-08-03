@@ -7,6 +7,7 @@ import { getDb } from '@/lib/db/client';
 import { pullRequests, installationRepositories } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { getInstallOctokit } from '@/lib/github/app';
+import { listMaintainerRepos } from '@/lib/maintainer/detect';
 
 export async function pingReviewers(prId: number): Promise<Result<{ commented: boolean }>> {
   const authRes = await requireMaintainer({
@@ -29,6 +30,11 @@ export async function pingReviewers(prId: number): Promise<Result<{ commented: b
 
   if (!repoRow) {
     return err('not_found', 'Installation not found for this repository');
+  }
+
+  const repos = await listMaintainerRepos(authRes.data.user.id, repoRow.installationId);
+  if (!repos.includes(pr.repoFullName)) {
+    return err('not_authorised', 'You do not maintain this repository');
   }
 
   const octokit = await getInstallOctokit(repoRow.installationId);

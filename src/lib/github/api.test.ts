@@ -81,4 +81,42 @@ describe('cachedGhRequest', () => {
       }),
     ).rejects.toThrow('boom');
   });
+
+  it('coalesces concurrent callers for the same key into one request', async () => {
+    let calls = 0;
+    const fire = () =>
+      cachedGhRequest<{ n: number }>({
+        octokit,
+        cacheKey: 'test:concurrent',
+        ttlSeconds: 60,
+        request: async () => {
+          calls++;
+          return { status: 200, data: { n: 42 }, headers: { etag: 'W/"c"' } };
+        },
+      });
+
+    const results = await Promise.all([fire(), fire(), fire(), fire(), fire()]);
+
+    expect(calls).toBe(1);
+    results.forEach((r) => expect(r).toEqual({ n: 42 }));
+  });
+
+  it('runs a fresh request once the in-flight one settles', async () => {
+    let calls = 0;
+    const fire = () =>
+      cachedGhRequest<{ n: number }>({
+        octokit,
+        cacheKey: 'test:sequential',
+        ttlSeconds: 0, // don't persist, so each sequential call is a fresh miss
+        request: async () => {
+          calls++;
+          return { status: 200, data: { n: calls }, headers: { etag: '' } };
+        },
+      });
+
+    await fire();
+    await fire();
+
+    expect(calls).toBe(2);
+  });
 });

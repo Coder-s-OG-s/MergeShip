@@ -3,14 +3,22 @@ import { getServerSupabase } from '@/lib/supabase/server';
 import { isUserMaintainer } from '@/lib/maintainer/detect';
 import {
   getMaintainerInstalls,
+  getQueueSignalQuality,
   getTimeSaved,
   getRepoAnalyticsBreakdown,
+  getAnalyticsStats,
+  getPrVolumeTimeSeries,
 } from '@/app/actions/maintainer';
 import type { MaintainerInstall } from '@/lib/maintainer/detect';
 import { isOk } from '@/lib/result';
 import TimeSavedPanel from './time-saved-panel';
 import { RepoBreakdownTable } from './repo-breakdown-table';
 import RangeTabs from './range-tabs';
+import QueueSignalPanel from './queue-signal-panel';
+import { StatsHeader } from './stats-header';
+import { PrVolumeChart } from './pr-volume-chart';
+import { ExportReportButton } from './export-report-button';
+import SummaryBanner from './summary-banner';
 import type { AnalyticsRange } from '@/lib/maintainer/time-saved';
 
 export const dynamic = 'force-dynamic';
@@ -56,6 +64,7 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
     installs.find((i) => i.installationId === Number(resolvedSearchParams.install))
       ? Number(resolvedSearchParams.install)
       : installs[0]!.installationId;
+  const activeInstall = installs.find((i) => i.installationId === activeInstallId) ?? installs[0]!;
 
   const rawRange = resolvedSearchParams.range;
   const range: AnalyticsRange =
@@ -63,10 +72,15 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       ? rawRange
       : '30d';
 
-  const [timeSavedRes, repoAnalyticsRes] = await Promise.all([
-    getTimeSaved(activeInstallId, range),
-    getRepoAnalyticsBreakdown(activeInstallId, range),
-  ]);
+  const [timeSavedRes, repoAnalyticsRes, queueSignalRes, statsRes, prVolumeRes] = await Promise.all(
+    [
+      getTimeSaved(activeInstallId, range),
+      getRepoAnalyticsBreakdown(activeInstallId, range),
+      getQueueSignalQuality(activeInstallId, range),
+      getAnalyticsStats(activeInstallId, range),
+      getPrVolumeTimeSeries(activeInstallId, range),
+    ],
+  );
 
   const timeSaved = isOk(timeSavedRes)
     ? timeSavedRes.data
@@ -79,6 +93,28 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
       };
 
   const repoAnalytics = isOk(repoAnalyticsRes) ? repoAnalyticsRes.data : [];
+  const queueSignalQuality = isOk(queueSignalRes)
+    ? queueSignalRes.data
+    : {
+        signalRate: 0,
+        mergedAsIs: 0,
+        mergedWithEdits: 0,
+        closedRejected: 0,
+        total: 0,
+      };
+
+  const stats = isOk(statsRes)
+    ? statsRes.data
+    : {
+        prsMerged: { value: 0, delta: 0, deltaPositiveIsGood: true },
+        avgReviewTimeHours: { value: 0, delta: 0, deltaPositiveIsGood: false },
+        queueSignalRate: { value: 0, delta: 0, deltaPositiveIsGood: true },
+        aiPrsBlocked: { value: 0, delta: 0, deltaPositiveIsGood: true },
+        contributorsLeveledUp: { value: 0, delta: 0, deltaPositiveIsGood: true },
+        maintainerTimeSavedHours: { value: 0, delta: 0, deltaPositiveIsGood: true },
+      };
+
+  const prVolumeData = isOk(prVolumeRes) ? prVolumeRes.data : [];
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -87,12 +123,28 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
           <h1 className="font-display text-3xl font-bold">Analytics</h1>
           <div className="flex items-center gap-4">
             <RangeTabs currentRange={range} />
+            <ExportReportButton
+              installationId={activeInstallId}
+              range={range}
+              orgLogin={activeInstall.accountLogin}
+            />
           </div>
         </header>
+
+        <StatsHeader stats={stats} />
+
+        <div className="mb-8 grid gap-8 lg:grid-cols-2">
+          <div className="lg:col-span-1">
+            <PrVolumeChart data={prVolumeData} />
+          </div>
+        </div>
 
         <div className="grid gap-8 lg:grid-cols-3">
           <div className="lg:col-span-1">
             <TimeSavedPanel breakdown={timeSaved} installationId={activeInstallId} range={range} />
+          </div>
+          <div className="lg:col-span-1">
+            <QueueSignalPanel data={queueSignalQuality} />
           </div>
           <div className="lg:col-span-2">
             <div className="rounded-xl border border-zinc-800 bg-[#161b22] p-5">
@@ -103,6 +155,8 @@ export default async function AnalyticsPage({ searchParams }: AnalyticsPageProps
             </div>
           </div>
         </div>
+
+        <SummaryBanner stats={stats} range={range} installationId={activeInstallId} />
       </div>
     </div>
   );

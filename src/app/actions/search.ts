@@ -1,9 +1,10 @@
 'use server';
 
-import { ilike, desc } from 'drizzle-orm';
+import { and, ilike, desc, inArray } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { issues, profiles } from '@/lib/db/schema';
 import { getServerSupabase } from '@/lib/supabase/server';
+import { getServiceSupabase } from '@/lib/supabase/service';
 import { rateLimit, RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { ok, err, type Result } from '@/lib/result';
 
@@ -54,19 +55,43 @@ export async function searchGlobal(query: string): Promise<Result<SearchResult>>
   const searchPattern = `%${escapeIlike(cleanQuery)}%`;
 
   try {
+    const service = getServiceSupabase();
+    let allowedRepos: string[] = [];
+
+    if (service) {
+      const { data: installations } = await service
+        .from('github_installation_users')
+        .select('installation_id')
+        .eq('user_id', user.id);
+
+      if (installations && installations.length > 0) {
+        const installIds = installations.map((i) => i.installation_id);
+        const { data: repos } = await service
+          .from('installation_repositories')
+          .select('repo_full_name')
+          .in('installation_id', installIds);
+
+        allowedRepos = (repos ?? []).map((r) => r.repo_full_name);
+      }
+    }
+
     const db = getDb();
     const [matchedIssues, matchedProfiles] = await Promise.all([
-      db
-        .select({
-          id: issues.id,
-          title: issues.title,
-          repoFullName: issues.repoFullName,
-          url: issues.url,
-        })
-        .from(issues)
-        .where(ilike(issues.title, searchPattern))
-        .orderBy(desc(issues.id))
-        .limit(5),
+      allowedRepos.length > 0
+        ? db
+            .select({
+              id: issues.id,
+              title: issues.title,
+              repoFullName: issues.repoFullName,
+              url: issues.url,
+            })
+            .from(issues)
+            .where(
+              and(ilike(issues.title, searchPattern), inArray(issues.repoFullName, allowedRepos)),
+            )
+            .orderBy(desc(issues.id))
+            .limit(5)
+        : Promise.resolve([]),
 
       db
         .select({

@@ -180,4 +180,31 @@ describe('llmCall', () => {
     expect(mock1.complete).toHaveBeenCalledTimes(3);
     expect(mock2.complete).toHaveBeenCalledTimes(1);
   });
+
+  it('caps total attempts when transient and schema failures interleave', async () => {
+    // Alternating failure types must not exceed the combined budget of 3,
+    // even though neither individual counter (retryCount<=2, schemaRetryCount<=1)
+    // is exceeded on its own until the 3rd attempt.
+    const complete1 = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('transient')) // retryCount 0->1
+      .mockResolvedValueOnce(JSON.stringify({ wrong: 'shape' })) // schemaRetryCount 0->1
+      .mockRejectedValueOnce(new Error('transient')) // would have been retryCount 1->2 pre-fix
+      .mockResolvedValueOnce(JSON.stringify({ wrong: 'again' })); // would have been a 4th call pre-fix
+
+    const mock1 = createMockProvider('mock1', complete1, true, true);
+    const mock2 = createMockProvider(
+      'mock2',
+      vi.fn().mockResolvedValue(JSON.stringify({ ok: true, answer: 'fallback' })),
+    );
+    __setLlmProviders([mock1, mock2]);
+
+    const r = await llmCall({ prompt: 'noop', schema });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data.answer).toBe('fallback');
+
+    // Combined budget caps this at 3 total attempts, not 4.
+    expect(mock1.complete).toHaveBeenCalledTimes(3);
+    expect(mock2.complete).toHaveBeenCalledTimes(1);
+  });
 });

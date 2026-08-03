@@ -42,29 +42,52 @@ describe('maintainerDiscover', () => {
   });
 
   it('inserts new access grants when a user gains repo access', async () => {
-    const installUsers = sb({ upsert: vi.fn().mockResolvedValue({}) });
-    const userRepos = sb({
-      delete: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      in: vi.fn().mockReturnThis(),
-      insert: vi.fn().mockResolvedValue({}),
+    const installUsers = sb({
+      upsert: vi.fn().mockResolvedValue({}),
     });
 
     wire({
-      github_installations: sb({
-        select: vi.fn().mockReturnThis(),
-        is: vi.fn().mockResolvedValue({
-          data: [{ id: 1, account_type: 'Organization', account_login: 'test-org' }],
-        }),
-      }),
+      github_installation_users: installUsers,
       installation_repositories: sb({
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockResolvedValue({
           data: [{ repo_full_name: 'test-org/repo-1' }],
         }),
       }),
-      github_installation_users: installUsers,
-      installation_user_repos: userRepos,
+      installation_user_repos: sb(),
+    });
+
+    let selectCallCount = 0;
+    installUsers.select = vi.fn().mockReturnThis();
+    installUsers.eq = vi.fn().mockImplementation(() => {
+      selectCallCount += 1;
+      if (selectCallCount <= 2) {
+        // First two .eq() calls are selects for initial query + reconcile
+        return {
+          ...installUsers,
+          then: (resolve: (v: unknown) => void) => {
+            if (selectCallCount === 1) {
+              // First select: user installs with joined data
+              return Promise.resolve({
+                data: [
+                  {
+                    installation_id: 1,
+                    github_installations: {
+                      id: 1,
+                      account_type: 'Organization',
+                      account_login: 'test-org',
+                      uninstalled_at: null,
+                    },
+                  },
+                ],
+              }).then(resolve);
+            }
+            // Second select: existing grants for reconcile
+            return Promise.resolve({ data: [] }).then(resolve);
+          },
+        };
+      }
+      return installUsers;
     });
 
     const octokit = {
@@ -114,21 +137,44 @@ describe('maintainerDiscover', () => {
       eq: vi.fn().mockReturnThis(),
       in: vi.fn().mockResolvedValue({}),
     });
-    const userRepos = sb({
-      delete: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      in: vi.fn().mockResolvedValue({}),
-    });
 
     wire({
-      github_installations: sb({
-        select: vi.fn().mockReturnThis(),
-        is: vi.fn().mockResolvedValue({
-          data: [{ id: 1, account_type: 'Organization', account_login: 'test-org' }],
-        }),
-      }),
       github_installation_users: installUsers,
-      installation_user_repos: userRepos,
+      installation_user_repos: sb({
+        delete: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockResolvedValue({}),
+      }),
+    });
+
+    let selectCallCount = 0;
+    installUsers.select = vi.fn().mockReturnThis();
+    installUsers.eq = vi.fn().mockImplementation(() => {
+      selectCallCount += 1;
+      if (selectCallCount <= 2) {
+        return {
+          ...installUsers,
+          then: (resolve: (v: unknown) => void) => {
+            if (selectCallCount === 1) {
+              return Promise.resolve({
+                data: [
+                  {
+                    installation_id: 1,
+                    github_installations: {
+                      id: 1,
+                      account_type: 'Organization',
+                      account_login: 'test-org',
+                      uninstalled_at: null,
+                    },
+                  },
+                ],
+              }).then(resolve);
+            }
+            return Promise.resolve({ data: [] }).then(resolve);
+          },
+        };
+      }
+      return installUsers;
     });
 
     const octokit = {
@@ -147,8 +193,6 @@ describe('maintainerDiscover', () => {
 
     expect(installUsers.delete).toHaveBeenCalled();
     expect(installUsers.in).toHaveBeenCalledWith('installation_id', [1]);
-    expect(userRepos.delete).toHaveBeenCalled();
-    expect(userRepos.in).toHaveBeenCalledWith('installation_id', [1]);
 
     expect(result).toEqual(
       expect.objectContaining({
@@ -160,7 +204,7 @@ describe('maintainerDiscover', () => {
     );
   });
 
-  it('runs sweep on empty event', async () => {
+  it('skips recently discovered users in sweep', async () => {
     wire({
       github_installation_users: sb({
         select: vi.fn().mockReturnThis(),
@@ -181,8 +225,35 @@ describe('maintainerDiscover', () => {
 
     expect(mockSend).toHaveBeenCalledWith({
       name: 'maintainer/discover',
-      data: { userId: 'u1', githubHandle: 'alice', force: true },
+      data: { userId: 'u1', githubHandle: 'alice' },
     });
-    expect(result).toEqual({ swept: 1 });
+    expect(result).toEqual({ swept: 1, skipped: 0 });
+  });
+
+  it('only processes 20 users per sweep tick', async () => {
+    const manyUserIds = Array.from({ length: 50 }, (_, i) => ({ user_id: `u${i}` }));
+
+    wire({
+      github_installation_users: sb({
+        select: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue({
+          data: manyUserIds,
+        }),
+      }),
+      profiles: sb({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: { github_handle: 'alice' },
+        }),
+      }),
+    });
+
+    vi.mocked(cacheGet).mockResolvedValue(null);
+
+    const result = await run({ event: {}, step });
+
+    expect(mockSend).toHaveBeenCalledTimes(20);
+    expect(result).toEqual({ swept: 20, skipped: 0 });
   });
 });

@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => {
     mockTryGetDb: vi.fn(),
     mockSql: vi.fn((strings, ...values) => ({ strings, values })),
     mockGetInstallationToken: vi.fn(),
+    mockListMaintainerInstalls: vi.fn(),
+    mockListMaintainerRepos: vi.fn(),
   };
 });
 
@@ -26,6 +28,11 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/github/app', () => ({
   getInstallationToken: mocks.mockGetInstallationToken,
+}));
+
+vi.mock('@/lib/maintainer/detect', () => ({
+  listMaintainerInstalls: mocks.mockListMaintainerInstalls,
+  listMaintainerRepos: mocks.mockListMaintainerRepos,
 }));
 
 vi.mock('@/lib/supabase/service', () => {
@@ -159,6 +166,8 @@ describe('Recommendations Server Actions', () => {
     });
     mocks.mockRateLimit.mockResolvedValue({ ok: true });
     mocks.mockGetInstallationToken.mockResolvedValue('fake-install-token');
+    mocks.mockListMaintainerInstalls.mockResolvedValue([]);
+    mocks.mockListMaintainerRepos.mockResolvedValue([]);
     mocks.mockServiceFrom.mockImplementation(() => createMockChain(null, null));
     vi.stubGlobal(
       'fetch',
@@ -391,6 +400,48 @@ describe('Recommendations Server Actions', () => {
       }
     });
 
+    it('does not reuse an above-level difficulty as the preferred replacement tier', async () => {
+      const mixedPool = [
+        {
+          id: 11,
+          difficulty: 'H',
+          xp_reward: 300,
+          repo_full_name: 'a/b',
+          github_issue_number: 2,
+          title: 'Hard issue',
+          url: 'http',
+        },
+        {
+          id: 12,
+          difficulty: 'E',
+          xp_reward: 100,
+          repo_full_name: 'a/b',
+          github_issue_number: 3,
+          title: 'Easy issue',
+          url: 'http',
+        },
+      ];
+
+      mocks.mockServiceFrom
+        // A Hard rec can reach 'open' for a L0 user by claiming the issue from
+        // the browser and then unclaiming it.
+        .mockReturnValueOnce(
+          createMockChain(null, { data: { id: 1, difficulty: 'H', issue_id: 10 }, error: null }),
+        ) // update rec
+        .mockReturnValueOnce(createMockChain(null, { data: { level: 0 }, error: null })) // profile level
+        .mockReturnValueOnce(createMockChain({ data: [{ issue_id: 10 }] })) // select seen
+        .mockReturnValueOnce(createIssuesPoolChain(mixedPool)) // same-tier pool, clamped to E
+        .mockReturnValueOnce(createMockChain(null, { data: { id: 2 }, error: null })); // insert replacement
+
+      const result = await skipRecommendation(1);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.replacement?.difficulty).toBe('E');
+        expect(result.data.replacement?.issueId).toBe(12);
+      }
+    });
+
     it('returns not_skippable if status is not open', async () => {
       mocks.mockServiceFrom.mockReturnValueOnce(createMockChain(null, { data: null, error: null })); // update returns null row
 
@@ -468,7 +519,18 @@ describe('Recommendations Server Actions', () => {
       if (!result.ok) expect(result.error.code).toBe('not_linkable');
     });
 
-    it('uses installation token when repo is installed', async () => {
+    it('uses installation token when repo is installed and user is authorized', async () => {
+      // Mock listMaintainerInstalls to return the installation the user is authorized for
+      mocks.mockListMaintainerInstalls.mockResolvedValueOnce([
+        {
+          installationId: 42,
+          accountLogin: 'test-org',
+          accountType: 'Organization',
+          permissionLevel: 'org_admin',
+        },
+      ]);
+      mocks.mockListMaintainerRepos.mockResolvedValueOnce(['owner/repo']);
+
       // Set up the getServiceSupabase mock to return an installation_id for installation_repositories
       vi.mocked(getServiceSupabase).mockReturnValueOnce({
         from: (table: string) => {
@@ -505,12 +567,64 @@ describe('Recommendations Server Actions', () => {
       const result = await linkPrToRec(1, 'https://github.com/owner/repo/pull/123');
 
       expect(result).toEqual({ ok: true, data: { id: 1 } });
+      expect(mocks.mockListMaintainerInstalls).toHaveBeenCalledWith('test-user-id');
       expect(mocks.mockGetInstallationToken).toHaveBeenCalledWith(42);
       expect(mockFetch).toHaveBeenCalledWith(
         'https://api.github.com/repos/owner/repo/pulls/123',
         expect.objectContaining({
           headers: expect.objectContaining({
             Authorization: 'Bearer installed-app-token',
+          }),
+        }),
+      );
+    });
+
+    it('falls back to OAuth token when repo is installed but user is not authorized', async () => {
+      // Mock listMaintainerInstalls to return empty (user has no authorized installations)
+      mocks.mockListMaintainerInstalls.mockResolvedValueOnce([]);
+
+      // Set up the getServiceSupabase mock to return an installation_id for installation_repositories
+      vi.mocked(getServiceSupabase).mockReturnValueOnce({
+        from: (table: string) => {
+          if (table === 'installation_repositories') {
+            const chain: Record<string, unknown> = {
+              select: () => chain,
+              eq: () => chain,
+              limit: () => Promise.resolve({ data: [{ installation_id: 99 }] }),
+              then: (resolve: (v: unknown) => void) =>
+                Promise.resolve({ data: [{ installation_id: 99 }] }).then(resolve),
+            };
+            return chain as any;
+          }
+          return mocks.mockServiceFrom(table);
+        },
+      } as any);
+
+      mocks.mockServiceFrom
+        // profiles lookup
+        .mockReturnValueOnce(
+          createMockChain(null, { data: { github_handle: 'testuser' }, error: null }),
+        )
+        // recommendations update
+        .mockReturnValueOnce(createMockChain(null, { data: { id: 1 }, error: null }));
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ user: { login: 'testuser' } }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const result = await linkPrToRec(1, 'https://github.com/owner/repo/pull/123');
+
+      expect(result).toEqual({ ok: true, data: { id: 1 } });
+      // Should NOT call getInstallationToken because user is not authorized
+      expect(mocks.mockGetInstallationToken).not.toHaveBeenCalled();
+      // Should fall back to OAuth token
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.github.com/repos/owner/repo/pulls/123',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer gh-token-123',
           }),
         }),
       );

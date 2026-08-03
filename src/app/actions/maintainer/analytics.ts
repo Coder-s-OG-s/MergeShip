@@ -5,11 +5,23 @@ import { requireMaintainer } from '@/lib/action-auth';
 import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 import { listMaintainerRepos } from '@/lib/maintainer/detect';
 import { tryGetDb } from '@/lib/db/client';
-import { profiles, xpEvents, pullRequests, githubInstallations, issues } from '@/lib/db/schema';
-import { eq, inArray, sum, desc, and, count, gte, lte, isNotNull } from 'drizzle-orm';
+import {
+  profiles,
+  xpEvents,
+  pullRequests,
+  githubInstallations,
+  issues,
+  reportSnapshots,
+} from '@/lib/db/schema';
+import { eq, inArray, sum, desc, and, count, gte, lte, isNotNull, sql } from 'drizzle-orm';
 import { computeTimeSaved, type TimeSavedBreakdown } from '@/lib/maintainer/time-saved';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import type { MaintainerAnalyticsTrends } from '@/lib/maintainer/analytics';
+import {
+  buildDayOverDayStats,
+  buildMaintainerAnalyticsTrends,
+  emptyMaintainerDayOverDayStats,
+} from '@/lib/maintainer/analytics';
 import {
   comparePrRows,
   validateFilters,
@@ -25,8 +37,11 @@ import type {
   NoiseBreakdown,
   PromotionEligibleRow,
   ContributorFunnelData,
+  MaintainerDashboardStats,
 } from './types';
 import { type AnalyticsRange, rangeToDateBounds } from '@/lib/maintainer/analytics-range';
+import { bucketPrVolumeTimeSeries } from '@/lib/maintainer/pr-volume-bucketing';
+import { randomBytes } from 'crypto';
 
 export async function getRepoHealthOverview(args: {
   installationId: number;
@@ -254,13 +269,18 @@ export async function getMaintainerAnalyticsTrends(args: {
 
   const repos = await listMaintainerRepos(user.id, args.installationId);
   if (repos.length === 0) {
-    return ok({ weekly: [], levelDistribution: [], avgReviewTimeHours: null });
+    return ok({
+      weekly: [],
+      levelDistribution: [],
+      avgReviewTimeHours: null,
+      dayOverDay: emptyMaintainerDayOverDayStats(),
+    });
   }
 
   const activeRange = args.range ?? '30d';
   const cacheKey = `maint:analytics-trends:${user.id}:${args.installationId}:${activeRange}`;
   const cached = await cacheGet<MaintainerAnalyticsTrends>(cacheKey);
-  if (cached) return ok(cached);
+  if (cached?.dayOverDay) return ok(cached);
 
   const { data, error } = await service.rpc('maintainer_analytics_trends', {
     repo_names: repos,
@@ -268,15 +288,16 @@ export async function getMaintainerAnalyticsTrends(args: {
 
   if (error) return err('query_failed', error.message);
 
+  // Fetch review stats and day-over-day deltas from timestamped PR rows.
+
   const { from, to } = rangeToDateBounds(activeRange, new Date());
 
-  // Fetch average review time from pull_requests
+  // Fetch review stats and day-over-day deltas from timestamped PR rows.
   let q = service
     .from('pull_requests')
-    .select('github_created_at, mentor_review_at')
+    .select('github_created_at, merged_at, mentor_review_at')
     .in('repo_full_name', repos)
-    .eq('mentor_verified', true)
-    .not('mentor_review_at', 'is', null)
+    .not('github_created_at', 'is', null)
     .lte('github_created_at', to.toISOString());
 
   if (activeRange !== 'all') {
@@ -284,20 +305,42 @@ export async function getMaintainerAnalyticsTrends(args: {
   }
 
   const { data: prs } = await q;
-
   let avgReviewTimeHours = null;
-  if (prs && prs.length > 0) {
+  const reviewRows = (
+    (prs ?? []) as {
+      github_created_at: string;
+      merged_at: string | null;
+      mentor_review_at: string | null;
+    }[]
+  ).filter((pr) => pr.mentor_review_at);
+
+  if (reviewRows.length > 0) {
     const totalSeconds = (
-      prs as { github_created_at: string; mentor_review_at: string | null }[]
+      reviewRows as { github_created_at: string; mentor_review_at: string | null }[]
     ).reduce((sum: number, pr) => {
       const created = new Date(pr.github_created_at).getTime();
       const reviewed = new Date(pr.mentor_review_at!).getTime();
       return sum + (reviewed - created) / 1000;
     }, 0);
-    avgReviewTimeHours = totalSeconds / prs.length / 3600;
+    avgReviewTimeHours = totalSeconds / reviewRows.length / 3600;
   }
 
-  const trends = normaliseAnalyticsTrends(data, avgReviewTimeHours);
+  const dayOverDay = buildDayOverDayStats(
+    new Date(),
+    (
+      (prs ?? []) as {
+        github_created_at: string | null;
+        merged_at: string | null;
+        mentor_review_at: string | null;
+      }[]
+    ).map((pr) => ({
+      githubCreatedAt: pr.github_created_at,
+      mergedAt: pr.merged_at,
+      mentorReviewAt: pr.mentor_review_at,
+    })),
+  );
+
+  const trends = normaliseAnalyticsTrends(data, avgReviewTimeHours, dayOverDay);
   await cacheSet(cacheKey, trends, 30 * 60);
   return ok(trends);
 }
@@ -305,9 +348,10 @@ export async function getMaintainerAnalyticsTrends(args: {
 function normaliseAnalyticsTrends(
   value: unknown,
   avgReviewTimeHours: number | null,
+  dayOverDay = emptyMaintainerDayOverDayStats(),
 ): MaintainerAnalyticsTrends {
   if (!value || typeof value !== 'object') {
-    return { weekly: [], levelDistribution: [], avgReviewTimeHours: null };
+    return { weekly: [], levelDistribution: [], avgReviewTimeHours: null, dayOverDay };
   }
 
   const data = value as Partial<MaintainerAnalyticsTrends>;
@@ -315,6 +359,7 @@ function normaliseAnalyticsTrends(
     weekly: Array.isArray(data.weekly) ? data.weekly : [],
     levelDistribution: Array.isArray(data.levelDistribution) ? data.levelDistribution : [],
     avgReviewTimeHours,
+    dayOverDay,
   };
 }
 
@@ -669,6 +714,91 @@ export async function getNoiseBreakdown(args: {
   } catch (error: any) {
     return err('query_failed', error.message || 'Drizzle query failed');
   }
+}
+
+export type QueueSignalQuality = {
+  signalRate: number;
+  mergedAsIs: number;
+  mergedWithEdits: number;
+  closedRejected: number;
+  total: number;
+};
+
+export async function getQueueSignalQuality(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<QueueSignalQuality>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer:analytics', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return ok({
+      signalRate: 0,
+      mergedAsIs: 0,
+      mergedWithEdits: 0,
+      closedRejected: 0,
+      total: 0,
+    });
+  }
+
+  const { from, to } = rangeToDateBounds(range, new Date());
+  const { data, error } = await service
+    .from('pull_requests')
+    .select('state, mentor_verified, ai_flagged, merged_at, closed_at')
+    .in('repo_full_name', repos)
+    .in('state', ['merged', 'closed'])
+    .gte('github_updated_at', from.toISOString())
+    .lte('github_updated_at', to.toISOString());
+
+  if (error) {
+    return err('query_failed', error.message);
+  }
+
+  type QueueSignalPr = {
+    state: 'open' | 'closed' | 'merged';
+    mentor_verified: boolean;
+    ai_flagged: boolean;
+    merged_at: string | null;
+    closed_at: string | null;
+  };
+
+  let mergedAsIs = 0;
+  let mergedWithEdits = 0;
+  let closedRejected = 0;
+
+  const isInRange = (value: string | null) => {
+    if (!value) return false;
+    const date = new Date(value);
+    return date >= from && date <= to;
+  };
+
+  for (const pr of (data ?? []) as QueueSignalPr[]) {
+    if (pr.state === 'merged' && isInRange(pr.merged_at)) {
+      if (pr.mentor_verified && !pr.ai_flagged) {
+        mergedAsIs++;
+      } else {
+        mergedWithEdits++;
+      }
+    } else if (pr.state === 'closed' && !pr.merged_at && isInRange(pr.closed_at)) {
+      closedRejected++;
+    }
+  }
+
+  const total = mergedAsIs + mergedWithEdits + closedRejected;
+  const signalRate = total > 0 ? ((mergedAsIs + mergedWithEdits) / total) * 100 : 0;
+
+  return ok({
+    signalRate,
+    mergedAsIs,
+    mergedWithEdits,
+    closedRejected,
+    total,
+  });
 }
 
 export async function getContributorFunnel(args: {
@@ -1048,4 +1178,476 @@ export async function getAiDetectionBreakdown(
 
   const total = (rows ?? []).length;
   return ok({ total, byReason });
+}
+
+export type AnalyticsStat = {
+  value: number;
+  delta: number;
+  deltaPositiveIsGood: boolean;
+};
+
+export type AnalyticsStats = {
+  prsMerged: AnalyticsStat;
+  avgReviewTimeHours: AnalyticsStat;
+  queueSignalRate: AnalyticsStat;
+  aiPrsBlocked: AnalyticsStat;
+  contributorsLeveledUp: AnalyticsStat;
+  maintainerTimeSavedHours: AnalyticsStat;
+};
+
+export async function getAnalyticsStats(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<AnalyticsStats>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer:analytics', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  const emptyStats: AnalyticsStats = {
+    prsMerged: { value: 0, delta: 0, deltaPositiveIsGood: true },
+    avgReviewTimeHours: { value: 0, delta: 0, deltaPositiveIsGood: false },
+    queueSignalRate: { value: 0, delta: 0, deltaPositiveIsGood: true },
+    aiPrsBlocked: { value: 0, delta: 0, deltaPositiveIsGood: true },
+    contributorsLeveledUp: { value: 0, delta: 0, deltaPositiveIsGood: true },
+    maintainerTimeSavedHours: { value: 0, delta: 0, deltaPositiveIsGood: true },
+  };
+  if (repos.length === 0) {
+    return ok(emptyStats);
+  }
+
+  const { from: currentFrom, to: currentTo } = rangeToDateBounds(range, new Date());
+
+  // To get the previous window, we subtract the exact duration
+  const prevTo = new Date(currentFrom.getTime());
+  const durationMs = currentTo.getTime() - currentFrom.getTime();
+  const prevFrom = new Date(prevTo.getTime() - durationMs);
+
+  const isAll = range === 'all';
+  const queryStart = isAll ? currentFrom : prevFrom;
+
+  // We need PRs and level_ups in the queried range
+  const { data: prsData, error: prsError } = await service
+    .from('pull_requests')
+    .select('github_created_at, mentor_review_at, merged_at, state, ai_flagged, mentor_verified')
+    .in('repo_full_name', repos)
+    .gte('github_created_at', queryStart.toISOString())
+    .lte('github_created_at', currentTo.toISOString());
+
+  if (prsError) return err('query_failed', prsError.message);
+
+  const { data: xpEventsData, error: xpEventsError } = await service
+    .from('xp_events')
+    .select('user_id')
+    .in('repo', repos);
+
+  let leveledUpCurrent = 0;
+  let leveledUpPrev = 0;
+
+  if (!xpEventsError && xpEventsData && xpEventsData.length > 0) {
+    const userIds = Array.from(new Set(xpEventsData.map((e) => e.user_id).filter((id) => !!id)));
+    if (userIds.length > 0) {
+      const { data: levelUpsData } = await service
+        .from('level_ups')
+        .select('occurred_at')
+        .in('user_id', userIds)
+        .gte('occurred_at', queryStart.toISOString())
+        .lte('occurred_at', currentTo.toISOString());
+
+      for (const row of levelUpsData ?? []) {
+        const occurredAt = new Date(row.occurred_at).getTime();
+        if (occurredAt >= currentFrom.getTime() && occurredAt <= currentTo.getTime()) {
+          leveledUpCurrent++;
+        } else if (!isAll && occurredAt >= prevFrom.getTime() && occurredAt < prevTo.getTime()) {
+          leveledUpPrev++;
+        }
+      }
+    }
+  }
+
+  const currentPrs: any[] = [];
+  const prevPrs: any[] = [];
+
+  for (const pr of prsData ?? []) {
+    const created = new Date(pr.github_created_at).getTime();
+    if (created >= currentFrom.getTime() && created <= currentTo.getTime()) {
+      currentPrs.push(pr);
+    } else if (!isAll && created >= prevFrom.getTime() && created < prevTo.getTime()) {
+      prevPrs.push(pr);
+    }
+  }
+
+  const calcPrStats = (prs: typeof currentPrs) => {
+    let merged = 0;
+    let aiBlocked = 0;
+    let totalReviewTimeMs = 0;
+    let reviewsCount = 0;
+
+    for (const pr of prs) {
+      if (pr.state === 'merged') merged++;
+      if (pr.ai_flagged) aiBlocked++;
+      if (pr.mentor_review_at) {
+        const reviewed = new Date(pr.mentor_review_at).getTime();
+        const created = new Date(pr.github_created_at).getTime();
+        if (reviewed > created) {
+          totalReviewTimeMs += reviewed - created;
+          reviewsCount++;
+        }
+      }
+    }
+
+    const avgReviewTimeHours = reviewsCount > 0 ? totalReviewTimeMs / reviewsCount / 3600000 : 0;
+    const queueSignalRate = prs.length > 0 ? ((prs.length - aiBlocked) / prs.length) * 100 : 0;
+
+    return {
+      prsMerged: merged,
+      aiPrsBlocked: aiBlocked,
+      avgReviewTimeHours,
+      queueSignalRate,
+    };
+  };
+
+  const currStats = calcPrStats(currentPrs);
+  const prevStats = calcPrStats(prevPrs);
+
+  let maintainerTimeSavedHours = 0;
+  let prevMaintainerTimeSavedHours = 0;
+
+  try {
+    const currTimeSaved = await getTimeSaved(installationId, range);
+    if (currTimeSaved.ok) {
+      maintainerTimeSavedHours = currTimeSaved.data.totalHours;
+    }
+
+    if (!isAll) {
+      let prevMentorVerified = 0;
+      for (const pr of prevPrs) {
+        if (pr.state === 'merged' && pr.mentor_verified) prevMentorVerified++;
+      }
+
+      const { data: prevIssuesData } = await service
+        .from('issues')
+        .select('id')
+        .in('repo_full_name', repos)
+        .eq('ai_triaged', true)
+        .gte('github_created_at', prevFrom.toISOString())
+        .lt('github_created_at', prevTo.toISOString());
+
+      const prevAutoTriaged = prevIssuesData?.length ?? 0;
+
+      const prevTimeSavedObj = computeTimeSaved({
+        aiBlockedPrs: prevStats.aiPrsBlocked,
+        mentorVerifiedPrs: prevMentorVerified,
+        autoTriagedIssues: prevAutoTriaged,
+        daysInRange: Math.round(durationMs / 86400000),
+      });
+      prevMaintainerTimeSavedHours = prevTimeSavedObj.totalHours;
+    }
+  } catch (e) {
+    // hide or ignore
+  }
+
+  const makeStat = (curr: number, prev: number, positiveIsGood: boolean): AnalyticsStat => ({
+    value: curr,
+    delta: isAll ? 0 : curr - prev,
+    deltaPositiveIsGood: positiveIsGood,
+  });
+
+  return ok({
+    prsMerged: makeStat(currStats.prsMerged, prevStats.prsMerged, true),
+    avgReviewTimeHours: makeStat(currStats.avgReviewTimeHours, prevStats.avgReviewTimeHours, false),
+    queueSignalRate: makeStat(currStats.queueSignalRate, prevStats.queueSignalRate, true),
+    aiPrsBlocked: makeStat(currStats.aiPrsBlocked, prevStats.aiPrsBlocked, true),
+    contributorsLeveledUp: makeStat(leveledUpCurrent, leveledUpPrev, true),
+    maintainerTimeSavedHours: makeStat(
+      maintainerTimeSavedHours,
+      prevMaintainerTimeSavedHours,
+      true,
+    ),
+  });
+}
+
+export async function getMaintainerDashboardStats(args: {
+  installationId: number;
+}): Promise<Result<MaintainerDashboardStats>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, args.installationId);
+  if (repos.length === 0) {
+    return ok({
+      openPrs: 0,
+      aiFlagged: 0,
+      readyToMerge: 0,
+      cleanRate: 0,
+      avgReviewTimeHours: 0,
+      contributors: 0,
+      issuesOpen: 0,
+      prsMerged: 0,
+    });
+  }
+
+  const db = tryGetDb();
+  if (!db) return err('no_db', 'Database connection not available');
+
+  const [
+    openPrsRes,
+    readyToMergeRes,
+    prsMergedRes,
+    issuesOpenRes,
+    contributorsRes,
+    avgReviewTimeRes,
+  ] = await Promise.all([
+    db
+      .select({ count: count() })
+      .from(pullRequests)
+      .where(and(inArray(pullRequests.repoFullName, repos), eq(pullRequests.state, 'open'))),
+    db
+      .select({ count: count() })
+      .from(pullRequests)
+      .where(
+        and(
+          inArray(pullRequests.repoFullName, repos),
+          eq(pullRequests.state, 'open'),
+          eq(pullRequests.mentorVerified, true),
+        ),
+      ),
+    db
+      .select({ count: count() })
+      .from(pullRequests)
+      .where(and(inArray(pullRequests.repoFullName, repos), eq(pullRequests.state, 'merged'))),
+    db
+      .select({ count: count() })
+      .from(issues)
+      .where(and(inArray(issues.repoFullName, repos), eq(issues.state, 'open'))),
+    db
+      .select({ count: sql<number>`count(distinct ${pullRequests.authorLogin})` })
+      .from(pullRequests)
+      .where(inArray(pullRequests.repoFullName, repos)),
+    db
+      .select({
+        githubCreatedAt: pullRequests.githubCreatedAt,
+        mentorReviewAt: pullRequests.mentorReviewAt,
+      })
+      .from(pullRequests)
+      .where(
+        and(inArray(pullRequests.repoFullName, repos), isNotNull(pullRequests.mentorReviewAt)),
+      ),
+  ]);
+
+  let totalDurationMs = 0;
+  let reviewedCount = 0;
+  for (const pr of avgReviewTimeRes) {
+    if (pr.mentorReviewAt && pr.githubCreatedAt) {
+      const ms = pr.mentorReviewAt.getTime() - pr.githubCreatedAt.getTime();
+      if (ms > 0) {
+        totalDurationMs += ms;
+        reviewedCount++;
+      }
+    }
+  }
+  const avgReviewTimeHours =
+    reviewedCount > 0
+      ? Math.round((totalDurationMs / reviewedCount / (1000 * 60 * 60)) * 10) / 10
+      : 0;
+
+  return ok({
+    openPrs: Number(openPrsRes[0]?.count ?? 0),
+    aiFlagged: 0,
+    readyToMerge: Number(readyToMergeRes[0]?.count ?? 0),
+    cleanRate: 0,
+    avgReviewTimeHours,
+    contributors: Number(contributorsRes[0]?.count ?? 0),
+    issuesOpen: Number(issuesOpenRes[0]?.count ?? 0),
+    prsMerged: Number(prsMergedRes[0]?.count ?? 0),
+  });
+}
+
+export type PrVolumeBucket = {
+  date: string;
+  dateIso: string;
+  merged: number;
+  aiBlocked: number;
+  stalled: number;
+};
+
+export async function getPrVolumeTimeSeries(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<PrVolumeBucket[]>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maintainer', ...RATE_LIMIT_TIERS.STANDARD },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) return ok([]);
+
+  const now = new Date();
+  const { from, to } = rangeToDateBounds(range, now);
+
+  const db = tryGetDb();
+  if (!db) return err('db_error', 'No database connection');
+
+  // Query all PRs created before `to` for the selected repos.
+  const prs = await db
+    .select({
+      id: pullRequests.id,
+      state: pullRequests.state,
+      mergedAt: pullRequests.mergedAt,
+      closedAt: pullRequests.closedAt,
+      aiFlagged: pullRequests.aiFlagged,
+      githubUpdatedAt: pullRequests.githubUpdatedAt,
+      githubCreatedAt: pullRequests.githubCreatedAt,
+    })
+    .from(pullRequests)
+    .where(and(inArray(pullRequests.repoFullName, repos), lte(pullRequests.githubCreatedAt, to)));
+
+  return ok(bucketPrVolumeTimeSeries(prs, range, from, to, now));
+}
+// ---------- Export Report (#719) ----------
+
+export async function exportAnalyticsReport(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<string>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:csv', ...RATE_LIMIT_TIERS.STRICT },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) return ok('');
+
+  const [statsRes, volumeRes, breakdownRes] = await Promise.all([
+    getAnalyticsStats(installationId, range),
+    getPrVolumeTimeSeries(installationId, range),
+    getRepoAnalyticsBreakdown(installationId, range),
+  ]);
+  if (!statsRes.ok) return statsRes;
+  if (!volumeRes.ok) return volumeRes;
+  if (!breakdownRes.ok) return breakdownRes;
+
+  const escapeCsv = (v: string | number) => {
+    const str = String(v);
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const row = (cells: (string | number)[]) => cells.map(escapeCsv).join(',');
+
+  const stats = statsRes.data;
+  const lines: string[] = [];
+
+  lines.push('Section: Summary');
+  lines.push(row(['Period', range]));
+  lines.push(row(['PRs Merged', stats.prsMerged.value]));
+  lines.push(row(['Avg Review Time (h)', stats.avgReviewTimeHours.value]));
+  lines.push(row(['Queue Signal Rate (%)', stats.queueSignalRate.value]));
+  lines.push(row(['AI PRs Blocked', stats.aiPrsBlocked.value]));
+  lines.push(row(['Contributors Leveled Up', stats.contributorsLeveledUp.value]));
+  lines.push(row(['Maintainer Time Saved (h)', stats.maintainerTimeSavedHours.value]));
+  lines.push('');
+
+  lines.push('Section: PR Volume by Day');
+  lines.push(row(['Date', 'Merged', 'AI Blocked', 'Stalled']));
+  for (const b of volumeRes.data) {
+    lines.push(row([b.dateIso, b.merged, b.aiBlocked, b.stalled]));
+  }
+  lines.push('');
+
+  lines.push('Section: Breakdown by Repo');
+  lines.push(
+    row([
+      'Repository',
+      'PRs Merged',
+      'Avg Review (h)',
+      'AI Blocked',
+      'Active Contributors',
+      'Signal Rate',
+    ]),
+  );
+  for (const r of breakdownRes.data) {
+    lines.push(
+      row([
+        r.repoFullName,
+        r.prsMerged,
+        r.avgReviewHours ?? '',
+        r.aiBlocked,
+        r.activeContributors,
+        r.signalRate,
+      ]),
+    );
+  }
+
+  return ok(lines.join('\n'));
+}
+
+// ---------- Share Report (#719) ----------
+
+const SNAPSHOT_TTL_DAYS = 30;
+
+export async function createReportSnapshot(
+  installationId: number,
+  range: AnalyticsRange,
+): Promise<Result<{ url: string }>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:share-report', ...RATE_LIMIT_TIERS.STRICT },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user } = authRes.data;
+
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return err('no_repos', 'No repositories to report on for this installation');
+  }
+
+  const [statsRes, volumeRes, breakdownRes] = await Promise.all([
+    getAnalyticsStats(installationId, range),
+    getPrVolumeTimeSeries(installationId, range),
+    getRepoAnalyticsBreakdown(installationId, range),
+  ]);
+  if (!statsRes.ok) return statsRes;
+  if (!volumeRes.ok) return volumeRes;
+  if (!breakdownRes.ok) return breakdownRes;
+
+  const db = tryGetDb();
+  if (!db) return err('db_error', 'No database connection');
+
+  const token = randomBytes(12).toString('base64url');
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SNAPSHOT_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  const snapshotData = {
+    range,
+    stats: statsRes.data,
+    prVolume: volumeRes.data,
+    repoBreakdown: breakdownRes.data,
+    generatedAt: now.toISOString(),
+  };
+
+  try {
+    await db.insert(reportSnapshots).values({
+      token,
+      installationId,
+      range,
+      snapshotData,
+      createdBy: user.id,
+      expiresAt,
+    });
+  } catch {
+    return err('db_error', 'Failed to create report snapshot');
+  }
+
+  return ok({ url: `/report/${token}` });
 }

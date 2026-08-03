@@ -3,6 +3,11 @@
  * Tests + local dev = in-memory map (no network, deterministic).
  *
  * Swap providers later by replacing the backend below — call sites never change.
+ *
+ * Fail-closed: if a real production deploy has no distributed backend configured,
+ * rate limiting must NOT silently degrade to a per-invocation MemoryBackend (which
+ * disables webhook/action throttling on serverless). Instead every rate-limit hit
+ * reports over the limit so calls are blocked, and other cache ops become safe no-ops.
  */
 
 import { Redis as UpstashRedis } from '@upstash/redis';
@@ -14,6 +19,17 @@ interface CacheBackend {
   del(key: string): Promise<void>;
   scanDel(prefix: string): Promise<void>;
   rateLimitHit(key: string, windowSec: number, now: number): Promise<RateLimitBucket>;
+  // Sliding-window counter: `count` reflects every hit in the trailing
+  // `windowSec` seconds, closing the fixed-window boundary loophole where a
+  // caller could spend a full budget at the end of one window and another at
+  // the start of the next. `limit` lets a backend bound its storage without
+  // changing the observed count/remaining decision.
+  rateLimitHitSlidingWindow(
+    key: string,
+    windowSec: number,
+    limit: number,
+    now: number,
+  ): Promise<RateLimitBucket>;
 }
 
 export type RateLimitBucket = {
@@ -70,6 +86,59 @@ class MemoryBackend implements CacheBackend {
     const next = count + 1;
     this.store.set(key, { value: next, expiresAt: hit.expiresAt });
     return { count: next, resetAt: hit.expiresAt };
+  }
+
+  async rateLimitHitSlidingWindow(
+    key: string,
+    windowSec: number,
+    limit: number,
+    now: number,
+  ): Promise<RateLimitBucket> {
+    const windowMs = windowSec * 1000;
+    const cutoff = now - windowMs;
+    const existing = this.store.get(key);
+    const prior = Array.isArray(existing?.value) ? (existing.value as number[]) : [];
+    const hits = prior.filter((t) => t > cutoff);
+    hits.push(now);
+
+    // Only the newest `limit + 1` timestamps can flip the over-limit decision,
+    // and any older excess would age out no later than the entries we retain —
+    // so capping here bounds memory without altering count/remaining/eviction.
+    const bounded = hits.length > limit + 1 ? hits.slice(hits.length - limit - 1) : hits;
+
+    const resetAt = now + windowMs;
+    this.store.set(key, { value: bounded, expiresAt: resetAt });
+    return { count: bounded.length, resetAt };
+  }
+}
+
+/**
+ * Fail-closed backend for a production deploy with no shared cache configured.
+ * Every rate-limit hit reports over the limit (blocking), and all other cache
+ * operations are safe no-ops so nothing reads stale or cross-tenant state.
+ */
+class BlockingBackend implements CacheBackend {
+  async get<T>(): Promise<T | null> {
+    return null;
+  }
+
+  async set(): Promise<void> {}
+
+  async del(): Promise<void> {}
+
+  async scanDel(): Promise<void> {}
+
+  async rateLimitHit(_key: string, windowSec: number, now: number): Promise<RateLimitBucket> {
+    return blockedRateLimitBucket(windowSec, now);
+  }
+
+  async rateLimitHitSlidingWindow(
+    _key: string,
+    windowSec: number,
+    _limit: number,
+    now: number,
+  ): Promise<RateLimitBucket> {
+    return blockedRateLimitBucket(windowSec, now);
   }
 }
 
@@ -132,6 +201,32 @@ export class UpstashBackend implements CacheBackend {
       return blockedRateLimitBucket(windowSec, now);
     }
   }
+
+  async rateLimitHitSlidingWindow(
+    key: string,
+    windowSec: number,
+    _limit: number,
+    now: number,
+  ): Promise<RateLimitBucket> {
+    const windowMs = windowSec * 1000;
+    try {
+      // Unique member so simultaneous hits sharing a timestamp don't collapse
+      // into one sorted-set entry. The pipeline runs atomically.
+      const member = `${now}-${Math.random()}`;
+      const results = await this.redis
+        .multi()
+        .zremrangebyscore(key, 0, now - windowMs)
+        .zadd(key, { score: now, member })
+        .zcard(key)
+        .pexpire(key, windowMs)
+        .exec();
+      const zcard = results[2];
+      const count = typeof zcard === 'number' ? zcard : 0;
+      return { count, resetAt: now + windowMs };
+    } catch {
+      return blockedRateLimitBucket(windowSec, now);
+    }
+  }
 }
 
 export class IoRedisBackend implements CacheBackend {
@@ -190,6 +285,32 @@ export class IoRedisBackend implements CacheBackend {
       return blockedRateLimitBucket(windowSec, now);
     }
   }
+
+  async rateLimitHitSlidingWindow(
+    key: string,
+    windowSec: number,
+    _limit: number,
+    now: number,
+  ): Promise<RateLimitBucket> {
+    const windowMs = windowSec * 1000;
+    try {
+      // Unique member so simultaneous hits sharing a timestamp don't collapse
+      // into one sorted-set entry. MULTI makes the four commands atomic.
+      const member = `${now}-${Math.random()}`;
+      const results = await this.redis
+        .multi()
+        .zremrangebyscore(key, 0, now - windowMs)
+        .zadd(key, now, member)
+        .zcard(key)
+        .pexpire(key, windowMs)
+        .exec();
+      const zcard = results?.[2]?.[1];
+      const count = typeof zcard === 'number' ? zcard : 0;
+      return { count, resetAt: now + windowMs };
+    } catch {
+      return blockedRateLimitBucket(windowSec, now);
+    }
+  }
 }
 
 let backend: CacheBackend = pickDefaultBackend();
@@ -205,31 +326,50 @@ function pickDefaultBackend(): CacheBackend {
   if (redisUrl) {
     const client = new Redis(redisUrl, {
       maxRetriesPerRequest: 1,
-      retryStrategy: () => null, // Do not keep retrying connection
+      // Reconnect with bounded backoff instead of giving up permanently: a
+      // transient Redis blip must not kill the client (and with it rate
+      // limiting) for the life of a warm serverless instance.
+      retryStrategy: (times: number) => {
+        if (times > 10) return null;
+        return Math.min(times * 250, 5000);
+      },
     });
     client.on('error', (err: Error) => {
-      console.warn(`[cache] Local Redis error: ${err.message}. Falling back to memory.`);
-      backend = new MemoryBackend();
-      client.disconnect();
+      console.warn(
+        `[cache] Local Redis error: ${err.message}. Operations will fail over to null/blocked fallback per call.`,
+      );
     });
     return new IoRedisBackend(client);
   }
 
-  // No distributed backend configured. Fall back to in-process MemoryBackend.
-  // In Vercel (and any other serverless runtime), each function invocation runs
-  // in an isolated process with its own memory, so counters are never shared
-  // across concurrent invocations. Rate limiting is effectively disabled.
-  // Set KV_REST_API_URL + KV_REST_API_TOKEN (Upstash) or REDIS_URL to enable
-  // shared, durable rate limiting.
-  if (process.env.NODE_ENV === 'production') {
+  if (isProductionDeploy()) {
+    // No distributed backend on a real production deploy. Do NOT silently
+    // degrade to MemoryBackend: each serverless invocation would get its own
+    // counter, effectively disabling webhook/action throttling. Fail closed so
+    // rate limiting blocks every call and nothing runs unthrottled.
     console.error(
-      '[cache] MISCONFIGURATION: No Redis or Upstash backend is configured. ' +
-        'Falling back to MemoryBackend. Rate limiting is NOT shared across ' +
-        'serverless invocations and is effectively disabled in production. ' +
-        'Set KV_REST_API_URL + KV_REST_API_TOKEN (Upstash) or REDIS_URL.',
+      '[cache] CRITICAL MISCONFIGURATION: No Redis or Upstash backend is configured on a production deploy. ' +
+        'Rate limiting is failing CLOSED (all calls blocked). ' +
+        'Set KV_REST_API_URL + KV_REST_API_TOKEN (Upstash) or REDIS_URL immediately.',
     );
+    return new BlockingBackend();
   }
+
+  // No distributed backend outside a production deploy (local dev, tests, Vercel
+  // preview). Use an in-process MemoryBackend — deterministic for tests, and fine
+  // for ephemeral dev/preview traffic.
   return new MemoryBackend();
+}
+
+/**
+ * True on a real production deploy. `next build` sets NODE_ENV=production on
+ * Vercel Preview deployments too, so gate on VERCEL_ENV first (only set to
+ * 'production' on production deploys) and fall back to NODE_ENV off-Vercel.
+ */
+export function isProductionDeploy(): boolean {
+  return process.env.VERCEL_ENV
+    ? process.env.VERCEL_ENV === 'production'
+    : process.env.NODE_ENV === 'production';
 }
 
 /** True when a distributed cache backend (Upstash or Redis) is configured. */
@@ -266,4 +406,13 @@ export function cacheRateLimitHit(
   now: number,
 ): Promise<RateLimitBucket> {
   return backend.rateLimitHit(key, windowSec, now);
+}
+
+export function cacheRateLimitHitSlidingWindow(
+  key: string,
+  windowSec: number,
+  limit: number,
+  now: number,
+): Promise<RateLimitBucket> {
+  return backend.rateLimitHitSlidingWindow(key, windowSec, limit, now);
 }

@@ -53,6 +53,44 @@ describe('processMembershipEvents', () => {
       expect(result).toEqual({ ok: true, action: 'added' });
     });
 
+    it('triggers maintainer discover with installationId when organization is known', async () => {
+      wire({
+        profiles: sb({
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { id: 'u1', github_handle: 'alice' },
+          }),
+        }),
+        github_installations: sb({
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          is: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { id: 42 },
+          }),
+        }),
+      });
+
+      const event = {
+        data: {
+          payload: {
+            action: 'added',
+            member: { login: 'alice' },
+            organization: { login: 'test-org' },
+          },
+        },
+      };
+
+      const result = await runMembership({ event, step });
+
+      expect(mockSend).toHaveBeenCalledWith({
+        name: 'maintainer/discover',
+        data: { userId: 'u1', githubHandle: 'alice', force: true, installationId: 42 },
+      });
+      expect(result).toEqual({ ok: true, action: 'added' });
+    });
+
     it('skips if member is not a MergeShip user', async () => {
       wire({
         profiles: sb({
@@ -82,7 +120,7 @@ describe('processMembershipEvents', () => {
           eq: vi.fn().mockReturnThis(),
           limit: vi.fn().mockReturnThis(),
           maybeSingle: vi.fn().mockResolvedValue({
-            data: { repo_full_name: 'test-org/repo-1' },
+            data: { installation_id: 42, repo_full_name: 'test-org/repo-1' },
           }),
         }),
         profiles: sb({
@@ -108,7 +146,7 @@ describe('processMembershipEvents', () => {
 
       expect(mockSend).toHaveBeenCalledWith({
         name: 'maintainer/discover',
-        data: { userId: 'u1', githubHandle: 'alice', force: true },
+        data: { userId: 'u1', githubHandle: 'alice', force: true, installationId: 42 },
       });
       expect(result).toEqual({ ok: true, action: 'added' });
     });

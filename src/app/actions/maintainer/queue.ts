@@ -98,6 +98,8 @@ export async function getMaintainerPrQueue(args: {
   if (filters.state.length > 0) q = q.in('state', filters.state);
   if (filters.mentorVerified === 'yes') q = q.eq('mentor_verified', true);
   else if (filters.mentorVerified === 'no') q = q.eq('mentor_verified', false);
+  if (filters.aiFlagged === 'yes') q = q.eq('ai_flagged', true);
+  else if (filters.aiFlagged === 'no') q = q.eq('ai_flagged', false);
   if (filters.authorLogin) q = q.eq('author_login', filters.authorLogin);
 
   // Pull a generous slice; we re-sort by tier client-side.
@@ -512,6 +514,9 @@ export async function closePullRequest(prId: number): Promise<Result<{ ok: true 
     status: 'success',
   });
 
+  revalidatePath(`/maintainer/pr/${prId}`);
+  revalidatePath('/maintainer');
+
   return ok({ ok: true });
 }
 
@@ -676,6 +681,9 @@ export async function requestChanges(prId: number, comment: string): Promise<Res
     targetId: prId.toString(),
     status: 'success',
   });
+
+  revalidatePath(`/maintainer/pr/${prId}`);
+  revalidatePath('/maintainer');
 
   return ok({ ok: true });
 }

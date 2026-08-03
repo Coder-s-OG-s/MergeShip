@@ -181,6 +181,7 @@ describe('sumXp', () => {
 describe('insertXpEvent dailyCapLimit', () => {
   it('inserts successfully if count is within limit', async () => {
     mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
+    mockExecute.mockResolvedValueOnce([]); // existing-row check: no match
     mockExecute.mockResolvedValueOnce([{ count: 2 }]); // daily count increment
     mockReturning.mockResolvedValueOnce([{ id: 1 }]); // insert returns row ID
 
@@ -202,6 +203,7 @@ describe('insertXpEvent dailyCapLimit', () => {
 
   it('rolls back and throws daily_review_cap_reached if count exceeds limit', async () => {
     mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
+    mockExecute.mockResolvedValueOnce([]); // existing-row check: no match
     mockExecute.mockResolvedValueOnce([{ count: 6 }]); // daily count increment (exceeds cap)
 
     const { insertXpEvent } = await import('./events');
@@ -219,10 +221,9 @@ describe('insertXpEvent dailyCapLimit', () => {
     ).rejects.toThrow('daily_review_cap_reached');
   });
 
-  it('rolls back and returns false if event insert is a duplicate', async () => {
+  it('returns false without incrementing when the row already exists', async () => {
     mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
-    mockExecute.mockResolvedValueOnce([{ count: 2 }]); // daily count increment
-    mockReturning.mockResolvedValueOnce([]); // duplicate insert (no rows returned)
+    mockExecute.mockResolvedValueOnce([{ id: 1 }]); // existing-row check: found → no increment
 
     const { insertXpEvent } = await import('./events');
     const inserted = await insertXpEvent({
@@ -237,6 +238,10 @@ describe('insertXpEvent dailyCapLimit', () => {
     });
 
     expect(inserted).toBe(false);
+    // No daily-counter bump and no event insert on the duplicate path.
+    expect(mockExecute).toHaveBeenCalledTimes(2);
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockReturning).not.toHaveBeenCalled();
   });
 
   it('rethrows generic database transaction errors', async () => {
@@ -256,5 +261,62 @@ describe('insertXpEvent dailyCapLimit', () => {
         },
       }),
     ).rejects.toThrow('Connection timeout');
+  });
+
+  it('with caller tx: inserts and returns true when the row is fresh', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
+    mockExecute.mockResolvedValueOnce([]); // existing-row check: no match
+    mockExecute.mockResolvedValueOnce([{ count: 1 }]); // daily count increment
+    mockReturning.mockResolvedValueOnce([{ id: 1 }]); // insert returns row ID
+
+    const tx = { insert: mockInsert, execute: mockExecute, rollback: vi.fn() };
+    const { insertXpEvent } = await import('./events');
+    const inserted = await insertXpEvent(
+      {
+        userId: 'u1',
+        source: 'help_review',
+        refId: 'help-review:1:alice',
+        xpDelta: 30,
+        dailyCapLimit: {
+          action: 'review',
+          limit: 5,
+        },
+      },
+      tx as never,
+    );
+
+    expect(inserted).toBe(true);
+    // The caller's transaction is used directly — no nested transaction.
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(tx.rollback).not.toHaveBeenCalled();
+  });
+
+  it('with caller tx: duplicate returns false without incrementing or rolling back the caller tx', async () => {
+    mockExecute.mockResolvedValueOnce([{ sum: 0 }]); // sumXpToday
+    mockExecute.mockResolvedValueOnce([{ id: 1 }]); // existing-row check: found → no increment
+
+    const tx = { insert: mockInsert, execute: mockExecute, rollback: vi.fn() };
+    const { insertXpEvent } = await import('./events');
+    const inserted = await insertXpEvent(
+      {
+        userId: 'u1',
+        source: 'help_review',
+        refId: 'help-review:1:alice',
+        xpDelta: 30,
+        dailyCapLimit: {
+          action: 'review',
+          limit: 5,
+        },
+      },
+      tx as never,
+    );
+
+    expect(inserted).toBe(false);
+    // Critical regression guard: the caller tx must survive untouched and the
+    // daily counter must not be inflated by the duplicate.
+    expect(tx.rollback).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockExecute).toHaveBeenCalledTimes(2); // sumXpToday + existing-row check only
   });
 });

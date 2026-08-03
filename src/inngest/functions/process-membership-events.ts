@@ -39,9 +39,28 @@ export const processMembershipEvent = inngest.createFunction(
         .maybeSingle();
       if (!profile) return { skipped: true, reason: 'not_a_user' };
 
+      // Resolve the installation for this org so maintainer-discover can
+      // discover the new grant even if the user isn't in the junction table yet.
+      let installationId: number | undefined;
+      if (payload.organization?.login) {
+        const { data: install } = await sb
+          .from('github_installations')
+          .select('id')
+          .eq('account_login', payload.organization.login)
+          .eq('account_type', 'Organization')
+          .is('uninstalled_at', null)
+          .maybeSingle();
+        if (install) installationId = install.id;
+      }
+
       await inngest.send({
         name: 'maintainer/discover',
-        data: { userId: profile.id, githubHandle: profile.github_handle, force: true },
+        data: {
+          userId: profile.id,
+          githubHandle: profile.github_handle,
+          force: true,
+          ...(installationId !== undefined ? { installationId } : {}),
+        },
       });
       return { ok: true, action: payload.action };
     });
@@ -70,7 +89,7 @@ export const processMemberEvent = inngest.createFunction(
       // we don't care about this collaborator.
       const { data: repoMatch } = await sb
         .from('installation_repositories')
-        .select('repo_full_name')
+        .select('installation_id')
         .eq('repo_full_name', payload.repository!.full_name)
         .limit(1)
         .maybeSingle();
@@ -85,7 +104,12 @@ export const processMemberEvent = inngest.createFunction(
 
       await inngest.send({
         name: 'maintainer/discover',
-        data: { userId: profile.id, githubHandle: profile.github_handle, force: true },
+        data: {
+          userId: profile.id,
+          githubHandle: profile.github_handle,
+          force: true,
+          installationId: repoMatch.installation_id,
+        },
       });
       return { ok: true, action: payload.action };
     });

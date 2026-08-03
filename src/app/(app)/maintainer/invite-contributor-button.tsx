@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { sendInvite, getMyGithubHandle } from '@/app/actions/maintainer';
 import { captureEvent } from '@/lib/posthog/helpers';
@@ -21,6 +21,28 @@ export default function InviteContributorButton({
   const [linkCopied, setLinkCopied] = useState(false);
   const [generatingLink, setGeneratingLink] = useState(false);
   const router = useRouter();
+
+  const handleClose = () => {
+    setOpen(false);
+    setError(null);
+    setEmail('');
+    setLinkCopied(false);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -78,8 +100,14 @@ export default function InviteContributorButton({
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={handleClose}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 className="mb-2 text-lg font-semibold text-white">Invite a contributor</h2>
             <p className="mb-4 text-sm text-zinc-400">
               Send an email invite to join {accountLogin} on MergeShip.
@@ -129,12 +157,7 @@ export default function InviteContributorButton({
 
             <button
               type="button"
-              onClick={() => {
-                setOpen(false);
-                setError(null);
-                setEmail('');
-                setLinkCopied(false);
-              }}
+              onClick={handleClose}
               className="mt-5 text-sm text-zinc-500 hover:text-zinc-300"
             >
               Close
