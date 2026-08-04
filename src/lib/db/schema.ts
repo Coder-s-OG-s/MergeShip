@@ -771,3 +771,17 @@ export const chatMessages = pgTable(
     channelTimeIdx: index('chat_messages_channel_time_idx').on(t.channelId, t.createdAt),
   }),
 );
+
+// ---------- merge freeze windows ----------
+
+export const mergeFreezeWindows = pgTable('merge_freeze_windows', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  installationId: bigint('installation_id', { mode: 'number' })
+    .notNull()
+    .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+  cronSchedule: text('cron_schedule'),
+  isEmergencyFreeze: boolean('is_emergency_freeze').notNull().default(false),
+  freezeMessage: text('freeze_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
