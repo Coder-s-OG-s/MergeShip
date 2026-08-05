@@ -691,6 +691,39 @@ export const userChallengeProgress = pgTable(
   }),
 );
 
+// ---------- invites (structured invite system) ----------
+
+export const invites = pgTable(
+  'invites',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    installationId: bigint('installation_id', { mode: 'number' })
+      .notNull()
+      .references(() => githubInstallations.id, { onDelete: 'cascade' }),
+    invitedByUserId: uuid('invited_by_user_id')
+      .notNull()
+      .references(() => profiles.id),
+    email: text('email').notNull(),
+    token: text('token').notNull().unique(),
+    status: text('status', { enum: ['pending', 'accepted', 'expired'] })
+      .notNull()
+      .default('pending'),
+    sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    // Ensures a unique pending invite per email per organization/installation
+    uniqInstallEmail: uniqueIndex('invites_installation_email_unique').on(
+      t.installationId,
+      t.email,
+    ),
+    installationIdx: index('invites_installation_idx').on(t.installationId),
+    tokenIdx: index('invites_token_idx').on(t.token),
+  }),
+);
+
+
 // ---------- maintainer audit logs ----------
 
 export const maintainerAuditLogs = pgTable(
@@ -733,41 +766,3 @@ export const organizationInvites = pgTable('organization_invites', {
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
 });
 
-export const chatChannels = pgTable(
-  'chat_channels',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    mentorId: uuid('mentor_id')
-      .notNull()
-      .references(() => profiles.id, { onDelete: 'cascade' }),
-    menteeId: uuid('mentee_id')
-      .notNull()
-      .references(() => profiles.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    uniqMentorMentee: uniqueIndex('chat_channels_mentor_mentee_uniq').on(t.mentorId, t.menteeId),
-    mentorIdx: index('chat_channels_mentor_idx').on(t.mentorId),
-    menteeIdx: index('chat_channels_mentee_idx').on(t.menteeId),
-  }),
-);
-
-export const chatMessages = pgTable(
-  'chat_messages',
-  {
-    id: bigserial('id', { mode: 'number' }).primaryKey(),
-    channelId: uuid('channel_id')
-      .notNull()
-      .references(() => chatChannels.id, { onDelete: 'cascade' }),
-    senderId: uuid('sender_id')
-      .notNull()
-      .references(() => profiles.id, { onDelete: 'cascade' }),
-    content: text('content').notNull(),
-    readAt: timestamp('read_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    channelTimeIdx: index('chat_messages_channel_time_idx').on(t.channelId, t.createdAt),
-  }),
-);
