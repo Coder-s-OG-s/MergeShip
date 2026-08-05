@@ -12,18 +12,42 @@ vi.mock('@/lib/cache', () => ({
   cacheSet: vi.fn(),
 }));
 
+const applyFilters = (rows: unknown, filters: Array<[string, unknown]>): unknown => {
+  if (!Array.isArray(rows)) return rows;
+  let filtered = rows as Array<Record<string, unknown>>;
+  for (const [col, val] of filters) {
+    if (col.startsWith('github_installations.')) {
+      const field = col.split('.')[1] as string;
+      filtered = filtered.filter((r) => {
+        const install = r.github_installations;
+        const joined = (Array.isArray(install) ? install[0] : install) as
+          | Record<string, unknown>
+          | null
+          | undefined;
+        if (!joined) return val === null ? false : true;
+        return joined[field] === val;
+      });
+    }
+  }
+  return filtered;
+};
+
 const mockSupabase = (mockTables: Record<string, unknown>) => {
   const mockClient = {
     from: vi.fn().mockImplementation((table: string) => {
+      const eqFilters: Array<[string, unknown]> = [];
       const chain = {
         select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockImplementation((col: string, val: unknown) => {
+          eqFilters.push([col, val]);
+          return chain;
+        }),
         limit: vi.fn().mockReturnThis(),
         maybeSingle: vi.fn().mockImplementation(() => {
-          return Promise.resolve({ data: (mockTables[table] as unknown) ?? null });
+          return Promise.resolve({ data: applyFilters(mockTables[table], eqFilters) ?? null });
         }),
         then: function (resolve: (value: unknown) => void) {
-          resolve({ data: (mockTables[table] as unknown) ?? null });
+          resolve({ data: applyFilters(mockTables[table], eqFilters) ?? null });
         },
       };
       return chain;
@@ -92,13 +116,13 @@ describe('isUserMaintainer', () => {
     expect(cacheSet).toHaveBeenCalledWith('maint:status:user1', false, 3600);
   });
 
-  it('returns false when service client is not configured', async () => {
+  it('returns false when service client is not configured (without caching the denial)', async () => {
     vi.mocked(cacheGet).mockResolvedValue(null);
     vi.mocked(getServiceSupabase).mockReturnValue(null);
 
     const result = await isUserMaintainer('user1');
     expect(result).toBe(false);
-    expect(cacheSet).toHaveBeenCalledWith('maint:status:user1', false, 3600);
+    expect(cacheSet).not.toHaveBeenCalled();
   });
 
   it('returns cached result when cache is warm (should not hit DB)', async () => {

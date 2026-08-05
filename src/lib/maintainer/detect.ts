@@ -8,7 +8,8 @@ import { unwrapJoin } from '@/lib/supabase/inner-join';
  *
  * Cached per user for 1h. Cache is busted by:
  *   - maintainer-discover function (after writing junction changes)
- *   - process-installation-event (on installation.deleted)
+ *   - process-installation-event (on installation.created / deleted)
+ *   - any grant path that writes junction rows
  */
 
 const TTL_S = 60 * 60;
@@ -19,22 +20,22 @@ export async function isUserMaintainer(userId: string): Promise<boolean> {
   if (cached !== null) return cached;
 
   const sb = getServiceSupabase();
-  if (!sb) {
-    await cacheSet(cacheKey, false, TTL_S);
-    return false;
-  }
+  // A missing service client is a transient infra condition — do NOT cache
+  // the denial, otherwise a blip becomes a 1-hour maintainer lockout.
+  if (!sb) return false;
 
+  // DB-side existence check: only junction rows joined to an active
+  // (non-uninstalled) install count. No arbitrary row cap, so a user with
+  // more than 20 junction rows is still classified correctly. limit(1) just
+  // bounds the payload — we only need to know whether any active row exists.
   const { data } = await sb
     .from('github_installation_users')
     .select('installation_id, github_installations!inner(uninstalled_at)')
     .eq('user_id', userId)
-    .limit(20);
+    .eq('github_installations.uninstalled_at', null)
+    .limit(1);
 
-  const has = (data ?? []).some((row) => {
-    const r = row as unknown as { github_installations: unknown };
-    const i = unwrapJoin<{ uninstalled_at: string | null }>(r.github_installations);
-    return i && i.uninstalled_at === null;
-  });
+  const has = (data ?? []).length > 0;
 
   await cacheSet(cacheKey, has, TTL_S);
   return has;

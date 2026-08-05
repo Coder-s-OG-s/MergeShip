@@ -1,6 +1,7 @@
 import { inngest } from '../client';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getInstallOctokit } from '@/lib/github/app';
+import { cacheDel } from '@/lib/cache';
 
 /**
  * GitHub App installation lifecycle:
@@ -82,6 +83,10 @@ export const processInstallationEvent = inngest.createFunction(
             },
             { onConflict: 'installation_id,user_id' },
           );
+          // New grant for this user — drop the cached 1h denial (if any) so
+          // the grant takes effect immediately instead of after the next
+          // discovery run.
+          await cacheDel(`maint:status:${profile.id}`);
         }
 
         // GitHub only includes `repositories` in the payload when the user
