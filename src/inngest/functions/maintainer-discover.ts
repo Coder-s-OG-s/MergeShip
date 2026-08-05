@@ -6,7 +6,9 @@ import {
   decideOrgGrant,
   decideRepoGrant,
   reconcileGrants,
+  reconcileRepoGrants,
   type ProposedGrant,
+  type ProposedRepoGrant,
 } from '@/lib/maintainer/discover';
 import { cacheGet, cacheSet } from '@/lib/cache';
 
@@ -207,26 +209,48 @@ async function discoverForUser(
       }
     }
 
-    if (highestRepoGrant && repoGrants.length > 0) {
+    // Reconcile per-repo grants unconditionally. This runs even when the user
+    // holds no grant on this install anymore, so rows for demoted/removed
+    // collaborators are deleted instead of persisting forever.
+    const { data: existingRepoRows } = await sb
+      .from('installation_user_repos')
+      .select('repo_full_name, permission_level')
+      .eq('installation_id', install.id)
+      .eq('user_id', userId);
+
+    const { toUpsert: repoUpsert, toDelete: repoDelete } = reconcileRepoGrants(
+      (existingRepoRows ?? []).map((r) => ({
+        repoFullName: r.repo_full_name,
+        permissionLevel: r.permission_level as 'admin' | 'maintain',
+      })),
+      repoGrants.map((g): ProposedRepoGrant => ({ repoFullName: g.repo, permissionLevel: g.perm })),
+    );
+
+    if (repoDelete.length > 0) {
+      await sb
+        .from('installation_user_repos')
+        .delete()
+        .eq('installation_id', install.id)
+        .eq('user_id', userId)
+        .in('repo_full_name', repoDelete);
+    }
+    if (repoUpsert.length > 0) {
+      await sb.from('installation_user_repos').insert(
+        repoUpsert.map((g) => ({
+          installation_id: install.id,
+          user_id: userId,
+          repo_full_name: g.repoFullName,
+          permission_level: g.permissionLevel,
+        })),
+      );
+    }
+
+    if (highestRepoGrant) {
       proposed.push({
         installationId: install.id,
         permissionLevel: highestRepoGrant,
         source: 'membership_check',
       });
-
-      await sb
-        .from('installation_user_repos')
-        .delete()
-        .eq('installation_id', install.id)
-        .eq('user_id', userId);
-      await sb.from('installation_user_repos').insert(
-        repoGrants.map((g) => ({
-          installation_id: install.id,
-          user_id: userId,
-          repo_full_name: g.repo,
-          permission_level: g.perm,
-        })),
-      );
     }
   }
 
