@@ -18,6 +18,9 @@ export type IngestiblePr = {
   updated_at: string;
   user: { login: string };
   base: { repo: { full_name: string } };
+  /** Present on webhook + pulls.get payloads; absent from list/search. */
+  additions?: number | null;
+  deletions?: number | null;
 };
 
 /**
@@ -69,7 +72,15 @@ export type PullRequestUpsertRow = {
   fetched_at: string;
   ai_flagged: boolean;
   ai_flag_reason: string | null;
+  /** Only set when GitHub supplied counts — omit so list/search upserts don't wipe prior values. */
+  additions?: number;
+  deletions?: number;
 };
+
+function normalizeLineCount(value: number | null | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  return Math.max(0, Math.trunc(value));
+}
 
 export function buildPrRow(
   pr: IngestiblePr,
@@ -78,7 +89,7 @@ export function buildPrRow(
   aiFlagged = false,
   aiFlagReason: string | null = null,
 ): PullRequestUpsertRow {
-  return {
+  const row: PullRequestUpsertRow = {
     github_pr_id: pr.id,
     repo_full_name: pr.base.repo.full_name,
     number: pr.number,
@@ -97,4 +108,11 @@ export function buildPrRow(
     ai_flagged: aiFlagged,
     ai_flag_reason: aiFlagReason,
   };
+
+  const additions = normalizeLineCount(pr.additions);
+  const deletions = normalizeLineCount(pr.deletions);
+  if (additions !== undefined) row.additions = additions;
+  if (deletions !== undefined) row.deletions = deletions;
+
+  return row;
 }

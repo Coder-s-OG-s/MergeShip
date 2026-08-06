@@ -144,4 +144,22 @@ describe('buildPrRow', () => {
     expect(row.ai_flagged).toBe(true);
     expect(row.ai_flag_reason).toBe('large_diff');
   });
+
+  it('includes additions and deletions when GitHub supplies them', () => {
+    const row = buildPrRow({ ...base, additions: 128, deletions: 17 }, null, 'opened');
+    expect(row.additions).toBe(128);
+    expect(row.deletions).toBe(17);
+  });
+
+  it('omits additions and deletions when GitHub did not supply them', () => {
+    const row = buildPrRow(base, null, 'opened');
+    expect(row).not.toHaveProperty('additions');
+    expect(row).not.toHaveProperty('deletions');
+  });
+
+  it('normalizes fractional and negative line counts', () => {
+    const row = buildPrRow({ ...base, additions: 12.9, deletions: -3 }, null, 'opened');
+    expect(row.additions).toBe(12);
+    expect(row.deletions).toBe(0);
+  });
 });

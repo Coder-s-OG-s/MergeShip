@@ -56,6 +56,8 @@ type PrPayload = {
     updated_at: string;
     user: { login: string };
     base: { repo: { full_name: string } };
+    additions?: number;
+    deletions?: number;
   };
 };
 
