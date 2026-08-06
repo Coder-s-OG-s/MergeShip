@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import { Outfit, Inter, DM_Serif_Display, DM_Mono, DM_Sans } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import { CustomCursor } from '@/components/custom-cursor';
 import './globals.css';
-
 const outfit = Outfit({
   subsets: ['latin'],
   weight: ['300', '400', '500', '600', '700', '800', '900'],
@@ -81,7 +81,8 @@ export default function RootLayout({
       lang="en"
       className={`dark ${outfit.variable} ${inter.variable} ${dmSerifDisplay.variable} ${dmMono.variable} ${dmSans.variable}`}
     >
-      <body className="bg-dark-900 text-white antialiased">
+<body className="bg-dark-900 text-white antialiased">
+        <CustomCursor />
         {children}
         <Analytics />
         <SpeedInsights />
