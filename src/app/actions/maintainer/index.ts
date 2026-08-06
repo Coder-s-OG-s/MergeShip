@@ -7,7 +7,7 @@ export type {
   AnalyticsStats,
   PrVolumeBucket,
 } from './analytics';
-export type { ContributorListRow, ContributorStats } from './contributors';
+export type { ContributorListRow, ContributorStats, ContributorSummary } from './contributors';
 export type { FailedWebhookEventRow } from './failed-events';
 export type { XpPreviewBreakdown } from './xp-preview';
 export type { InviteRow } from './invites';
@@ -273,6 +273,12 @@ export async function getContributorsList(
   ...args: Parameters<typeof contributorsActions.getContributorsList>
 ): ReturnType<typeof contributorsActions.getContributorsList> {
   return contributorsActions.getContributorsList(...args);
+}
+
+export async function getContributorSummary(
+  ...args: Parameters<typeof contributorsActions.getContributorSummary>
+): ReturnType<typeof contributorsActions.getContributorSummary> {
+  return contributorsActions.getContributorSummary(...args);
 }
 
 export async function getAnalyticsStats(

@@ -8,7 +8,9 @@ import {
   getPrActivityTimeline,
   previewMergeXp,
   getPrDiff,
+  getContributorSummary,
 } from '@/app/actions/maintainer';
+import { ContributorPanel } from './contributor-panel';
 import { isOk } from '@/lib/result';
 import { VerifyButton } from '@/app/(app)/issues/verify-button';
 import { MergeDecisionPanel } from './merge-decision-panel';
@@ -97,6 +99,12 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
     ? await getPrDiff(pr.installationId, pr.repoFullName, pr.number)
     : null;
   const diffContent = diffRes && isOk(diffRes) ? diffRes.data : null;
+
+  const summaryRes =
+    pr.authorUserId && pr.installationId
+      ? await getContributorSummary(pr.authorUserId, pr.installationId)
+      : null;
+  const contributorSummary = summaryRes && isOk(summaryRes) ? summaryRes.data : null;
 
   return (
     <div className="min-h-screen bg-zinc-950 px-6 py-12 text-white">
@@ -511,6 +519,15 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
               </div>
             )}
 
+            {/* Contributor Panel */}
+            {contributorSummary && (
+              <ContributorPanel
+                handle={contributorSummary.handle}
+                level={contributorSummary.level}
+                totalPrs={contributorSummary.totalPrs}
+                mergedPrs={contributorSummary.mergedPrs}
+              />
+            )}
             {/* Merge Decision Card */}
             <div className="sticky top-6 rounded-sm border border-emerald-500 bg-[#0c0c0e] p-6 shadow-[0_0_20px_rgba(16,185,129,0.05)]">
               <h2 className="mb-6 text-sm font-medium text-zinc-200">Merge Decision</h2>

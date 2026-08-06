@@ -176,6 +176,79 @@ export async function getContributorsList(
   return ok(rows);
 }
 
+export type ContributorSummary = {
+  handle: string;
+  level: number;
+  totalPrs: number;
+  mergedPrs: number;
+};
+
+/**
+ * Totals for a single author across every repo in this install — the
+ * "Contributor" panel on the PR detail page. Trust score is intentionally
+ * left out here; it depends on the composite trust score work (#454) and
+ * is computed separately in getContributorsList via computeTrustScore.
+ */
+export async function getContributorSummary(
+  userId: string,
+  installationId: number,
+): Promise<Result<ContributorSummary | null>> {
+  const authRes = await requireMaintainer({
+    rateLimit: { namespace: 'maint:contributor-summary', ...RATE_LIMIT_TIERS.GENEROUS },
+    requireService: true,
+  });
+  if (!authRes.ok) return authRes;
+  const { user, service } = authRes.data;
+
+  // Defense in depth: confirm the requested install actually belongs to the user.
+  const repos = await listMaintainerRepos(user.id, installationId);
+  if (repos.length === 0) {
+    return ok(null);
+  }
+
+  const { data: profile, error: profileError } = await service
+    .from('profiles')
+    .select('github_handle, level')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (profileError) {
+    return err('db_error', profileError.message);
+  }
+
+  if (!profile) {
+    return ok(null);
+  }
+
+  const { count: totalPrs, error: totalError } = await service
+    .from('pull_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('author_user_id', userId)
+    .in('repo_full_name', repos);
+
+  if (totalError) {
+    return err('db_error', totalError.message);
+  }
+
+  const { count: mergedPrs, error: mergedError } = await service
+    .from('pull_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('author_user_id', userId)
+    .eq('state', 'merged')
+    .in('repo_full_name', repos);
+
+  if (mergedError) {
+    return err('db_error', mergedError.message);
+  }
+
+  return ok({
+    handle: profile.github_handle,
+    level: profile.level ?? 0,
+    totalPrs: totalPrs ?? 0,
+    mergedPrs: mergedPrs ?? 0,
+  });
+}
+
 export async function removeContributorFromOrg(
   installationId: number,
   targetHandle: string,
