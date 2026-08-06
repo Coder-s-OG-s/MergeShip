@@ -15,10 +15,19 @@ type Props = {
 
 type Filter = 'open' | 'closed' | 'merged';
 
-export function getPrStats(prNumber: number) {
-  // Deterministic line change stats generator
-  const additions = ((prNumber * 17) % 480) + 12;
-  const deletions = ((prNumber * 7) % 220) + 3;
+export function getPrStats(pr: {
+  additions?: number | null;
+  deletions?: number | null;
+}): { additions: number; deletions: number } | null {
+  const { additions, deletions } = pr;
+  if (
+    typeof additions !== 'number' ||
+    typeof deletions !== 'number' ||
+    !Number.isFinite(additions) ||
+    !Number.isFinite(deletions)
+  ) {
+    return null;
+  }
   return { additions, deletions };
 }
 
@@ -78,7 +87,7 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
         ) : (
           <div className="space-y-6">
             {filtered.map((pr) => {
-              const { additions, deletions } = getPrStats(pr.number);
+              const lineStats = getPrStats(pr);
               const daysElapsed = getDaysElapsed(pr.github_created_at);
               const reviewState = getReviewState(pr.state, pr.pull_request_reviews);
 
@@ -98,10 +107,14 @@ export function GitHubPRsPanel({ prs, claimedPrUrls, githubHandle }: Props) {
                       {daysElapsed}d elapsed
                     </span>
                     <span>·</span>
-                    <span className="font-semibold">
-                      <span className="text-emerald-400">+{additions}</span>{' '}
-                      <span className="text-rose-500">-{deletions}</span>
-                    </span>
+                    {lineStats ? (
+                      <span className="font-semibold">
+                        <span className="text-emerald-400">+{lineStats.additions}</span>{' '}
+                        <span className="text-rose-500">-{lineStats.deletions}</span>
+                      </span>
+                    ) : (
+                      <span className="text-zinc-600">unavailable</span>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
                     <StateBadge state={pr.state} />

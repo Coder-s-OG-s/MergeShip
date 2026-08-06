@@ -3,12 +3,30 @@ import { getPrStats, getDaysElapsed, getReviewState } from './github-prs-panel';
 
 describe('github-prs-panel helpers', () => {
   describe('getPrStats', () => {
-    it('returns deterministic additions and deletions based on prNumber', () => {
-      const stats1 = getPrStats(123);
-      const stats2 = getPrStats(123);
-      expect(stats1).toEqual(stats2);
-      expect(stats1.additions).toBe(((123 * 17) % 480) + 12);
-      expect(stats1.deletions).toBe(((123 * 7) % 220) + 3);
+    it('returns GitHub-supplied additions and deletions', () => {
+      expect(getPrStats({ additions: 42, deletions: 7 })).toEqual({
+        additions: 42,
+        deletions: 7,
+      });
+    });
+
+    it('returns zero counts when GitHub reports empty diffs', () => {
+      expect(getPrStats({ additions: 0, deletions: 0 })).toEqual({
+        additions: 0,
+        deletions: 0,
+      });
+    });
+
+    it('returns null when line-change data has not been synced', () => {
+      expect(getPrStats({})).toBeNull();
+      expect(getPrStats({ additions: null, deletions: null })).toBeNull();
+      expect(getPrStats({ additions: 12, deletions: null })).toBeNull();
+      expect(getPrStats({ additions: undefined, deletions: 3 })).toBeNull();
+    });
+
+    it('returns null for non-finite values', () => {
+      expect(getPrStats({ additions: Number.NaN, deletions: 1 })).toBeNull();
+      expect(getPrStats({ additions: 1, deletions: Number.POSITIVE_INFINITY })).toBeNull();
     });
   });
 

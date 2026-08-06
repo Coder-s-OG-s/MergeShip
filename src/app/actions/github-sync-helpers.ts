@@ -13,6 +13,8 @@ export type GitHubPR = {
   url: string;
   github_created_at: string;
   merged_at: string | null;
+  additions?: number | null;
+  deletions?: number | null;
 };
 
 export type GitHubSearchItem = {
@@ -200,7 +202,7 @@ export async function fetchAndBackfillPRs(
   const { data: saved } = await service
     .from('pull_requests')
     .select(
-      'id, github_pr_id, repo_full_name, number, title, state, url, github_created_at, merged_at',
+      'id, github_pr_id, repo_full_name, number, title, state, url, github_created_at, merged_at, additions, deletions',
     )
     .eq('author_user_id', userId)
     .order('github_created_at', { ascending: false });

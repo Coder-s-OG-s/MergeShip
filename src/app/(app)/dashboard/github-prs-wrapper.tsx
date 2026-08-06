@@ -26,6 +26,8 @@ export default async function GitHubPRsWrapper({
       url,
       github_created_at,
       merged_at,
+      additions,
+      deletions,
       pull_request_reviews ( state )
     `,
     )

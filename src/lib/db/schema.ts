@@ -449,6 +449,8 @@ export const pullRequests = pgTable(
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
     aiFlagged: boolean('ai_flagged').notNull().default(false),
     aiFlagReason: text('ai_flag_reason'),
+    additions: integer('additions'),
+    deletions: integer('deletions'),
   },
   (t) => ({
     uniqRepoNumber: uniqueIndex('pull_requests_repo_number_unique').on(t.repoFullName, t.number),
