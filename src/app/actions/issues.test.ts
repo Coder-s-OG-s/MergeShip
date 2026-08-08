@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => ({
   mockServiceFrom: vi.fn(),
   mockGetInstallOctokit: vi.fn(),
   mockRateLimit: vi.fn(),
+  mockCacheDel: vi.fn().mockResolvedValue(undefined),
+  mockCacheGet: vi.fn().mockResolvedValue(null),
+  mockCacheSet: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -43,9 +46,9 @@ vi.mock('@/lib/supabase/service', () => ({
 }));
 
 vi.mock('@/lib/cache', () => ({
-  cacheGet: vi.fn().mockResolvedValue(null),
-  cacheSet: vi.fn().mockResolvedValue(undefined),
-  cacheDel: vi.fn().mockResolvedValue(undefined),
+  cacheGet: mocks.mockCacheGet,
+  cacheSet: mocks.mockCacheSet,
+  cacheDel: mocks.mockCacheDel,
 }));
 
 vi.mock('@/lib/rate-limit', async (importOriginal) => {
@@ -64,6 +67,7 @@ const createMockChain = (result: unknown, singleResult: unknown = null) => {
     eq: vi.fn().mockReturnThis(),
     in: vi.fn().mockReturnThis(),
     ilike: vi.fn().mockReturnThis(),
+    gte: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     range: vi.fn().mockReturnThis(),
     insert: vi.fn().mockReturnThis(),
@@ -336,12 +340,127 @@ describe('claimIssue', () => {
         createMockChain({ data: [{ repo_full_name: 'other/repo', installation_id: 10 }] }),
       ) // installation_repositories
       .mockReturnValueOnce(createMockChain({}, { data: null, error: null })) // recommendations lookup
+      .mockReturnValueOnce(createMockChain({ count: 2 })) // active claims pre-count
       .mockReturnValueOnce(createMockChain({}, { data: { id: 5 }, error: null })) // insert
+      .mockReturnValueOnce(createMockChain({ count: 3 })) // active claims post-count
       .mockReturnValueOnce(createMockChain({})); // activity_log
 
     const result = await claimIssue(1);
 
     expect(result).toEqual({ ok: true, data: { recId: 5 } });
+    expect(mocks.mockCacheDel).toHaveBeenCalledWith('recs:user-1');
+  });
+
+  it('returns claim_limit when the user already has 3 active claims', async () => {
+    mocks.mockServiceFrom
+      .mockReturnValueOnce(
+        createMockChain(
+          {},
+          {
+            data: { id: 1, difficulty: 'E', xp_reward: 50, repo_full_name: 'other/repo' },
+            error: null,
+          },
+        ),
+      ) // issues single
+      .mockReturnValueOnce(
+        createMockChain({}, { data: { github_handle: 'contributor' }, error: null }),
+      ) // profiles maybeSingle
+      .mockReturnValueOnce(createMockChain({ data: [{ id: 10 }] })) // github_installations
+      .mockReturnValueOnce(
+        createMockChain({ data: [{ repo_full_name: 'other/repo', installation_id: 10 }] }),
+      ) // installation_repositories
+      .mockReturnValueOnce(createMockChain({}, { data: null, error: null })) // recommendations lookup
+      .mockReturnValueOnce(createMockChain({ count: 3 })); // active claims pre-count
+
+    const result = await claimIssue(1);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('claim_limit');
+  });
+
+  it('rolls back a new claim when concurrent claims push the active count over 3', async () => {
+    mocks.mockServiceFrom
+      .mockReturnValueOnce(
+        createMockChain(
+          {},
+          {
+            data: { id: 1, difficulty: 'E', xp_reward: 50, repo_full_name: 'other/repo' },
+            error: null,
+          },
+        ),
+      ) // issues single
+      .mockReturnValueOnce(
+        createMockChain({}, { data: { github_handle: 'contributor' }, error: null }),
+      ) // profiles maybeSingle
+      .mockReturnValueOnce(createMockChain({ data: [{ id: 10 }] })) // github_installations
+      .mockReturnValueOnce(
+        createMockChain({ data: [{ repo_full_name: 'other/repo', installation_id: 10 }] }),
+      ) // installation_repositories
+      .mockReturnValueOnce(createMockChain({}, { data: null, error: null })) // recommendations lookup
+      .mockReturnValueOnce(createMockChain({ count: 2 })) // active claims pre-count
+      .mockReturnValueOnce(createMockChain({}, { data: { id: 5 }, error: null })) // insert
+      .mockReturnValueOnce(createMockChain({ count: 4 })) // active claims post-count (over limit)
+      .mockReturnValueOnce(createMockChain({}, { data: { id: 5 }, error: null })); // rollback update
+
+    const result = await claimIssue(1);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('claim_limit');
+  });
+
+  it('upgrades an existing open recommendation to claimed when under the limit', async () => {
+    mocks.mockServiceFrom
+      .mockReturnValueOnce(
+        createMockChain(
+          {},
+          {
+            data: { id: 1, difficulty: 'E', xp_reward: 50, repo_full_name: 'other/repo' },
+            error: null,
+          },
+        ),
+      ) // issues single
+      .mockReturnValueOnce(
+        createMockChain({}, { data: { github_handle: 'contributor' }, error: null }),
+      ) // profiles maybeSingle
+      .mockReturnValueOnce(createMockChain({ data: [{ id: 10 }] })) // github_installations
+      .mockReturnValueOnce(
+        createMockChain({ data: [{ repo_full_name: 'other/repo', installation_id: 10 }] }),
+      ) // installation_repositories
+      .mockReturnValueOnce(createMockChain({}, { data: { id: 9, status: 'open' }, error: null })) // recommendations lookup
+      .mockReturnValueOnce(createMockChain({ count: 2 })) // active claims pre-count
+      .mockReturnValueOnce(createMockChain({}, { data: { id: 9 }, error: null })) // update
+      .mockReturnValueOnce(createMockChain({ count: 3 })); // active claims post-count
+
+    const result = await claimIssue(1);
+
+    expect(result).toEqual({ ok: true, data: { recId: 9 } });
+  });
+
+  it('re-claiming an already claimed issue is idempotent regardless of the limit', async () => {
+    mocks.mockServiceFrom
+      .mockReturnValueOnce(
+        createMockChain(
+          {},
+          {
+            data: { id: 1, difficulty: 'E', xp_reward: 50, repo_full_name: 'other/repo' },
+            error: null,
+          },
+        ),
+      ) // issues single
+      .mockReturnValueOnce(
+        createMockChain({}, { data: { github_handle: 'contributor' }, error: null }),
+      ) // profiles maybeSingle
+      .mockReturnValueOnce(createMockChain({ data: [{ id: 10 }] })) // github_installations
+      .mockReturnValueOnce(
+        createMockChain({ data: [{ repo_full_name: 'other/repo', installation_id: 10 }] }),
+      ) // installation_repositories
+      .mockReturnValueOnce(
+        createMockChain({}, { data: { id: 9, status: 'claimed' }, error: null }),
+      ); // recommendations lookup
+
+    const result = await claimIssue(1);
+
+    expect(result).toEqual({ ok: true, data: { recId: 9 } });
   });
 
   it('rejects claims on issues in a repository the user owns', async () => {
