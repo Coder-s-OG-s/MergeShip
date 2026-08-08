@@ -26,8 +26,7 @@ export default async function UsagePage() {
   } = await sb.auth.getUser();
   if (!user) redirect('/');
 
-  const { todayXp, weekXp, entries } = await getUsage();
-  const weeklyXp = getWeeklyXp(entries);
+  const { todayXp, weekXp, weeklyXp, entries } = await getUsage();
 
   return (
     <div className="min-h-screen bg-[#111318] p-12 font-mono text-white">
@@ -103,30 +102,6 @@ function compactDetail(detail: Record<string, unknown>): string {
     parts.push(`${k}=${String(v)}`);
   }
   return parts.slice(0, 4).join(' · ');
-}
-
-function getWeeklyXp(entries: UsageEntry[]) {
-  const weeks: Record<string, number> = {};
-  const now = new Date();
-
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i * 7);
-    const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-    weeks[key] = 0;
-  }
-
-  for (const e of entries) {
-    const date = new Date(e.createdAt);
-    const weekStart = new Date(date);
-    weekStart.setDate(date.getDate() - date.getDay());
-
-    const key = `${weekStart.getFullYear()}-${weekStart.getMonth() + 1}-${weekStart.getDate()}`;
-
-    weeks[key] = (weeks[key] || 0) + Number(e.detail?.xp ?? 0);
-  }
-
-  return Object.entries(weeks).map(([week, xp]) => ({ week, xp }));
 }
 
 function XpChart({ data }: { data: { week: string; xp: number }[] }) {

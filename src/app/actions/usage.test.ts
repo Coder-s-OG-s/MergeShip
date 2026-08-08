@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getUsage } from './usage';
+import { getUsage, getWeeklyXp } from './usage';
 
 const mocks = vi.hoisted(() => ({
   mockGetServerSupabase: vi.fn(),
@@ -73,15 +73,20 @@ describe('getUsage', () => {
       error: null,
     });
 
+    const chartChain = makeChain();
+    chartChain.gte = vi.fn().mockResolvedValue({ data: [], error: null });
+
     mocks.mockServiceFrom
       .mockReturnValueOnce(logChain) // activity_log
       .mockReturnValueOnce(todayChain) // xp_events today
-      .mockReturnValueOnce(weekChain); // xp_events week
+      .mockReturnValueOnce(weekChain) // xp_events week
+      .mockReturnValueOnce(chartChain); // xp_events chart (84 days)
 
     const result = await getUsage();
 
     expect(result.todayXp).toBe(80); // 50 + 30
     expect(result.weekXp).toBe(100); // 50 + 30 + 20
+    expect(result.weeklyXp).toHaveLength(12); // 12 zero-width weekly buckets
     expect(result.entries).toHaveLength(2);
     expect(result.entries[0]).toEqual({
       id: 1,
@@ -105,10 +110,14 @@ describe('getUsage', () => {
     const weekGte = vi.fn().mockResolvedValue({ data: [], error: null });
     weekChain.gte = weekGte;
 
+    const chartChain = makeChain();
+    chartChain.gte = vi.fn().mockResolvedValue({ data: [], error: null });
+
     mocks.mockServiceFrom
       .mockReturnValueOnce(logChain)
       .mockReturnValueOnce(todayChain)
-      .mockReturnValueOnce(weekChain);
+      .mockReturnValueOnce(weekChain)
+      .mockReturnValueOnce(chartChain);
 
     await getUsage();
 
@@ -136,10 +145,14 @@ describe('getUsage', () => {
     const weekChain = makeChain();
     weekChain.gte = vi.fn().mockResolvedValue({ data: [], error: null });
 
+    const chartChain = makeChain();
+    chartChain.gte = vi.fn().mockResolvedValue({ data: [], error: null });
+
     mocks.mockServiceFrom
       .mockReturnValueOnce(logChain)
       .mockReturnValueOnce(todayChain)
-      .mockReturnValueOnce(weekChain);
+      .mockReturnValueOnce(weekChain)
+      .mockReturnValueOnce(chartChain);
 
     await getUsage(5);
 
@@ -159,15 +172,20 @@ describe('getUsage', () => {
     const weekChain = makeChain();
     weekChain.gte = vi.fn().mockResolvedValue({ data: [], error: null });
 
+    const chartChain = makeChain();
+    chartChain.gte = vi.fn().mockResolvedValue({ data: [], error: null });
+
     mocks.mockServiceFrom
       .mockReturnValueOnce(logChain)
       .mockReturnValueOnce(todayChain)
-      .mockReturnValueOnce(weekChain);
+      .mockReturnValueOnce(weekChain)
+      .mockReturnValueOnce(chartChain);
 
     const result = await getUsage();
 
     expect(result.todayXp).toBe(0);
     expect(result.weekXp).toBe(0);
+    expect(result.weeklyXp).toHaveLength(12);
     expect(result.entries).toEqual([]);
   });
 
@@ -176,7 +194,7 @@ describe('getUsage', () => {
 
     const result = await getUsage();
 
-    expect(result).toEqual({ todayXp: 0, weekXp: 0, entries: [] });
+    expect(result).toEqual({ todayXp: 0, weekXp: 0, weeklyXp: [], entries: [] });
     expect(mocks.mockRateLimit).not.toHaveBeenCalled();
   });
 
@@ -186,7 +204,7 @@ describe('getUsage', () => {
 
     const result = await getUsage();
 
-    expect(result).toEqual({ todayXp: 0, weekXp: 0, entries: [] });
+    expect(result).toEqual({ todayXp: 0, weekXp: 0, weeklyXp: [], entries: [] });
     expect(mocks.mockServiceFrom).not.toHaveBeenCalled();
   });
 
@@ -206,14 +224,79 @@ describe('getUsage', () => {
     const weekChain = makeChain();
     weekChain.gte = vi.fn().mockResolvedValue({ data: [], error: null });
 
+    const chartChain = makeChain();
+    chartChain.gte = vi.fn().mockResolvedValue({ data: [], error: null });
+
     mocks.mockServiceFrom
       .mockReturnValueOnce(logChain)
       .mockReturnValueOnce(todayChain)
-      .mockReturnValueOnce(weekChain);
+      .mockReturnValueOnce(weekChain)
+      .mockReturnValueOnce(chartChain);
 
     const result = await getUsage();
 
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0]?.detail).toBeNull();
+  });
+});
+
+describe('getWeeklyXp', () => {
+  function utcMonday(d: Date): Date {
+    const utc = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    utc.setUTCDate(utc.getUTCDate() - ((utc.getUTCDay() + 6) % 7));
+    return utc;
+  }
+
+  function midWeek(monday: Date): Date {
+    const d = new Date(monday);
+    d.setUTCDate(monday.getUTCDate() + 3); // Wednesday
+    return d;
+  }
+
+  const key = (d: Date) => d.toISOString().slice(0, 10);
+
+  it('returns 12 zero buckets when there are no events', () => {
+    const result = getWeeklyXp([]);
+
+    expect(result).toHaveLength(12);
+    expect(result.every((p) => p.xp === 0)).toBe(true);
+  });
+
+  it('buckets XP into the current UTC calendar week', () => {
+    const thisMonday = utcMonday(new Date());
+    const mid = midWeek(thisMonday);
+
+    const result = getWeeklyXp([
+      { createdAt: mid.toISOString(), xp: 50 },
+      { createdAt: mid.toISOString(), xp: 30 },
+    ]);
+
+    expect(result).toHaveLength(12);
+    expect(result.find((p) => p.week === key(thisMonday))?.xp).toBe(80);
+  });
+
+  it('sums XP across multiple weekly buckets', () => {
+    const thisMonday = utcMonday(new Date());
+    const lastMonday = new Date(thisMonday);
+    lastMonday.setUTCDate(thisMonday.getUTCDate() - 7);
+    const twoWeeksAgo = new Date(thisMonday);
+    twoWeeksAgo.setUTCDate(thisMonday.getUTCDate() - 14);
+
+    const result = getWeeklyXp([
+      { createdAt: midWeek(lastMonday).toISOString(), xp: 50 },
+      { createdAt: midWeek(lastMonday).toISOString(), xp: 30 },
+      { createdAt: midWeek(twoWeeksAgo).toISOString(), xp: 20 },
+    ]);
+
+    expect(result.find((p) => p.week === key(lastMonday))?.xp).toBe(80);
+    expect(result.find((p) => p.week === key(twoWeeksAgo))?.xp).toBe(20);
+    expect(result.find((p) => p.week === key(thisMonday))?.xp).toBe(0);
+  });
+
+  it('skips invalid dates', () => {
+    const result = getWeeklyXp([{ createdAt: 'not-a-date', xp: 100 }]);
+
+    expect(result).toHaveLength(12);
+    expect(result.every((p) => p.xp === 0)).toBe(true);
   });
 });
