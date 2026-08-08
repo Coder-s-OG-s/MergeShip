@@ -346,24 +346,62 @@ export async function claimIssue(issueId: number): Promise<Result<{ recId: numbe
     .eq('issue_id', issueId)
     .maybeSingle();
 
-  if (existing) {
-    if (existing.status === 'claimed') return ok({ recId: existing.id });
-    if (existing.status === 'open') {
-      const { data: updated } = await service
-        .from('recommendations')
-        .update({ status: 'claimed', claimed_at: new Date().toISOString() })
-        .eq('id', existing.id)
-        .select('id')
-        .single();
-      if (!updated) return err('persist_failed', 'claim failed');
-      await cacheDel(`recs:${user.id}`);
-      return ok({ recId: updated.id });
-    }
+  // Re-claiming the same issue is idempotent and doesn't consume a new slot.
+  if (existing?.status === 'claimed') return ok({ recId: existing.id });
+  if (existing && existing.status !== 'open') {
     return err('not_claimable', `status is ${existing.status}`);
   }
 
-  const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+  // Active-claim limit (mirrors claimRecommendation): count non-expired,
+  // claimed recommendations and reject when the user already has 3.
+  // This is a fast pre-check — a post-write rollback below closes the race
+  // when two concurrent requests both slip past it.
   const now = new Date().toISOString();
+  const countActiveClaims = () =>
+    service
+      .from('recommendations')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('status', 'claimed')
+      .gte('expires_at', now);
+  const { count: preCount } = await countActiveClaims();
+  if ((preCount ?? 0) >= 3) {
+    return err('claim_limit', 'you already have 3 active claims - merge or close them first');
+  }
+
+  // Post-claim verification: if the count exceeds 3 (two concurrent requests
+  // both passed the pre-check), revert this claim immediately.
+  const revertIfOverLimit = async (recId: number): Promise<Result<{ recId: number }> | null> => {
+    const { count: postCount } = await countActiveClaims();
+    if ((postCount ?? 0) > 3) {
+      await service
+        .from('recommendations')
+        .update({ status: 'open', claimed_at: null })
+        .eq('id', recId)
+        .eq('user_id', user.id)
+        .eq('status', 'claimed');
+      return err('claim_limit', 'you already have 3 active claims - merge or close them first');
+    }
+    return null;
+  };
+
+  if (existing) {
+    const { data: updated } = await service
+      .from('recommendations')
+      .update({ status: 'claimed', claimed_at: now })
+      .eq('id', existing.id)
+      .select('id')
+      .single();
+    if (!updated) return err('persist_failed', 'claim failed');
+
+    const overLimit = await revertIfOverLimit(existing.id);
+    if (overLimit) return overLimit;
+
+    await cacheDel(`recs:${user.id}`);
+    return ok({ recId: updated.id });
+  }
+
+  const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
   const { data: inserted, error: insertErr } = await service
     .from('recommendations')
     .insert({
@@ -381,6 +419,9 @@ export async function claimIssue(issueId: number): Promise<Result<{ recId: numbe
 
   if (insertErr) return err('persist_failed', insertErr.message);
   if (!inserted) return err('persist_failed', 'insert returned no data');
+
+  const overLimit = await revertIfOverLimit(inserted.id);
+  if (overLimit) return overLimit;
 
   await cacheDel(`recs:${user.id}`);
   await service.from('activity_log').insert({
