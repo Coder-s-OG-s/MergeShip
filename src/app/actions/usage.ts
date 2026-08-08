@@ -11,9 +11,15 @@ export type UsageEntry = {
   detail: Record<string, unknown> | null;
 };
 
+export type WeeklyXpPoint = {
+  week: string;
+  xp: number;
+};
+
 export type UsageSummary = {
   todayXp: number;
   weekXp: number;
+  weeklyXp: WeeklyXpPoint[];
   entries: UsageEntry[];
 };
 
@@ -22,7 +28,7 @@ export type UsageSummary = {
  * plus today + week XP totals. Read-only.
  */
 export async function getUsage(limit = 100): Promise<UsageSummary> {
-  const empty: UsageSummary = { todayXp: 0, weekXp: 0, entries: [] };
+  const empty: UsageSummary = { todayXp: 0, weekXp: 0, weeklyXp: [], entries: [] };
   const sb = await getServerSupabase();
   if (!sb) return empty;
   const {
@@ -51,8 +57,10 @@ export async function getUsage(limit = 100): Promise<UsageSummary> {
   const weekStart = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - daysSinceMonday),
   ).toISOString();
+  // Last 84 days of xp_events feed the 12-week chart.
+  const chartStart = new Date(Date.now() - 84 * 24 * 3600 * 1000).toISOString();
 
-  const [logRes, todayRes, weekRes] = await Promise.all([
+  const [logRes, todayRes, weekRes, chartRes] = await Promise.all([
     service
       .from('activity_log')
       .select('id, kind, detail, created_at')
@@ -65,10 +73,22 @@ export async function getUsage(limit = 100): Promise<UsageSummary> {
       .select('xp_delta')
       .eq('user_id', user.id)
       .gte('created_at', weekStart),
+    service
+      .from('xp_events')
+      .select('xp_delta, created_at')
+      .eq('user_id', user.id)
+      .gte('created_at', chartStart),
   ]);
 
   const todayXp = (todayRes.data ?? []).reduce((a, r) => a + (r.xp_delta ?? 0), 0);
   const weekXp = (weekRes.data ?? []).reduce((a, r) => a + (r.xp_delta ?? 0), 0);
+
+  const weeklyXp = getWeeklyXp(
+    (chartRes.data ?? []).map((r) => ({
+      createdAt: r.created_at,
+      xp: r.xp_delta ?? 0,
+    })),
+  );
 
   const entries: UsageEntry[] = (logRes.data ?? []).map((r) => ({
     id: r.id,
@@ -77,5 +97,43 @@ export async function getUsage(limit = 100): Promise<UsageSummary> {
     detail: (r.detail as Record<string, unknown> | null) ?? null,
   }));
 
-  return { todayXp, weekXp, entries };
+  return { todayXp, weekXp, weeklyXp, entries };
+}
+
+/**
+ * Bucket XP amounts into the last `weeks` UTC calendar weeks (Monday 00:00
+ * start — the same `date_trunc('week')` boundary used for `weekXp`), so the
+ * chart's bars match the "XP this week" stat card. Oldest week first.
+ */
+export function getWeeklyXp(
+  events: { createdAt: string; xp: number }[],
+  weeks = 12,
+): WeeklyXpPoint[] {
+  const buckets: Record<string, number> = {};
+  const now = new Date();
+  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const daysSinceMonday = (todayUtc.getUTCDay() + 6) % 7; // 0 = Sunday
+  const thisMonday = new Date(todayUtc);
+  thisMonday.setUTCDate(todayUtc.getUTCDate() - daysSinceMonday);
+
+  for (let i = weeks - 1; i >= 0; i--) {
+    const d = new Date(thisMonday);
+    d.setUTCDate(thisMonday.getUTCDate() - i * 7);
+    buckets[weekKey(d)] = 0;
+  }
+
+  for (const e of events) {
+    const date = new Date(e.createdAt);
+    if (Number.isNaN(date.getTime())) continue;
+    const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    const key = weekKey(d);
+    if (key in buckets) buckets[key] = (buckets[key] ?? 0) + e.xp;
+  }
+
+  return Object.entries(buckets).map(([week, xp]) => ({ week, xp }));
+}
+
+function weekKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
