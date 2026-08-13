@@ -246,16 +246,33 @@ describe('streakDetect', () => {
     const { getServiceSupabase } = await import('@/lib/supabase/service');
     vi.mocked(insertXpEvent).mockResolvedValue(true);
 
+    const userIdPage1 = [{ user_id: 'user-under-cap' }, { user_id: 'user-over-cap' }];
+    const userIdPage2: { user_id: string }[] = [];
+
     const xpEventsMock = {
       select: vi.fn().mockImplementation((selectString) => {
         if (selectString === 'user_id') {
+          const order1 = {
+            order: vi.fn().mockReturnThis(),
+            range: vi
+              .fn()
+              .mockResolvedValueOnce({ data: userIdPage1, error: null })
+              .mockResolvedValueOnce({ data: userIdPage2, error: null }),
+          };
+          const order2 = {
+            order: vi.fn().mockReturnValue(order1),
+          };
+          const neqObj = {
+            order: vi.fn().mockReturnValue(order2),
+          };
+          const ltObj = {
+            neq: vi.fn().mockReturnValue(neqObj),
+          };
+          const gteObj = {
+            lt: vi.fn().mockReturnValue(ltObj),
+          };
           return {
-            gte: vi.fn().mockReturnThis(),
-            lt: vi.fn().mockReturnThis(),
-            neq: vi.fn().mockResolvedValue({
-              data: [{ user_id: 'user-under-cap' }, { user_id: 'user-over-cap' }],
-              error: null,
-            }),
+            gte: vi.fn().mockReturnValue(gteObj),
           };
         }
         if (selectString === 'user_id, created_at') {

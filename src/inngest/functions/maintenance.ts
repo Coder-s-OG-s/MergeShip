@@ -68,15 +68,21 @@ export const streakDetect = inngest.createFunction(
       const today = new Date().toISOString().slice(0, 10);
       const yesterday = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 10);
 
-      // Pull anyone who logged an XP event yesterday.
-      const { data: actives } = await sb
-        .from('xp_events')
-        .select('user_id')
-        .gte('created_at', `${yesterday}T00:00:00Z`)
-        .lt('created_at', `${today}T00:00:00Z`)
-        .neq('source', XP_SOURCE.STREAK);
+      // Pull anyone who logged an XP event yesterday (with pagination to avoid 1000-row cap).
+      const actives = await fetchAllAuditRows<{ user_id: string }>(
+        (from, to) =>
+          sb
+            .from('xp_events')
+            .select('user_id')
+            .gte('created_at', `${yesterday}T00:00:00Z`)
+            .lt('created_at', `${today}T00:00:00Z`)
+            .neq('source', XP_SOURCE.STREAK)
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to) as unknown as PromiseLike<SupabasePage<{ user_id: string }>>,
+      );
 
-      const uniqueUsers = new Set((actives ?? []).map((r) => r.user_id));
+      const uniqueUsers = new Set(actives.map((r) => r.user_id));
       const maxDays = XP_REWARDS.STREAK_CAP / XP_REWARDS.STREAK_PER_DAY;
       const streakCutoffDate = new Date(Date.now() - (maxDays + 1) * 24 * 3600 * 1000)
         .toISOString()
