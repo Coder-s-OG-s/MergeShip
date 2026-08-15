@@ -246,31 +246,22 @@ describe('streakDetect', () => {
     const { getServiceSupabase } = await import('@/lib/supabase/service');
     vi.mocked(insertXpEvent).mockResolvedValue(true);
 
-    const userIdPage1 = [{ user_id: 'user-under-cap' }, { user_id: 'user-over-cap' }];
-    const userIdPage2: { user_id: string }[] = [];
+    const page1 = Array.from({ length: 1000 }, () => ({ user_id: 'user-under-cap' }));
+    const page2 = [{ user_id: 'user-over-cap' }];
+
+    const rangeFn = vi
+      .fn()
+      .mockResolvedValueOnce({ data: page1, error: null })
+      .mockResolvedValueOnce({ data: page2, error: null });
 
     const xpEventsMock = {
       select: vi.fn().mockImplementation((selectString) => {
         if (selectString === 'user_id') {
-          const order1 = {
-            order: vi.fn().mockReturnThis(),
-            range: vi
-              .fn()
-              .mockResolvedValueOnce({ data: userIdPage1, error: null })
-              .mockResolvedValueOnce({ data: userIdPage2, error: null }),
-          };
-          const order2 = {
-            order: vi.fn().mockReturnValue(order1),
-          };
-          const neqObj = {
-            order: vi.fn().mockReturnValue(order2),
-          };
-          const ltObj = {
-            neq: vi.fn().mockReturnValue(neqObj),
-          };
-          const gteObj = {
-            lt: vi.fn().mockReturnValue(ltObj),
-          };
+          const secondOrder = { range: rangeFn };
+          const firstOrder = { order: vi.fn().mockReturnValue(secondOrder) };
+          const neqObj = { order: vi.fn().mockReturnValue(firstOrder) };
+          const ltObj = { neq: vi.fn().mockReturnValue(neqObj) };
+          const gteObj = { lt: vi.fn().mockReturnValue(ltObj) };
           return {
             gte: vi.fn().mockReturnValue(gteObj),
           };
@@ -317,8 +308,14 @@ describe('streakDetect', () => {
 
     const result = await runStreakDetect({ step });
 
+    // Deduplicates across pages: user-under-cap from page 1 + user-over-cap from page 2
     expect(result.scanned).toBe(2);
     expect(result.awarded).toBe(1);
+
+    // Verifies pagination actually exercised a second .range() call
+    expect(rangeFn).toHaveBeenCalledTimes(2);
+    expect(rangeFn).toHaveBeenNthCalledWith(1, 0, 999);
+    expect(rangeFn).toHaveBeenNthCalledWith(2, 1000, 1999);
 
     // Should only have called insertXpEvent for the user under the cap.
     expect(insertXpEvent).toHaveBeenCalledTimes(1);
