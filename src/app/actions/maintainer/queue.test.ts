@@ -292,7 +292,12 @@ describe('getMaintainerIssueQueue', () => {
     queues['issues']!.push({
       data: [
         rawIssue({ id: 1, assignee_login: null, labels: [] }), // needs-triage
-        rawIssue({ id: 2, assignee_login: 'bob', labels: [] }), // in-progress
+        rawIssue({
+          id: 2,
+          assignee_login: 'bob',
+          labels: [],
+          last_event_at: new Date().toISOString(),
+        }), // in-progress
         rawIssue({
           id: 3,
           assignee_login: null,
