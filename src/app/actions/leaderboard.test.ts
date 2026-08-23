@@ -149,7 +149,7 @@ describe('getLeaderboard', () => {
       .mockResolvedValueOnce(null) // leaderboard cache
       .mockResolvedValueOnce(null) // following cache miss, fetch from GitHub
       .mockResolvedValueOnce(['bob', 'carol', 'alice']); // following cache hit on currentUserRank re-fetch
-    mocks.mockExecute.mockResolvedValueOnce([]); // installations lookup
+    mocks.mockExecute.mockResolvedValueOnce([{ id: 1 }]); // installations lookup
     mocks.mockExecute.mockResolvedValueOnce(mockRows); // friends leaderboard rows
 
     const result = await getLeaderboard('friends', null, 50);
@@ -161,6 +161,22 @@ describe('getLeaderboard', () => {
     }
   });
 
+  it('does not call GitHub when no personal installation exists', async () => {
+    mocks.mockCacheGet
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(['bob', 'alice']);
+    mocks.mockExecute.mockResolvedValueOnce([]); // no personal installation
+    mocks.mockExecute.mockResolvedValueOnce([]); // friends leaderboard rows
+    mocks.mockExecute.mockResolvedValueOnce([]); // currentUserRank query
+    mocks.mockExecute.mockResolvedValueOnce([]); // user profile query
+
+    const result = await getLeaderboard('friends', null, 50);
+
+    expect(isOk(result)).toBe(true);
+    expect(mocks.mockRequest).not.toHaveBeenCalled();
+  });
+
   describe('friends leaderboard', () => {
     it('stops paginating when a page returns fewer than 100 results', async () => {
       const page1 = Array.from({ length: 100 }, (_, i) => ({ login: `user${i}` }));
@@ -168,8 +184,11 @@ describe('getLeaderboard', () => {
       mocks.mockRequest
         .mockResolvedValueOnce({ data: page1 })
         .mockResolvedValueOnce({ data: page2 });
-      mocks.mockCacheGet.mockResolvedValueOnce(null).mockResolvedValueOnce(['bob', 'carol']);
-      mocks.mockExecute.mockResolvedValueOnce([]); // installations
+      mocks.mockCacheGet
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(['bob', 'carol']);
+      mocks.mockExecute.mockResolvedValueOnce([{ id: 1 }]); // installations
       mocks.mockExecute.mockResolvedValueOnce([]); // friends leaderboard rows
       mocks.mockExecute.mockResolvedValueOnce([]); // currentUserRank query
       mocks.mockExecute.mockResolvedValueOnce([]); // user profile query
@@ -183,8 +202,9 @@ describe('getLeaderboard', () => {
       mocks.mockRequest.mockResolvedValue({ data: fullPage });
       mocks.mockCacheGet
         .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(Array.from({ length: 500 }, (_, i) => `user${i}`));
-      mocks.mockExecute.mockResolvedValueOnce([]); // installations
+      mocks.mockExecute.mockResolvedValueOnce([{ id: 1 }]); // installations
       mocks.mockExecute.mockResolvedValueOnce([]); // friends leaderboard rows
       mocks.mockExecute.mockResolvedValueOnce([]); // currentUserRank query
       mocks.mockExecute.mockResolvedValueOnce([]); // user profile query

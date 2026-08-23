@@ -46,6 +46,7 @@ interface Props {
   page: number;
   pageSize: number;
   paginationEnabled: boolean;
+  hasPersonalInstallation: boolean;
 }
 
 export function LeaderboardContent({
@@ -63,6 +64,7 @@ export function LeaderboardContent({
   page,
   pageSize,
   paginationEnabled,
+  hasPersonalInstallation,
 }: Props) {
   useEffect(() => {
     captureEvent(EVENTS.LEADERBOARD_VIEWED, { activeTab, userLevel, userXp });
@@ -231,7 +233,23 @@ export function LeaderboardContent({
             })}
           </div>
 
-          {entries.length === 0 ? (
+          {activeTab === 'friends' && currentUserId && !hasPersonalInstallation ? (
+            <div className="my-6 flex flex-col items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/5 p-12 text-center">
+              <UserPlus className="mb-4 h-12 w-12 text-amber-400" />
+              <h3 className="mb-2 text-lg font-bold text-white">
+                Personal GitHub App Installation Required
+              </h3>
+              <p className="max-w-md text-sm text-zinc-400">
+                You need a personal GitHub App installation to view the Friends Leaderboard.
+              </p>
+              <Link
+                href="/install"
+                className="mt-6 rounded-lg bg-[#00FF87] px-5 py-3 text-sm font-bold text-black transition hover:bg-[#00e67a]"
+              >
+                Install GitHub App
+              </Link>
+            </div>
+          ) : entries.length === 0 ? (
             <div className="my-6 flex flex-col items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900/30 p-12 text-center">
               {activeTab === 'organization' ? (
                 <>

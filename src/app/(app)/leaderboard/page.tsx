@@ -31,6 +31,7 @@ export default async function LeaderboardPage({
   let userMerges = 0;
   let userStreak = 0;
   let avatarUrl: string | null = null;
+  let hasPersonalInstallation = false;
 
   if (sb) {
     const { data } = await sb.auth.getUser();
@@ -84,6 +85,22 @@ export default async function LeaderboardPage({
   const finalScope = (
     ['global', 'cohort', 'language', 'tag', 'monthly', 'friends'].includes(scope) ? scope : 'global'
   ) as 'global' | 'cohort' | 'language' | 'tag' | 'monthly' | 'friends';
+
+  if (finalScope === 'friends' && user) {
+    const db = tryGetDb();
+    if (db) {
+      const installRows = await db.execute<{ id: number }>(sql`
+        select id
+        from github_installations
+        where user_id = ${user.id} and uninstalled_at is null
+        limit 1
+      `);
+      const rows = Array.isArray(installRows)
+        ? installRows
+        : ((installRows as unknown as { rows: { id: number }[] }).rows ?? []);
+      hasPersonalInstallation = rows.length > 0;
+    }
+  }
 
   // Supported Tab type for LeaderboardContent is: 'global' | 'monthly' | 'organization' | 'friends'
   let activeTab: 'global' | 'monthly' | 'organization' | 'friends' = 'global';
@@ -148,7 +165,7 @@ export default async function LeaderboardPage({
         }
       }
     }
-  } else {
+  } else if (!(finalScope === 'friends' && !hasPersonalInstallation)) {
     const result = await getLeaderboard(finalScope, scopeId, 100);
     if (isOk(result)) {
       entries = result.data.entries;
@@ -175,6 +192,7 @@ export default async function LeaderboardPage({
       page={currentPage}
       pageSize={pageSize}
       paginationEnabled={useServerPagination}
+      hasPersonalInstallation={hasPersonalInstallation}
     />
   );
 }

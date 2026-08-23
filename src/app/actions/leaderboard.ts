@@ -5,7 +5,7 @@ import { tryGetDb } from '@/lib/db/client';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { ok, err, type Result } from '@/lib/result';
 import { getServerSupabase } from '@/lib/supabase/server';
-import { getAppOctokit, getInstallOctokit } from '@/lib/github/app';
+import { getInstallOctokit } from '@/lib/github/app';
 import { requireUser } from '@/lib/action-auth';
 import { RATE_LIMIT_TIERS } from '@/lib/rate-limit';
 
@@ -61,7 +61,14 @@ async function getFollowedHandles(
       if (installId) {
         octokit = await getInstallOctokit(Number(installId));
       } else {
-        octokit = getAppOctokit();
+        // Friends are gated in the UI when no personal installation exists.
+        // Keep this server-side guard as well so no invalid App-JWT request is
+        // ever attempted if this action is called directly.
+        followedHandles.push(activeHandle);
+        if (followedHandles.length > 0) {
+          await cacheSet(cacheKey, followedHandles, 600);
+        }
+        return followedHandles;
       }
       const MAX_PAGES = 5;
       let page = 1;
